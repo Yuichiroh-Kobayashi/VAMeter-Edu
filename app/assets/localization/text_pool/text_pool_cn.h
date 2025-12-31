@@ -3,6 +3,8 @@
 
 struct TextPool_cn_t
 {
+    char AppName_EduVolt[15] = "VoltageMonitor";
+    char AppName_EduCurrent[15] = "CurrentMonitor";
     char AppName_PowerMonitor[13] = "电源监视";
     char AppName_Waveform[7] = "波形";
     char AppName_Files[7] = "文件";
@@ -35,6 +37,7 @@ struct TextPool_cn_t
     char AppSettings_Option_Japanese[7] = "日文";
     char AppSettings_Option_StartupImage[13] = "启动画面";
     char AppSettings_Option_Default[7] = "默认";
+    char AppSettings_Option_Probe[13] = "训练探针";
     char AppFiles_Option_RecordFiles[13] = "录制文件";
     char AppFiles_Option_MscMode[11] = "MSC 模式";
     char AppFiles_Option_Open[7] = "打开";
@@ -95,6 +98,8 @@ struct TextPool_cn_t
 
     void getMap(LocalTextPoolMap_t& map)
     {
+        map.AppName_EduVolt = AppName_EduVolt;
+        map.AppName_EduCurrent = AppName_EduCurrent;
         map.AppName_PowerMonitor = AppName_PowerMonitor;
         map.AppName_Waveform = AppName_Waveform;
         map.AppName_Files = AppName_Files;

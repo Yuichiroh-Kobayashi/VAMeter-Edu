@@ -17,6 +17,7 @@
 #include <LovyanGFX.hpp>
 #include <random>
 #include <assets/assets.h>
+#include <LGFX_AUTODETECT.hpp>
 
 class HAL_Desktop : public HAL
 {

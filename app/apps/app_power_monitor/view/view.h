@@ -14,6 +14,12 @@ namespace VIEWS
 {
     class PmDataPage
     {
+    private:
+        bool _is_encoder_pressed = false;   // エンコーダが押されているかどうか
+        bool _is_value_view = false;        // 値を表示したかどうか
+        std::string _last_value;            // 押された瞬間の値を保持する
+        uint32_t _view_count = 0;           // 表示更新時間カウンタ
+
     public:
         struct Config_t
         {

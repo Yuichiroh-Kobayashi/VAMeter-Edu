@@ -71,6 +71,26 @@ void PmDataPage::update(uint32_t currentTime)
     {
         Button::Update();
 
+        // エンコーダが押された瞬間
+        if (Button::Encoder()->isPressed()) {
+            _is_encoder_pressed = true;
+            if (!_is_value_view || currentTime - _view_count > _config.updateInterval * 25){
+                if (_config.getValueCallback) {
+                    _config.getValueCallback(_last_value);  // 現在の値を取得して保持
+                }
+                spdlog::info("Data Refresh");
+                _view_count = currentTime;
+            }
+            _is_value_view = true;
+            //spdlog::info("Press");
+        }
+        // エンコーダが離された瞬間
+        else if (Button::Encoder()->isReleased()) {
+            //spdlog::info("Release");
+            _is_encoder_pressed = false;
+            _is_value_view = false;
+        }
+
         // Page simple detail or all detail page
         if (_data.is_simple_detail_page || _data.is_all_detail_page)
         {
@@ -92,17 +112,18 @@ void PmDataPage::update(uint32_t currentTime)
             _render();
         }
 
+        /* ボタンによるリレーの切り替えを削除
         if (Button::Encoder()->wasHold())
         {
             HAL::SetBaseRelay(!HAL::GetBaseRelayState());
             NotificationBubble::Push(HAL::GetBaseRelayState() ? "Relay ON" : "Relay OFF");
-        }
+        } */
 
-        // Check quit
+        /*/ Check quit サイドボタンの処理を削除
         if (Button::Side()->wasHold())
         {
             _data.want_to_quit = true;
-        }
+        } */
 
         _data.time_count = currentTime;
     }
@@ -131,11 +152,14 @@ void PmDataPage::_render()
     HAL::GetCanvas()->setTextSize(1);
 
     // Value
-    _config.getValueCallback(_data.string_buffer);
+    // _config.getValueCallback(_data.string_buffer);
     HAL::GetCanvas()->setTextDatum(top_right);
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_72);
-    HAL::GetCanvas()->drawString(
-        _data.string_buffer.c_str(), _data.value_postion.getValue().x, _data.value_postion.getValue().y);
+    if (_is_encoder_pressed && _is_value_view) {
+        // 押下中だけスナップショット値を描く（離せば冒頭の fillScreen で自然に消える）
+        auto pos = _data.value_postion.getValue();
+        HAL::GetCanvas()->drawString(_last_value.c_str(), pos.x, pos.y);
+    }
 
     // Label
     _config.getLabelCallback(_data.string_buffer);
@@ -144,7 +168,7 @@ void PmDataPage::_render()
     HAL::GetCanvas()->drawString(
         _data.string_buffer.c_str(), _data.label_postion.getValue().x, _data.label_postion.getValue().y);
 
-    // Mode
+    /* Mode表示を削除
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibold_16);
     // HAL::GetCanvas()->drawString("Precision Mode", _data.mode_postion.getValue().x, _data.mode_postion.getValue().y);
     if (_config.showLcModeLabel)
@@ -153,7 +177,7 @@ void PmDataPage::_render()
             HAL::GetCanvas()->drawString("DIV(2.5μA)", _data.mode_postion.getValue().x, _data.mode_postion.getValue().y);
         else
             HAL::GetCanvas()->drawString("DIV(250μA)", _data.mode_postion.getValue().x, _data.mode_postion.getValue().y);
-    }
+    } */
 
     // Spinner
     _data.spinner_icon->pushRotateZoom(

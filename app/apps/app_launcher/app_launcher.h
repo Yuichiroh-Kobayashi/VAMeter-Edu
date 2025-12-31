@@ -17,9 +17,20 @@ namespace MOONCAKE
         class AppLauncher : public APP_BASE
         {
         private:
+            enum MenuState_t
+            {
+                menu_main = 0,
+                menu_current,
+                menu_voltage,
+                menu_usbc,
+            };
+
             struct Data_t
             {
                 VIEW::LauncherView* launcher_view = nullptr;
+                MenuState_t menu_state = menu_main;
+                bool showing_guide = false;
+                void* guide_image_asset = nullptr;
             };
             Data_t _data;
             void _play_boot_anim();

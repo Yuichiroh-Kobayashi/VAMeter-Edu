@@ -3,3 +3,8 @@
 build
 dependencies
  
+# allow LovyanGFX submodule
+!dependencies/LovyanGFX/
+build_clangd/
+compile_commands.json
+*.log

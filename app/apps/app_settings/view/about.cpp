@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "../app_settings.h"
 #include "../../../hal/hal.h"
 #include "../../../assets/assets.h"
@@ -29,33 +29,23 @@ static void _render_page_a(const int& yOffset)
         HAL::GetCanvas()->setCursor(0, 40);
     }
 
-    // int avatar_y_offset = AssetPool::GetLocaleCode() == locale_code_en ? -9 : -13;
-    int avatar_y_offset = -6;
-
-    // Infos
-    // HAL::GetCanvas()->printf(" [%s]:\n", AssetPool::GetText().Misc_FirmwareInfo);
-    HAL::GetCanvas()->printf(" [%s]:  %s\n [%s]:\n  - %s",
-                             AssetPool::GetText().Misc_Version,
-                             HAL::Version().c_str(),
-                             AssetPool::GetText().Misc_CompileDate,
-                             HAL::CompileDate().c_str());
+    // VAMeter-Edu version info
+    HAL::GetCanvas()->printf(" [%s]:\n  Edu V1.0.0\n", AssetPool::GetText().Misc_Version);
 
     HAL::GetCanvas()->setTextDatum(top_left);
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibold_16);
 
-    // Avatars
+    int avatar_y_offset = -6;
+
+    // Developer info
     HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionText, AssetPool::GetColor().AppSettings.background);
-    HAL::GetCanvas()->drawString("Hardware By", 79, 113 + yOffset + avatar_y_offset);
-    HAL::GetCanvas()->drawString("Software By", 79, 166 + yOffset + avatar_y_offset);
+    HAL::GetCanvas()->drawString("Developer", 20, 90 + yOffset + avatar_y_offset);
+    HAL::GetCanvas()->drawString("Special Thanks", 20, 150 + yOffset + avatar_y_offset);
 
     HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionTextLight,
                                    AssetPool::GetColor().AppSettings.background);
-    HAL::GetCanvas()->drawString("@GTXYJ", 78, 134 + yOffset + avatar_y_offset);
-    HAL::GetCanvas()->drawString("@Forairaaaaa", 78, 187 + yOffset + avatar_y_offset);
-
-    HAL::GetCanvas()->pushImage(20, 111 + yOffset + avatar_y_offset, 48, 48, AssetPool::GetImage().AppSettings.avatar_gtxyj);
-    HAL::GetCanvas()->pushImage(
-        20, 164 + yOffset + avatar_y_offset, 48, 48, AssetPool::GetImage().AppSettings.avatar_forairaaaaa);
+    HAL::GetCanvas()->drawString("Yuichiroh-Kobayashi", 20, 111 + yOffset + avatar_y_offset);
+    HAL::GetCanvas()->drawString("@M5Stack", 20, 171 + yOffset + avatar_y_offset);
 
     // Nav dots
     int current_one = 0;
@@ -71,7 +61,8 @@ static void _render_page_a(const int& yOffset)
 
 static void _render_page_b()
 {
-    const char* text = "https://docs.m5stack.com/en/products/sku/K136";
+    const char* text =
+        "https://www.hackster.io/Yuichiroh-Kobayashi/vameter-edu-easy-tester-for-everyone-learning-electricity-9d06c6";
     std::vector<std::vector<bool>> qrcode_bitmap;
     GetQrcodeBitmap(qrcode_bitmap, text);
 
@@ -100,7 +91,7 @@ static void _render_page_b()
 
 static void _render_page_c()
 {
-    const char* text = "https://github.com/m5stack/VAMeter-Firmware";
+    const char* text = "https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu";
     std::vector<std::vector<bool>> qrcode_bitmap;
     GetQrcodeBitmap(qrcode_bitmap, text);
 
@@ -139,7 +130,8 @@ void AppSettings::_on_page_about()
     CreateNoticePage(
         "About",
         [](Transition2D& transition) { _render_page_a(transition.getValue().y); },
-        [&ticker, &game, &curent_page_index]() {
+        [&ticker, &game, &curent_page_index]()
+        {
             HAL::FeedTheDog();
             HAL::Delay(50);
 

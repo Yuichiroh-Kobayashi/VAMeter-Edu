@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "app.h"
 #include <mooncake.h>
 #include "assets/assets.h"
@@ -35,7 +35,9 @@ void APP::Setup(SetupCallback_t callback)
         spdlog::warn("empty callback");
 
     // Set locale
-    AssetPool::SetLocaleCode(HAL::GetSystemConfig().localeCode);
+    // Fix locale to Japanese
+    AssetPool::SetLocaleCode(locale_code_jp);
+    // AssetPool::SetLocaleCode(HAL::GetSystemConfig().localeCode);
 
     /* -------------------------------------------------------------------------- */
     /*                                Mooncake apps                               */

@@ -164,11 +164,11 @@ void LauncherView::onReadInput()
         setConfig().moveInLoop = false;
     }
 
-    else if (Button::Encoder()->wasReleased())
+    else if (Button::Encoder()->wasReleased()) // ボタンがリリースされたらアプリを開く
     {
-        release();
+        onClick(); // release();
     }
-
+    /* ここからコメントアウト
     else if (Button::Side()->wasClicked() && Button::Encoder()->isReleased())
     {
         _data.auto_open = true;
@@ -177,7 +177,7 @@ void LauncherView::onReadInput()
         goNext();
     }
 
-    /* -------------------------- Handle auto openning -------------------------- */
+    -------------------------- Handle auto openning --------------------------
     if (_data.auto_open)
     {
         // Squeeze selector to notice it's about to auto open
@@ -199,7 +199,7 @@ void LauncherView::onReadInput()
         {
             onClick();
         }
-    }
+    }   ここまでコメントアウト */
 }
 
 /* -------------------------------------------------------------------------- */

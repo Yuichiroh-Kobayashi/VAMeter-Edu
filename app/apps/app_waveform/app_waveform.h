@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "view/view.h"
 #include <mooncake.h>
 
@@ -16,18 +16,36 @@ namespace MOONCAKE
          */
         class AppWaveform : public APP_BASE
         {
+        public:
+            enum WaveformMode_t
+            {
+                mode_both = 0,
+                mode_volt_only,
+                mode_current_only,
+            };
+
         private:
             struct Data_t
             {
                 VIEWS::WaveFormRecorder* view = nullptr;
             };
             Data_t _data;
-            void _handle_recording_finished();
+            static WaveformMode_t _mode;
 
         public:
+            static void SetMode(WaveformMode_t mode) { _mode = mode; }
+            static WaveformMode_t GetMode() { return _mode; }
+
+            // Default constructor
+            AppWaveform() = default;
+            // Delete copy constructor and assignment operator to prevent double-free
+            AppWaveform(const AppWaveform&) = delete;
+            AppWaveform& operator=(const AppWaveform&) = delete;
+
             void onResume() override;
             void onRunning() override;
             void onDestroy() override;
+            void _handle_recording_finished();
         };
 
         class AppWaveform_Packer : public APP_PACKER_BASE

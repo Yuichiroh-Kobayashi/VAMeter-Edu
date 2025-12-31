@@ -1,5 +1,7 @@
 ﻿key,en,cn,jp
-AppName_PowerMonitor,PowerMonitor,电源监视,パワーモニター
+AppName_EduVolt,VoltageMonitor,VoltageMonitor,電圧計
+AppName_EduCurrent,CurrentMonitor,CurrentMonitor,電流計
+AppName_PowerMonitor,PowerMonitor,电源监视,USB-C電力計
 AppName_Waveform,Waveform,波形,波形
 AppName_Files,Files,文件,ファイル
 AppName_Settings,Settings,设置,設定
@@ -31,6 +33,7 @@ AppSettings_Option_Chinese,Chinese,中文,中国語
 AppSettings_Option_Japanese,Japanese,日文,日本語
 AppSettings_Option_StartupImage,Startup Image,启动画面,起動ロゴ
 AppSettings_Option_Default,Default,默认,デフォルト
+AppSettings_Option_Probe,Training Probe,训练探针,練習用プローブ
 AppFiles_Option_RecordFiles,Record files,录制文件,レコードファイル
 AppFiles_Option_MscMode,MSC mode,MSC 模式,MSCモード
 AppFiles_Option_Open,Open,打开,開く

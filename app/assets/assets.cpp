@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "assets.h"
 #include "localization/types.h"
 #include <cstdint>
@@ -146,7 +146,7 @@ static bool _copy_file(std::string filePath, uint8_t* target)
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
-        spdlog::error("open failed!", filePath);
+        spdlog::error("open {} failed", filePath);
         return false;
     }
     std::streampos file_size = file.tellg();
@@ -178,8 +178,15 @@ static void _copy_fonts(StaticAsset_t* assetPool)
 
 static void _copy_images(StaticAsset_t* assetPool)
 {
+    std::memcpy(assetPool->Image.AppEduCurrent.app_icon, image_data_icon_app_edu_current, image_data_icon_app_edu_current_size);
+    std::memcpy(assetPool->Image.AppEduCurrent.guide_current, image_data_guide_current, image_data_guide_current_size);
+
+    std::memcpy(assetPool->Image.AppEduVolt.app_icon, image_data_icon_app_edu_volt, image_data_icon_app_edu_volt_size);
+    std::memcpy(assetPool->Image.AppEduVolt.guide_volt, image_data_guide_volt, image_data_guide_volt_size);
+
     std::memcpy(assetPool->Image.AppFile.app_icon, image_data_icon_app_files, image_data_icon_app_files_size);
 
+    std::memcpy(assetPool->Image.AppLauncher.back_icon, image_data_icon_back, image_data_icon_back_size);
     std::memcpy(assetPool->Image.AppLauncher.next_icon, image_data_icon_next, image_data_icon_next_size);
     std::memcpy(assetPool->Image.AppLauncher.vameter_logo, image_data_vameter_logo, image_data_vameter_logo_size);
     std::memcpy(
@@ -249,14 +256,22 @@ StaticAsset_t* AssetPool::CreateStaticAsset()
 StaticAsset_t* AssetPool::GetStaticAssetFromBin()
 {
     auto asset_pool = new StaticAsset_t;
+    const std::string bin_path = "AssetPool-VAMeter.bin";
+    std::ifstream inFile(bin_path, std::ios::binary);
+    if (!inFile)
+    {
+        spdlog::error("open {} failed", bin_path);
+        delete asset_pool;
+        return nullptr; // Important: return null on failure
+    }
 
-    // Read from bin
+    /*/ Read from bin
     std::string bin_path = "AssetPool-VAMeter.bin";
 
     std::ifstream inFile(bin_path, std::ios::binary);
     if (!inFile)
         spdlog::error("open {} failed", bin_path);
-
+    */
     inFile.read(reinterpret_cast<char*>(asset_pool), sizeof(StaticAsset_t));
     inFile.close();
 
@@ -271,3 +286,29 @@ StaticAsset_t* AssetPool::GetStaticAssetFromBin()
     return asset_pool;
 }
 #endif
+
+#ifndef ESP_PLATFORM
+bool AssetPool::DumpStaticAsset(const char* path, const StaticAsset_t* asset)
+{
+#if defined(LGFX_SDL)
+    if (asset == nullptr)
+    {
+        spdlog::error("asset is null; dump skipped");
+        return false;
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!out)
+    {
+        spdlog::error("open {} for write failed", path);
+        return false;
+    }
+    out.write(reinterpret_cast<const char*>(asset), sizeof(StaticAsset_t));
+    spdlog::info("asset pool dumped to: {}", path);
+    return true;
+#else
+    (void)path;
+    (void)asset;
+    return false;
+#endif
+}
+#endif // !ESP_PLATFORM

@@ -28,24 +28,29 @@ void* AppPower_monitor_Packer::getCustomData()
     switch (app_history)
     {
     case 0:
-        return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageSimpleDetailBackground);
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageSimpleDetailBackground);
     case 1:
-        return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusVoltage);
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusVoltage);
     case 2:
-        return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageShuntCurrent);
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageShuntCurrent);
     case 3:
-        return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusPower);
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusPower);
     case 4:
-        return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageMoreDetailBackground);
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageMoreDetailBackground);
+    case 5: // Waveform
+        return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.primary);
     default:
         break;
     }
     // spdlog::warn("no theme color on history {}", app_history);
-    return (void*)(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageSimpleDetailBackground);
+    return static_cast<void*>(&AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageSimpleDetailBackground);
 }
 
 // Icon
-void* AppPower_monitor_Packer::getAppIcon() { return (void*)AssetPool::GetStaticAsset()->Image.AppPowerMonitor.app_icon; }
+void* AppPower_monitor_Packer::getAppIcon()
+{
+    return static_cast<void*>(AssetPool::GetStaticAsset()->Image.AppPowerMonitor.app_icon);
+}
 
 // Page 0~4
 constexpr static int _total_page_num = 4;
@@ -54,16 +59,33 @@ constexpr static int _total_page_num = 4;
 void AppPower_monitor::onResume()
 {
     spdlog::info("{} onResume", getAppName());
+
     _data.view = new PmDataPage;
     _data.is_page_switched = true;
 
-    // Load history page
+    // Detect USB-C Mode (Starts at Page 0)
+    if (_data.current_page_num == 0)
+    {
+        _data.is_usb_c_mode = true;
+        spdlog::info("USB-C Mode Detected");
+    }
+    else
+    {
+        _data.is_usb_c_mode = false;
+    }
+
+    // 初期ページのセットアップ
+    spdlog::info("Initial page number: {}", _data.current_page_num);
+    // Store initial page to determine if we should lock navigation (Edu Mode)
+    _data.initial_page_num = _data.current_page_num;
+
+    /* Load history page
     _data.current_page_num = HAL::NvsGet(NVS_KEY_APP_HISTORY);
     if (_data.current_page_num > _total_page_num || _data.current_page_num < 0)
     {
         spdlog::error("wrong history page {}", _data.current_page_num);
         _data.current_page_num = 0;
-    }
+    } */
 
     Encoder::Reset();
 }
@@ -80,6 +102,8 @@ void AppPower_monitor::onDestroy()
     NotificationBubble::Free();
     spdlog::info("{} onDestroy", getAppName());
     delete _data.view;
+    if (_data.waveform_view)
+        delete _data.waveform_view;
 }
 
 void AppPower_monitor::_check_page_switch()
@@ -88,19 +112,34 @@ void AppPower_monitor::_check_page_switch()
     Encoder::Update();
     if (Encoder::WasMoved())
     {
-        if (Encoder::GetDirection() < 0)
+        if (_data.is_usb_c_mode)
         {
-            if (_data.current_page_num >= _total_page_num)
-                return;
-            _data.current_page_num++;
-            _data.is_page_switched = true;
+            // USB-C Mode: Fixed to Page 0 (Simple Detail) per user request
+            // No toggling or scrolling allowed
+            return;
+        }
+        else if (_data.initial_page_num == 1 || _data.initial_page_num == 2)
+        {
+            // Edu Mode (Volt=1 or Current=2): Fixed page, no scrolling allowed
+            return;
         }
         else
         {
-            if (_data.current_page_num <= 0)
-                return;
-            _data.current_page_num--;
-            _data.is_page_switched = true;
+            // Normal scroll
+            if (Encoder::GetDirection() < 0)
+            {
+                if (_data.current_page_num >= _total_page_num)
+                    return;
+                _data.current_page_num++;
+                _data.is_page_switched = true;
+            }
+            else
+            {
+                if (_data.current_page_num <= 0)
+                    return;
+                _data.current_page_num--;
+                _data.is_page_switched = true;
+            }
         }
     }
 
@@ -114,6 +153,12 @@ void AppPower_monitor::_check_page_switch()
         switch (_data.current_page_num)
         {
         case 0:
+            // If comming from waveform
+            if (_data.waveform_view)
+            {
+                delete _data.waveform_view;
+                _data.waveform_view = nullptr;
+            }
             _setup_page_simple_detail();
             HAL::NvsSet(NVS_KEY_APP_HISTORY, 0);
             break;
@@ -134,14 +179,14 @@ void AppPower_monitor::_check_page_switch()
             _data.view->reset();
             HAL::NvsSet(NVS_KEY_APP_HISTORY, 3);
             break;
-        // case 4:
-        //     _data.view->quitMoreDetailPage();
-        //     _setup_page_shunt_volt();
-        //     _data.view->reset();
-        //     break;
         case 4:
             _setup_page_more_detail();
             HAL::NvsSet(NVS_KEY_APP_HISTORY, 4);
+            break;
+        case 5:                                 // Waveform
+            _data.view->quitSimpleDetailPage(); // Cleanup simple detail if needed
+            _setup_page_waveform();
+            HAL::NvsSet(NVS_KEY_APP_HISTORY, 5);
             break;
         default:
             break;
@@ -157,10 +202,18 @@ void AppPower_monitor::_update_view()
         _data.pm_update_time_count = HAL::Millis();
     }
 
-    _data.view->update(HAL::Millis());
-
-    if (_data.view->want2quit())
-        destroyApp();
+    if (_data.current_page_num == 5 && _data.waveform_view)
+    {
+        _data.waveform_view->update();
+        if (_data.waveform_view->want2quit())
+            destroyApp();
+    }
+    else
+    {
+        _data.view->update(HAL::Millis());
+        if (_data.view->want2quit())
+            destroyApp();
+    }
 }
 
 void AppPower_monitor::_setup_page_bus_volt()
@@ -171,11 +224,11 @@ void AppPower_monitor::_setup_page_bus_volt()
     _data.view->setConfig().showLcModeLabel = false;
     _data.view->setConfig().panelImage = (void*)(AssetPool::GetStaticAsset()->Image.AppPowerMonitor.page_bus_volt_panel);
 
-    _data.view->setConfig().getValueCallback = [](std::string& text) {
-        text = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().busVoltage).value;
-    };
+    _data.view->setConfig().getValueCallback = [](std::string& text)
+    { text = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().busVoltage).value; };
 
-    _data.view->setConfig().getLabelCallback = [](std::string& text) {
+    _data.view->setConfig().getLabelCallback = [](std::string& text)
+    {
         text = spdlog::fmt_lib::format("{} ({})",
                                        AssetPool::GetText().AppPowerMonitor_PageSingle_InputVolt,
                                        HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().busVoltage).unit);
@@ -190,11 +243,11 @@ void AppPower_monitor::_setup_page_bus_power()
     _data.view->setConfig().showLcModeLabel = false;
     _data.view->setConfig().panelImage = (void*)(AssetPool::GetStaticAsset()->Image.AppPowerMonitor.page_bus_power_panel);
 
-    _data.view->setConfig().getValueCallback = [](std::string& text) {
-        text = HAL::GetUnitAdaptatedPower(HAL::GetPowerMonitorData().busPower).value;
-    };
+    _data.view->setConfig().getValueCallback = [](std::string& text)
+    { text = HAL::GetUnitAdaptatedPower(HAL::GetPowerMonitorData().busPower).value; };
 
-    _data.view->setConfig().getLabelCallback = [](std::string& text) {
+    _data.view->setConfig().getLabelCallback = [](std::string& text)
+    {
         text = spdlog::fmt_lib::format("{} ({})",
                                        AssetPool::GetText().AppPowerMonitor_PageSingle_InputPower,
                                        HAL::GetUnitAdaptatedPower(HAL::GetPowerMonitorData().busPower).unit);
@@ -209,11 +262,11 @@ void AppPower_monitor::_setup_page_shunt_current()
     _data.view->setConfig().showLcModeLabel = true;
     _data.view->setConfig().panelImage = (void*)(AssetPool::GetStaticAsset()->Image.AppPowerMonitor.page_shunt_current_panel);
 
-    _data.view->setConfig().getValueCallback = [](std::string& text) {
-        text = HAL::GetUnitAdaptatedCurrent(HAL::GetPowerMonitorData().shuntCurrent).value;
-    };
+    _data.view->setConfig().getValueCallback = [](std::string& text)
+    { text = HAL::GetUnitAdaptatedCurrent(HAL::GetPowerMonitorData().shuntCurrent).value; };
 
-    _data.view->setConfig().getLabelCallback = [](std::string& text) {
+    _data.view->setConfig().getLabelCallback = [](std::string& text)
+    {
         text = spdlog::fmt_lib::format("{} ({})",
                                        AssetPool::GetText().AppPowerMonitor_PageSingle_OutputCurrent,
                                        HAL::GetUnitAdaptatedCurrent(HAL::GetPowerMonitorData().shuntCurrent).unit);
@@ -228,11 +281,11 @@ void AppPower_monitor::_setup_page_shunt_volt()
     _data.view->setConfig().showLcModeLabel = true;
     _data.view->setConfig().panelImage = (void*)(AssetPool::GetStaticAsset()->Image.AppPowerMonitor.page_shunt_volt_panel);
 
-    _data.view->setConfig().getValueCallback = [](std::string& text) {
-        text = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().shuntVoltage).value;
-    };
+    _data.view->setConfig().getValueCallback = [](std::string& text)
+    { text = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().shuntVoltage).value; };
 
-    _data.view->setConfig().getLabelCallback = [](std::string& text) {
+    _data.view->setConfig().getLabelCallback = [](std::string& text)
+    {
         text = spdlog::fmt_lib::format("{} ({})",
                                        AssetPool::GetText().AppPowerMonitor_PageSingle_ShuntVolt,
                                        HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().shuntVoltage).unit);
@@ -251,4 +304,13 @@ void AppPower_monitor::_setup_page_more_detail()
 {
     spdlog::info("page all detail");
     _data.view->goMoreDetailPage();
+}
+
+void AppPower_monitor::_setup_page_waveform()
+{
+    spdlog::info("page waveform");
+    // Use Primary Color (Blue) for background/theme to match Power Monitor aesthetic
+    // Mode 0 = Both (User requested toggling Simple <-> Waveform for USB-C, which is Both V/A)
+    _data.waveform_view = new VIEWS::WaveFormRecorder(AssetPool::GetStaticAsset()->Color.AppPowerMonitor.primary, 0);
+    _data.waveform_view->init();
 }

@@ -72,8 +72,7 @@ void WaveFormRecorder::update()
 
     if (Button::Encoder()->wasHold())
     {
-        HAL::SetBaseRelay(!HAL::GetBaseRelayState());
-        NotificationBubble::Push(HAL::GetBaseRelayState() ? "Relay ON" : "Relay OFF");
+        // Relay toggle omitted
     }
 
     // Check quit

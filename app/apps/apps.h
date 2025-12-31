@@ -14,6 +14,8 @@
 #include "app_files/app_files.h"
 #include "app_remote/app_remote.h"
 #include "app_startup_anim/app_startup_anim.h"
+#include "app_edu_current/app_edu_current.h"        // 電流計測支援画面
+#include "app_edu_volt/app_edu_volt.h"              // 電圧計測支援画面
 /* Header files locator (Don't remove) */
 
 /**
@@ -58,6 +60,8 @@ inline void app_install_launcher(MOONCAKE::Mooncake* mooncake)
  */
 inline void app_install_apps(MOONCAKE::Mooncake* mooncake)
 {
+    mooncake->installApp(new MOONCAKE::APPS::AppEduCurrent_Packer); // 電流計測支援画面
+    mooncake->installApp(new MOONCAKE::APPS::AppEduVolt_Packer);    // 電圧計測支援画面
     // mooncake->installApp(new MOONCAKE::APPS::AppTemplate_Packer);
     mooncake->installApp(new MOONCAKE::APPS::AppPower_monitor_Packer);
     mooncake->installApp(new MOONCAKE::APPS::AppWaveform_Packer);

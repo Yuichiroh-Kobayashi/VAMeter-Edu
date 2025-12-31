@@ -3,6 +3,8 @@
 
 struct TextPool_en_t
 {
+    char AppName_EduVolt[15] = "VoltageMonitor";
+    char AppName_EduCurrent[15] = "CurrentMonitor";
     char AppName_PowerMonitor[13] = "PowerMonitor";
     char AppName_Waveform[9] = "Waveform";
     char AppName_Files[6] = "Files";
@@ -35,6 +37,7 @@ struct TextPool_en_t
     char AppSettings_Option_Japanese[9] = "Japanese";
     char AppSettings_Option_StartupImage[14] = "Startup Image";
     char AppSettings_Option_Default[8] = "Default";
+    char AppSettings_Option_Probe[15] = "Training Probe";
     char AppFiles_Option_RecordFiles[13] = "Record files";
     char AppFiles_Option_MscMode[9] = "MSC mode";
     char AppFiles_Option_Open[5] = "Open";
@@ -95,6 +98,8 @@ struct TextPool_en_t
 
     void getMap(LocalTextPoolMap_t& map)
     {
+        map.AppName_EduVolt = AppName_EduVolt;
+        map.AppName_EduCurrent = AppName_EduCurrent;
         map.AppName_PowerMonitor = AppName_PowerMonitor;
         map.AppName_Waveform = AppName_Waveform;
         map.AppName_Files = AppName_Files;

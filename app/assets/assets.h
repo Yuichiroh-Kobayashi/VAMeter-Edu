@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #pragma once
 #include <cstdint>
 #include "fonts/types.h"
@@ -110,5 +110,8 @@ public:
     /* -------------------------- Generate static asset ------------------------- */
     static StaticAsset_t* CreateStaticAsset();
     static StaticAsset_t* GetStaticAssetFromBin();
+    // Utility to generate AssetPool-VAMeter.bin during desktop execution
+    // path specifies the output destination such as "AssetPool-VAMeter.bin"
+    static bool DumpStaticAsset(const char* path, const StaticAsset_t* asset);
 #endif
 };

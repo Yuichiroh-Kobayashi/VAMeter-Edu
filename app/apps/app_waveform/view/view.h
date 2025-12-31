@@ -89,6 +89,8 @@ namespace VIEWS
         };
         InputProps_t _input_props;
 
+        int _mode = 0; // 0: Both, 1: Volt, 2: Current
+
     protected:
         void _update_pm_data();
         const uint32_t& _get_pm_data_a_scale();
@@ -108,7 +110,7 @@ namespace VIEWS
         void _update_render(bool pushBuffer = false, bool renderPanel = true, bool renderXScaleNotice = true);
 
     public:
-        Waveform(uint32_t themeColor);
+        Waveform(uint32_t themeColor, int mode = 0);
         virtual ~Waveform();
         virtual void update();
         inline void setPause(bool pause) { _input_props.is_paused = pause; }
@@ -162,7 +164,7 @@ namespace VIEWS
         void _handle_start_recording();
 
     public:
-        WaveFormRecorder(uint32_t themeColor) : Waveform(themeColor) {}
+        WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}
         ~WaveFormRecorder();
 
         void init();

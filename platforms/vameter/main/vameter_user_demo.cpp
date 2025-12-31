@@ -9,9 +9,11 @@
 #include <esp_partition.h>
 #include <spi_flash_mmap.h>
 #include <nvs_flash.h>
+#include "esp_log.h"
 
 extern "C" void app_main(void)
 {
+    ESP_LOGI("boot", "HELLO from app_main");
     spdlog::set_pattern("[%H:%M:%S] [%L] %v");
     // spdlog::set_level(spdlog::level::warn);
 

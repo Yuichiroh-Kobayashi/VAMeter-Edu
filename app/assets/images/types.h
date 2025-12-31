@@ -11,6 +11,20 @@
 /* -------------------------------------------------------------------------- */
 struct ImagePool_t
 {
+    struct AppEduCurrent_t
+    {
+        uint16_t app_icon[10000];
+        uint16_t guide_current[57600];
+    };
+    AppEduCurrent_t AppEduCurrent;
+
+    struct AppEduVolt_t
+    {
+        uint16_t app_icon[10000];
+        uint16_t guide_volt[57600];
+    };
+    AppEduVolt_t AppEduVolt;
+
     struct AppFiles_t
     {
         uint16_t app_icon[10000];
@@ -20,6 +34,7 @@ struct ImagePool_t
     struct AppLauncher_t
     {
         uint16_t next_icon[400];
+        uint16_t back_icon[400];
         uint16_t vameter_logo[13905];
         uint16_t vameter_logo_light[13905];
         uint16_t guide_map[57600];

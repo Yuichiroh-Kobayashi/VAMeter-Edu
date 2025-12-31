@@ -3,7 +3,9 @@
 
 struct TextPool_jp_t
 {
-    char AppName_PowerMonitor[22] = "パワーモニター";
+    char AppName_EduVolt[10] = "電圧計";
+    char AppName_EduCurrent[10] = "電流計";
+    char AppName_PowerMonitor[15] = "USB-C電力計";
     char AppName_Waveform[7] = "波形";
     char AppName_Files[13] = "ファイル";
     char AppName_Settings[7] = "設定";
@@ -35,6 +37,7 @@ struct TextPool_jp_t
     char AppSettings_Option_Japanese[10] = "日本語";
     char AppSettings_Option_StartupImage[13] = "起動ロゴ";
     char AppSettings_Option_Default[16] = "デフォルト";
+    char AppSettings_Option_Probe[25] = "練習用プローブ";
     char AppFiles_Option_RecordFiles[25] = "レコードファイル";
     char AppFiles_Option_MscMode[13] = "MSCモード";
     char AppFiles_Option_Open[7] = "開く";
@@ -95,6 +98,8 @@ struct TextPool_jp_t
 
     void getMap(LocalTextPoolMap_t& map)
     {
+        map.AppName_EduVolt = AppName_EduVolt;
+        map.AppName_EduCurrent = AppName_EduCurrent;
         map.AppName_PowerMonitor = AppName_PowerMonitor;
         map.AppName_Waveform = AppName_Waveform;
         map.AppName_Files = AppName_Files;

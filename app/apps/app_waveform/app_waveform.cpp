@@ -17,6 +17,8 @@ using namespace MOONCAKE::APPS;
 using namespace SYSTEM::INPUTS;
 using namespace SYSTEM::UI;
 
+AppWaveform::WaveformMode_t AppWaveform::_mode = AppWaveform::mode_both;
+
 const char* AppWaveform_Packer::getAppName() { return AssetPool::GetText().AppName_Waveform; }
 
 // Theme color
@@ -29,7 +31,7 @@ void* AppWaveform_Packer::getAppIcon() { return (void*)AssetPool::GetStaticAsset
 void AppWaveform::onResume()
 {
     spdlog::info("{} onResume", getAppName());
-    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary);
+    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 
     // Footprint
@@ -108,6 +110,6 @@ void AppWaveform::_handle_recording_finished()
     }
 
     // Recreate view
-    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary);
+    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 }

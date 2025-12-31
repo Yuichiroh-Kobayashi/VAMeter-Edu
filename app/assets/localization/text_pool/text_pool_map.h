@@ -2,6 +2,8 @@
 
 struct LocalTextPoolMap_t
 {
+    char* AppName_EduVolt = nullptr;
+    char* AppName_EduCurrent = nullptr;
     char* AppName_PowerMonitor = nullptr;
     char* AppName_Waveform = nullptr;
     char* AppName_Files = nullptr;
@@ -34,6 +36,7 @@ struct LocalTextPoolMap_t
     char* AppSettings_Option_Japanese = nullptr;
     char* AppSettings_Option_StartupImage = nullptr;
     char* AppSettings_Option_Default = nullptr;
+    char* AppSettings_Option_Probe = nullptr;
     char* AppFiles_Option_RecordFiles = nullptr;
     char* AppFiles_Option_MscMode = nullptr;
     char* AppFiles_Option_Open = nullptr;

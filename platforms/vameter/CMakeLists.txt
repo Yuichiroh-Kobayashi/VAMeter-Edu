@@ -6,7 +6,11 @@ cmake_minimum_required(VERSION 3.16)
 
 add_compile_options(-Wno-format-truncation)
 
-set(EXTRA_COMPONENT_DIRS ../../dependencies)
+set(EXTRA_COMPONENT_DIRS
+  ../../dependencies
+  ${CMAKE_SOURCE_DIR}/../../components
+  ${CMAKE_SOURCE_DIR}/../../app/libs/measurement_pipeline
+)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(vameter_user_demo)

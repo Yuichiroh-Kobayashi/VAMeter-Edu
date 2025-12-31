@@ -6,16 +6,30 @@
 #pragma once
 #include <cstddef>
 
+/* ----------------------------- App edu current ---------------------------- */
+#include "app_edu_current/icon_app_edu_current.h"
+#include "app_edu_current/guide_current.h"
+static const size_t image_data_icon_app_edu_current_size = sizeof(image_data_icon_app_edu_current);
+static const size_t image_data_guide_current_size = sizeof(image_data_guide_current);
+
+/* ------------------------------ App edu volt ------------------------------ */
+#include "app_edu_volt/icon_app_edu_volt.h"
+#include "app_edu_volt/guide_volt.h"
+static const size_t image_data_icon_app_edu_volt_size = sizeof(image_data_icon_app_edu_volt);
+static const size_t image_data_guide_volt_size = sizeof(image_data_guide_volt);
+
 /* -------------------------------- App file -------------------------------- */
 #include "app_files/icon_app_files.h"
 static const size_t image_data_icon_app_files_size = sizeof(image_data_icon_app_files);
 
 /* ------------------------------ App launcher ------------------------------ */
 #include "app_launcher/icon_next.h"
+#include "app_launcher/icon_back.h"
 #include "app_launcher/vameter_logo.h"
 #include "app_launcher/vameter_logo_light.h"
 #include "app_launcher/guide_map.h"
 static const size_t image_data_icon_next_size = sizeof(image_data_icon_next);
+static const size_t image_data_icon_back_size = sizeof(image_data_icon_back);
 static const size_t image_data_vameter_logo_size = sizeof(image_data_vameter_logo);
 static const size_t image_data_vameter_logo_light_size = sizeof(image_data_vameter_logo_light);
 static const size_t image_data_guide_map_size = sizeof(image_data_guide_map);

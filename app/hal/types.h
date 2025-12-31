@@ -120,6 +120,7 @@ namespace CONFIG
         std::string wifiSsid;
         std::string wifiPassword;
         std::string startupImage;
+        bool probeMode = false; // false = Standalone (normal probe), true = Analog metor training probe
     };
 
 #define PASS_STARTUP_IMAGE_TAG "__pass"

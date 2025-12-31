@@ -38,6 +38,7 @@ namespace MOONCAKE
             void _on_page_about();
             void _on_page_base_test();
             void _on_factory_reset();
+            void _on_page_probe_mode();
 
         public:
             void onResume() override;

@@ -107,10 +107,10 @@ static void _pop_up_launcher_background_mask()
 }
 
 void AppStartupAnim::PopUpGuideMap(bool force)
-{
+{   /* 6回目以降の起動でガイドマップを表示しない処理を削除
     if (!force && HAL::NvsGet(NVS_KEY_BOOT_COUNT) > 6)
         return;
-
+    */
     Transition2D transition;
     transition.setTransitionPath(EasingPath::easeOutBack);
     transition.setDuration(600);

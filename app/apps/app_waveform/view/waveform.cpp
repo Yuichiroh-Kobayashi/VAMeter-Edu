@@ -56,7 +56,7 @@ static constexpr float _chart_a_min_y_range_small = 0.001 * _pm_data_a_scale;
 /* -------------------------------------------------------------------------- */
 /*                                    Setup                                   */
 /* -------------------------------------------------------------------------- */
-Waveform::Waveform(uint32_t themeColor)
+Waveform::Waveform(uint32_t themeColor, int mode) : _mode(mode)
 {
     // Background
     _bg_color.jumpTo(Hex2Rgb(themeColor));
@@ -348,6 +348,7 @@ void Waveform::_render_y_scales()
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
 
     /* -------------------------------- V scales -------------------------------- */
+    if (_mode != 2)
     {
         HAL::GetCanvas()->setTextColor(_color_scale_label_v);
         HAL::GetCanvas()->setTextDatum(middle_left);
@@ -367,45 +368,48 @@ void Waveform::_render_y_scales()
     }
 
     /* -------------------------------- A scales -------------------------------- */
-    HAL::GetCanvas()->setTextColor(_color_scale_label_a);
-    HAL::GetCanvas()->setTextDatum(middle_right);
-
-    std::string unit;
-    std::vector<float> a_scale_list;
-    a_scale_list.resize(3);
-    // spdlog::info("{} {}", _chart_props.current_a_y_range_top, _chart_props.current_a_y_range_bottom);
-    a_scale_list[0] = _chart_props.current_a_y_range_top;
-    a_scale_list[1] = (_chart_props.current_a_y_range_top + _chart_props.current_a_y_range_bottom) / 2;
-    a_scale_list[2] = _chart_props.current_a_y_range_bottom;
-
-    HAL::GetCanvas()->setTextColor(_color_scale_label_a);
-    HAL::GetCanvas()->setTextDatum(middle_right);
-    for (auto& i : a_scale_list)
+    if (_mode != 1)
     {
-        // Get chart y
-        chart_y_buffer = Waveform::_chart_props.chart_a.getChartPoint(0, i).y;
+        HAL::GetCanvas()->setTextColor(_color_scale_label_a);
+        HAL::GetCanvas()->setTextDatum(middle_right);
 
-        // Scale unit
-        if (std::abs(i) < 1)
+        std::string unit;
+        std::vector<float> a_scale_list;
+        a_scale_list.resize(3);
+        // spdlog::info("{} {}", _chart_props.current_a_y_range_top, _chart_props.current_a_y_range_bottom);
+        a_scale_list[0] = _chart_props.current_a_y_range_top;
+        a_scale_list[1] = (_chart_props.current_a_y_range_top + _chart_props.current_a_y_range_bottom) / 2;
+        a_scale_list[2] = _chart_props.current_a_y_range_bottom;
+
+        HAL::GetCanvas()->setTextColor(_color_scale_label_a);
+        HAL::GetCanvas()->setTextDatum(middle_right);
+        for (auto& i : a_scale_list)
         {
-            i *= 1000;
-            unit = "μA";
-        }
-        else if (std::abs(i) < 1000)
-            unit = "mA";
-        else
-        {
-            i /= 1000;
-            unit = "A";
-        }
+            // Get chart y
+            chart_y_buffer = Waveform::_chart_props.chart_a.getChartPoint(0, i).y;
 
-        // Round
-        i = std::round(i * 10) / 10;
-        if (i == 0)
-            unit = "";
+            // Scale unit
+            if (std::abs(i) < 1)
+            {
+                i *= 1000;
+                unit = "μA";
+            }
+            else if (std::abs(i) < 1000)
+                unit = "mA";
+            else
+            {
+                i /= 1000;
+                unit = "A";
+            }
 
-        _get_string_buffer() = fmt::format("{}{}", i, unit);
-        HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 237, chart_y_buffer);
+            // Round
+            i = std::round(i * 10) / 10;
+            if (i == 0)
+                unit = "";
+
+            _get_string_buffer() = fmt::format("{}{}", i, unit);
+            HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 237, chart_y_buffer);
+        }
     }
 }
 
@@ -450,154 +454,178 @@ void Waveform::_render_wave()
     // spdlog::info("{}", _chart_props.wave_x_offset);
 
     // Bus voltage
-    _chart_props.p_x = 0;
-    _chart_props.last_p.reset();
-    _chart_props.stop_render = false;
-    _input_props.max_v = 0;
-    _input_props.min_v = 114514;
-    _input_props.pm_data_buffer_v.peekAll([&](const float& value) {
-        // Pass if out of range
-        if (_chart_props.stop_render)
-            return;
-        if (_chart_props.last_p.x > 240)
-        {
-            _chart_props.stop_render = true;
-            return;
-        }
-
-        // Get chart point
-        _chart_props.new_p = _chart_props.chart_v.getChartPoint(static_cast<float>(_chart_props.p_x), value);
-        _chart_props.new_p.x -= _chart_props.temp_buffer;
-
-        // Offset to avoid overlap with a wave
-        _chart_props.new_p.y -= 3;
-
-        // Render
-        if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
-        {
-            // Fake width
-            for (int i = 0; i < 3; i++)
+    if (_mode != 2)
+    {
+        _chart_props.p_x = 0;
+        _chart_props.last_p.reset();
+        _chart_props.stop_render = false;
+        _input_props.max_v = 0;
+        _input_props.min_v = 114514;
+        _input_props.pm_data_buffer_v.peekAll([&](const float& value) {
+            // Pass if out of range
+            if (_chart_props.stop_render)
+                return;
+            if (_chart_props.last_p.x > 240)
             {
-                HAL::GetCanvas()->drawLine(_chart_props.last_p.x + i,
-                                           _chart_props.last_p.y,
-                                           _chart_props.new_p.x + i,
-                                           _chart_props.new_p.y,
-                                           AssetPool::GetColor().AppWaveform.colorLineV);
-                HAL::GetCanvas()->drawLine(_chart_props.last_p.x,
-                                           _chart_props.last_p.y + i,
-                                           _chart_props.new_p.x,
-                                           _chart_props.new_p.y + i,
-                                           AssetPool::GetColor().AppWaveform.colorLineV);
+                _chart_props.stop_render = true;
+                return;
             }
-        }
-        _chart_props.last_p = _chart_props.new_p;
-        _chart_props.p_x++;
-        // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
 
-        // Update max and min from the buffer
-        if (value > _input_props.max_v)
-            _input_props.max_v = value;
-        else if (value < _input_props.min_v)
-            _input_props.min_v = value;
-    });
+            // Get chart point
+            _chart_props.new_p = _chart_props.chart_v.getChartPoint(static_cast<float>(_chart_props.p_x), value);
+            _chart_props.new_p.x -= _chart_props.temp_buffer;
+
+            // Offset to avoid overlap with a wave
+            _chart_props.new_p.y -= 3;
+
+            // Render
+            if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
+            {
+                // Fake width
+                for (int i = 0; i < 3; i++)
+                {
+                    HAL::GetCanvas()->drawLine(_chart_props.last_p.x + i,
+                                            _chart_props.last_p.y,
+                                            _chart_props.new_p.x + i,
+                                            _chart_props.new_p.y,
+                                            AssetPool::GetColor().AppWaveform.colorLineV);
+                    HAL::GetCanvas()->drawLine(_chart_props.last_p.x,
+                                            _chart_props.last_p.y + i,
+                                            _chart_props.new_p.x,
+                                            _chart_props.new_p.y + i,
+                                            AssetPool::GetColor().AppWaveform.colorLineV);
+                }
+            }
+            _chart_props.last_p = _chart_props.new_p;
+            _chart_props.p_x++;
+            // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
+
+            // Update max and min from the buffer
+            if (value > _input_props.max_v)
+                _input_props.max_v = value;
+            else if (value < _input_props.min_v)
+                _input_props.min_v = value;
+        });
+    }
 
     // Shunt current
-    _chart_props.p_x = 0;
-    _chart_props.last_p.reset();
-    _chart_props.stop_render = false;
-    _input_props.max_a = -114514;
-    _input_props.min_a = 114514;
-    _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
-        // Pass if out of range
-        if (_chart_props.stop_render)
-            return;
-        if (_chart_props.last_p.x > 240)
-        {
-            _chart_props.stop_render = true;
-            return;
-        }
-
-        // Get chart point
-        _chart_props.new_p = _chart_props.chart_a.getChartPoint(static_cast<float>(_chart_props.p_x), value);
-        _chart_props.new_p.x -= _chart_props.temp_buffer;
-
-        // Render
-        if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
-        {
-            // Fake width
-            for (int i = 0; i < 3; i++)
+    if (_mode != 1)
+    {
+        _chart_props.p_x = 0;
+        _chart_props.last_p.reset();
+        _chart_props.stop_render = false;
+        _input_props.max_a = -114514;
+        _input_props.min_a = 114514;
+        _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
+            // Pass if out of range
+            if (_chart_props.stop_render)
+                return;
+            if (_chart_props.last_p.x > 240)
             {
-                HAL::GetCanvas()->drawLine(_chart_props.last_p.x + i,
-                                           _chart_props.last_p.y,
-                                           _chart_props.new_p.x + i,
-                                           _chart_props.new_p.y,
-                                           AssetPool::GetColor().AppWaveform.colorLineA);
-                HAL::GetCanvas()->drawLine(_chart_props.last_p.x,
-                                           _chart_props.last_p.y + i,
-                                           _chart_props.new_p.x,
-                                           _chart_props.new_p.y + i,
-                                           AssetPool::GetColor().AppWaveform.colorLineA);
+                _chart_props.stop_render = true;
+                return;
             }
-        }
-        _chart_props.last_p = _chart_props.new_p;
-        _chart_props.p_x++;
-        // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
 
-        // Update max and min from the buffer
-        if (value > _input_props.max_a)
-            _input_props.max_a = value;
-        else if (value < _input_props.min_a)
-            _input_props.min_a = value;
-    });
+            // Get chart point
+            _chart_props.new_p = _chart_props.chart_a.getChartPoint(static_cast<float>(_chart_props.p_x), value);
+            _chart_props.new_p.x -= _chart_props.temp_buffer;
+
+            // Render
+            if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
+            {
+                // Fake width
+                for (int i = 0; i < 3; i++)
+                {
+                    HAL::GetCanvas()->drawLine(_chart_props.last_p.x + i,
+                                            _chart_props.last_p.y,
+                                            _chart_props.new_p.x + i,
+                                            _chart_props.new_p.y,
+                                            AssetPool::GetColor().AppWaveform.colorLineA);
+                    HAL::GetCanvas()->drawLine(_chart_props.last_p.x,
+                                            _chart_props.last_p.y + i,
+                                            _chart_props.new_p.x,
+                                            _chart_props.new_p.y + i,
+                                            AssetPool::GetColor().AppWaveform.colorLineA);
+                }
+            }
+            _chart_props.last_p = _chart_props.new_p;
+            _chart_props.p_x++;
+            // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
+
+            // Update max and min from the buffer
+            if (value > _input_props.max_a)
+                _input_props.max_a = value;
+            else if (value < _input_props.min_a)
+                _input_props.min_a = value;
+        });
+    }
 }
 
 void Waveform::_render_panels()
 {
     // Panel
-    HAL::GetCanvas()->pushImage(
-        0, _panel_props.panel_transition.getValue().x, 240, 27, AssetPool::GetStaticAsset()->Image.AppWaveform.voltage_panel);
-    HAL::GetCanvas()->pushImage(
-        0, _panel_props.panel_transition.getValue().y, 240, 27, AssetPool::GetStaticAsset()->Image.AppWaveform.current_panel);
+    if (_mode != 2)
+    {
+        HAL::GetCanvas()->pushImage(
+            0, _panel_props.panel_transition.getValue().x, 240, 27, AssetPool::GetStaticAsset()->Image.AppWaveform.voltage_panel);
+    }
+    if (_mode != 1)
+    {
+        HAL::GetCanvas()->pushImage(
+            0, _panel_props.panel_transition.getValue().y, 240, 27, AssetPool::GetStaticAsset()->Image.AppWaveform.current_panel);
+    }
 
     // Hero label
     HAL::GetCanvas()->setTextColor(TFT_WHITE);
     HAL::GetCanvas()->setTextDatum(middle_center);
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_24);
 
-    auto value_data_buffer = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().busVoltage);
-    _chart_props.string_buffer = spdlog::fmt_lib::format("{}{}", value_data_buffer.value, value_data_buffer.unit);
+    if (_mode != 2)
+    {
+        auto value_data_buffer = HAL::GetUnitAdaptatedVoltage(HAL::GetPowerMonitorData().busVoltage);
+        _chart_props.string_buffer = spdlog::fmt_lib::format("{}{}", value_data_buffer.value, value_data_buffer.unit);
 
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 120, _panel_props.panel_transition.getValue().x + 14);
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 120, _panel_props.panel_transition.getValue().x + 14);
+    }
 
-    value_data_buffer = HAL::GetUnitAdaptatedCurrent(HAL::GetPowerMonitorData().shuntCurrent);
-    _chart_props.string_buffer = spdlog::fmt_lib::format("{}{}", value_data_buffer.value, value_data_buffer.unit);
+    if (_mode != 1)
+    {
+        auto value_data_buffer = HAL::GetUnitAdaptatedCurrent(HAL::GetPowerMonitorData().shuntCurrent);
+        _chart_props.string_buffer = spdlog::fmt_lib::format("{}{}", value_data_buffer.value, value_data_buffer.unit);
 
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 120, _panel_props.panel_transition.getValue().y + 15);
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 120, _panel_props.panel_transition.getValue().y + 15);
+    }
 
     // Max and min label
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
 
     // V max
-    HAL::GetCanvas()->setTextDatum(middle_left);
-    HAL::GetCanvas()->setTextColor((uint32_t)0xD8E4FD);
+    if (_mode != 2)
+    {
+        HAL::GetCanvas()->setTextDatum(middle_left);
+        HAL::GetCanvas()->setTextColor((uint32_t)0xD8E4FD);
 
-    _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_v).value;
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().x + 14);
+        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_v).value;
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().x + 14);
 
-    // V min
-    _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_v).value;
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().y + 14);
+        // V min
+        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_v).value;
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().y + 14);
+    }
 
     // A max
-    HAL::GetCanvas()->setTextDatum(middle_right);
-    HAL::GetCanvas()->setTextColor((uint32_t)0xFED6D6);
+    if (_mode != 1)
+    {
+        HAL::GetCanvas()->setTextDatum(middle_right);
+        HAL::GetCanvas()->setTextColor((uint32_t)0xFED6D6);
 
-    _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_a / _pm_data_a_scale).value;
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().x + 14);
+        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_a / _pm_data_a_scale).value;
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().x + 14);
 
-    // A min
-    _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_a / _pm_data_a_scale).value;
-    HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().y + 14);
+        // A min
+        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_a / _pm_data_a_scale).value;
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().y + 14);
+    }
 }
 
 void Waveform::_update_render(bool pushBuffer, bool renderPanel, bool renderXScaleNotice)
