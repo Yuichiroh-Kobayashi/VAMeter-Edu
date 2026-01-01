@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include <mooncake.h>
@@ -171,4 +171,16 @@ std::vector<std::string> HAL_VAMeter::_get_wifi_list()
     spdlog::info("scan done");
 
     return wifi_list;
+}
+
+std::string HAL_VAMeter::getApWifiSsid()
+{
+    int32_t suffix = nvsGet(NVS_KEY_AP_SUFFIX);
+    if (suffix > 0 && suffix <= 40)
+    {
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "M5-VAMeter-%02d", (int)suffix);
+        return std::string(buffer);
+    }
+    return "M5-VAMeter-WiFi";
 }

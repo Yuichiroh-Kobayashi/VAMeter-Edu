@@ -41,6 +41,13 @@ void WaveFormRecorder::init()
 
     _data.string_y_offset = AssetPool::IsLocaleEn() ? 2 : 3;
     Encoder::Reset();
+
+    // Clear input residue
+    Button::Update();
+    Button::Encoder()->wasClicked();
+    Button::Encoder()->wasHold();
+    Button::Side()->wasClicked();
+    Button::Side()->wasHold();
 }
 
 /* -------------------------------------------------------------------------- */

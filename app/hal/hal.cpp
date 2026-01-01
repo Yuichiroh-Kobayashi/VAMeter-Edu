@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "hal.h"
 #include <mooncake.h>
 #include "../assets/assets.h"
@@ -241,13 +241,13 @@ bool HAL::checkWifiConfig()
 {
     if (_config.wifiSsid.empty())
     {
-        popWarning("WiFi SSID\nIs empty");
+        // popWarning("WiFi SSID\nIs empty");
         return false;
     }
 
     if (_config.wifiPassword.empty())
     {
-        popWarning("WiFi Password\nIs empty");
+        // popWarning("WiFi Password\nIs empty");
         return false;
     }
 

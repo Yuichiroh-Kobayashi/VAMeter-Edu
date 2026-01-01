@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "../app_settings.h"
 #include "../../../hal/hal.h"
 #include "../../utils/system/system.h"
@@ -22,149 +22,143 @@ void AppSettings::_on_page_network()
 {
     spdlog::info("on page network");
 
-    std::string string_buffer;
-    bool need_config = CreateNoticePage("Notice", [&](Transition2D& transition) {
-        string_buffer = spdlog::fmt_lib::format(" WiFi Config:\n  [SSID]:\n   {}\n  [Password]:\n   {}",
-                                                HAL::GetSystemConfig().wifiSsid,
-                                                HAL::GetSystemConfig().wifiPassword);
-        HAL::GetCanvas()->print(string_buffer.c_str());
+    SelectMenuPage::Theme_t theme;
+    theme.background = AssetPool::GetColor().AppSettings.background;
+    theme.optionText = AssetPool::GetColor().AppSettings.optionText;
+    theme.selector = AssetPool::GetColor().AppSettings.selector;
 
-        HAL::GetCanvas()->drawCenterString(AssetPool::GetText().Misc_Text_ClickToConfig, 120, 196 + transition.getValue().y);
-        HAL::GetCanvas()->drawCenterString("V", 120, 216 + transition.getValue().y);
-    });
-
-    if (need_config)
+    while (1)
     {
-        HAL::StartWebServer(OnLogPageRender);
+        std::vector<std::string> options;
+        options.push_back(" - Connection Info");
+        options.push_back(" - Configure via Web");
 
-        // Pop wifi code
-        auto text = fmt::format("WIFI:T:nopass;S:{};;", HAL::GetApWifiSsid());
-        std::vector<std::vector<bool>> qrcode_bitmap;
-        GetQrcodeBitmap(qrcode_bitmap, text.c_str());
+        // AP Suffix
+        int suffix = HAL::NvsGet(NVS_KEY_AP_SUFFIX);
+        if (suffix <= 0 || suffix > 40)
+            suffix = 0;
+        std::string suffixKey = fmt::format(" - AP Suffix: {}", suffix == 0 ? "Default" : fmt::format("{:02d}", suffix));
+        options.push_back(suffixKey);
 
-        CreateNoticePage(
-            "WiFi Config",
-            [&](Transition2D& transition) {
-                RenderQRCodeBitmap(qrcode_bitmap,
-                                   120 - 120 / 2,
-                                   50 + transition.getValue().y,
-                                   120,
-                                   AssetPool::GetColor().AppSettings.optionText,
-                                   AssetPool::GetColor().AppSettings.background);
+        options.push_back(" - Back");
 
-                HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-                HAL::GetCanvas()->setTextDatum(middle_center);
-                HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionTextLight);
-                std::string string_buffer = fmt::format("----   {}   ----", HAL::GetApWifiSsid());
-                HAL::GetCanvas()->drawString(string_buffer.c_str(), 120, 185 + transition.getValue().y);
+        int selected = SelectMenuPage::CreateAndWaitResult("Network", options, 0, &theme);
 
-                // Lable
-                AssetPool::LoadFont24(HAL::GetCanvas());
-                HAL::GetCanvas()->setTextDatum(middle_center);
-                HAL::GetCanvas()->setTextColor(AssetPool::GetStaticAsset()->Color.AppSettings.optionText);
-                HAL::GetCanvas()->drawString(AssetPool::GetText().Misc_Text_ConnectAp, 120, 215 + transition.getValue().y);
-            },
-            [&]() {
-                HAL::FeedTheDog();
-                HAL::Delay(50);
+        if (selected == -1 || selected == 3) // Back
+            break;
 
-                Button::Update();
-                if (Button::Encoder()->wasClicked())
-                    return true;
+        // Connection Info
+        if (selected == 0)
+        {
+            std::string string_buffer;
+            CreateNoticePage("Notice",
+                             [&](Transition2D& transition)
+                             {
+                                 string_buffer =
+                                     spdlog::fmt_lib::format(" WiFi Config:\n  [SSID]:\n   {}\n  [Password]:\n   {}",
+                                                             HAL::GetSystemConfig().wifiSsid,
+                                                             HAL::GetSystemConfig().wifiPassword);
+                                 HAL::GetCanvas()->print(string_buffer.c_str());
+                                 HAL::GetCanvas()->drawCenterString("Click to Back", 120, 216 + transition.getValue().y);
+                             });
+        }
+        // Configure via Web
+        else if (selected == 1)
+        {
+            HAL::StartWebServer(OnLogPageRender);
 
-                // Check sta num
-                if (HAL::GetApStaNum() != 0)
-                    return true;
+            // Pop wifi code
+            auto text = fmt::format("WIFI:T:nopass;S:{};;", HAL::GetApWifiSsid());
+            std::vector<std::vector<bool>> qrcode_bitmap;
+            GetQrcodeBitmap(qrcode_bitmap, text.c_str());
 
-                return false;
-            });
+            CreateNoticePage(
+                "WiFi Config",
+                [&](Transition2D& transition)
+                {
+                    RenderQRCodeBitmap(qrcode_bitmap,
+                                       120 - 120 / 2,
+                                       50 + transition.getValue().y,
+                                       120,
+                                       AssetPool::GetColor().AppSettings.optionText,
+                                       AssetPool::GetColor().AppSettings.background);
 
-        // Pop url code
-        text = HAL::GetSystemConfigUrl();
-        GetQrcodeBitmap(qrcode_bitmap, text.c_str());
+                    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
+                    HAL::GetCanvas()->setTextDatum(middle_center);
+                    HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionTextLight);
+                    std::string string_buffer = fmt::format("----   {}   ----", HAL::GetApWifiSsid());
+                    HAL::GetCanvas()->drawString(string_buffer.c_str(), 120, 185 + transition.getValue().y);
 
-        CreateNoticePage(
-            "WiFi Config",
-            [&](Transition2D& transition) {
-                RenderQRCodeBitmap(qrcode_bitmap,
-                                   120 - 120 / 2,
-                                   40 + transition.getValue().y,
-                                   120,
-                                   AssetPool::GetColor().AppSettings.optionText,
-                                   AssetPool::GetColor().AppSettings.background);
+                    // Lable
+                    AssetPool::LoadFont24(HAL::GetCanvas());
+                    HAL::GetCanvas()->setTextDatum(middle_center);
+                    HAL::GetCanvas()->setTextColor(AssetPool::GetStaticAsset()->Color.AppSettings.optionText);
+                    HAL::GetCanvas()->drawString(AssetPool::GetText().Misc_Text_ConnectAp, 120, 215 + transition.getValue().y);
+                },
+                [&]()
+                {
+                    HAL::FeedTheDog();
+                    HAL::Delay(50);
+                    Button::Update();
+                    if (Button::Encoder()->wasClicked())
+                        return true;
+                    // Check sta num
+                    if (HAL::GetApStaNum() != 0)
+                        return true;
+                    return false;
+                });
 
-                HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-                HAL::GetCanvas()->setTextDatum(middle_center);
-                HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionTextLight);
-                HAL::GetCanvas()->drawString(text.c_str(), 120, 180 + transition.getValue().y);
+            // Pop url code
+            text = HAL::GetSystemConfigUrl();
+            GetQrcodeBitmap(qrcode_bitmap, text.c_str());
 
-                // Lable
-                AssetPool::LoadFont24(HAL::GetCanvas());
-                HAL::GetCanvas()->setTextDatum(middle_center);
-                HAL::GetCanvas()->setTextColor(AssetPool::GetStaticAsset()->Color.AppSettings.optionText);
-                HAL::GetCanvas()->drawString(AssetPool::GetText().Misc_Text_OpenLink, 120, 215 + transition.getValue().y);
-            },
-            nullptr);
+            CreateNoticePage(
+                "WiFi Config",
+                [&](Transition2D& transition)
+                {
+                    RenderQRCodeBitmap(qrcode_bitmap,
+                                       120 - 120 / 2,
+                                       40 + transition.getValue().y,
+                                       120,
+                                       AssetPool::GetColor().AppSettings.optionText,
+                                       AssetPool::GetColor().AppSettings.background);
 
-        HAL::StopWebServer();
+                    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
+                    HAL::GetCanvas()->setTextDatum(middle_center);
+                    HAL::GetCanvas()->setTextColor(AssetPool::GetColor().AppSettings.optionTextLight);
+                    HAL::GetCanvas()->drawString(text.c_str(), 120, 180 + transition.getValue().y);
+
+                    // Lable
+                    AssetPool::LoadFont24(HAL::GetCanvas());
+                    HAL::GetCanvas()->setTextDatum(middle_center);
+                    HAL::GetCanvas()->setTextColor(AssetPool::GetStaticAsset()->Color.AppSettings.optionText);
+                    HAL::GetCanvas()->drawString(AssetPool::GetText().Misc_Text_OpenLink, 120, 215 + transition.getValue().y);
+                },
+                nullptr);
+
+            HAL::StopWebServer();
+        }
+        // AP Suffix Setting
+        else if (selected == 2)
+        {
+            std::vector<std::string> suffixOptions;
+            suffixOptions.push_back("00 (Default)");
+            for (int i = 1; i <= 40; i++)
+            {
+                suffixOptions.push_back(fmt::format("{:02d}", i));
+            }
+
+            // Find current index
+            int currentSuffix = HAL::NvsGet(NVS_KEY_AP_SUFFIX);
+            if (currentSuffix < 0 || currentSuffix > 40)
+                currentSuffix = 0;
+
+            int newSuffix = SelectMenuPage::CreateAndWaitResult("AP Suffix", suffixOptions, currentSuffix, &theme);
+
+            if (newSuffix != -1)
+            {
+                HAL::NvsSet(NVS_KEY_AP_SUFFIX, newSuffix);
+            }
+        }
     }
 }
-
-// Old shit
-// void AppSettings::_on_page_network()
-// {
-//     spdlog::info("on page network");
-
-//     // HAL::LoadSystemConfig();
-
-//     std::string string_buffer;
-//     bool need_config = CreateNoticePage("Notice", [&](Transition2D& transition) {
-//         string_buffer = spdlog::fmt_lib::format(" WiFi config:\n  - SSID:  {}\n  - Password: {}",
-//                                                 HAL::GetSystemConfig().wifiSsid,
-//                                                 HAL::GetSystemConfig().wifiPassword);
-//         HAL::GetCanvas()->print(string_buffer.c_str());
-
-//         HAL::GetCanvas()->drawCenterString(AssetPool::GetText().Misc_Text_ClickToConfig, 120, 196 + transition.getValue().y);
-//         HAL::GetCanvas()->drawCenterString("V", 120, 216 + transition.getValue().y);
-//     });
-
-//     if (need_config)
-//     {
-//         HAL::StartMscMode();
-
-//         CreateNoticePage("MSC Mode", [&](Transition2D& transition) {
-//             string_buffer = spdlog::fmt_lib::format(" 1. {}\n\n 2. {}",
-//                                                     AssetPool::GetText().Misc_Text_ConnectTopUsb,
-//                                                     AssetPool::GetText().Misc_Text_OpenNewUsbDrive);
-//             HAL::GetCanvas()->print(string_buffer.c_str());
-
-//             HAL::GetCanvas()->drawCenterString(
-//                 AssetPool::GetText().Misc_Text_ClickToContinue, 120, 196 + transition.getValue().y);
-//             HAL::GetCanvas()->drawCenterString("V", 120, 216 + transition.getValue().y);
-//         });
-
-//         CreateNoticePage("Config", [&](Transition2D& transition) {
-//             string_buffer = spdlog::fmt_lib::format(" 1. {} \"system_config.json\"\n\n 2. {}",
-//                                                     AssetPool::GetText().AppFiles_Option_Open,
-//                                                     AssetPool::GetText().Misc_Text_EditWiFiConfig);
-//             HAL::GetCanvas()->print(string_buffer.c_str());
-
-//             HAL::GetCanvas()->drawCenterString(
-//                 AssetPool::GetText().Misc_Text_ClickToFinish, 120, 196 + transition.getValue().y);
-//             HAL::GetCanvas()->drawCenterString("V", 120, 216 + transition.getValue().y);
-//         });
-
-//         HAL::StopMscMode();
-
-//         // // <Bug> dont work, json turn into trash
-//         // // Reload config
-//         // HAL::LoadSystemConfig();
-
-//         SelectMenuPage::Theme_t theme;
-//         theme.background = AssetPool::GetColor().AppSettings.background;
-//         theme.optionText = AssetPool::GetColor().AppSettings.optionText;
-//         theme.selector = AssetPool::GetColor().AppSettings.selector;
-//         if (CreateConfirmPage(AssetPool::GetText().Misc_RebootNow, true, &theme))
-//             HAL::Reboot();
-//     }
-// }

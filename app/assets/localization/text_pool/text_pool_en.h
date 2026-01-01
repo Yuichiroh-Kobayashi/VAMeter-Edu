@@ -41,7 +41,7 @@ struct TextPool_en_t
     char AppFiles_Option_RecordFiles[13] = "Record files";
     char AppFiles_Option_MscMode[9] = "MSC mode";
     char AppFiles_Option_Open[5] = "Open";
-    char AppFiles_Option_Upload[16] = "Upload (EzData)";
+    char AppFiles_Option_Upload[14] = "Download (QR)";
     char AppFiles_Option_Delete[7] = "Delete";
     char AppPowerMonitor_PageSingle_InputVolt[12] = "Input Volt.";
     char AppPowerMonitor_PageSingle_InputPower[10] = "Input Pow";
@@ -92,7 +92,8 @@ struct TextPool_en_t
     char Misc_Text_NoRecordFiles[16] = "No record files";
     char Misc_Text_UploadDone[13] = "Upload done!";
     char Misc_Text_UpgradeDone[14] = "Upgrade done!";
-    char Misc_Text_UsbFlashingNotice[122] = " > USB flashing is required\n > Please upgrade\n    using [M5Burner]\n > And backup your record\n    files before upgrade";
+    char Misc_Text_UsbFlashingNotice[122] = " > USB flashing is required\n > Please upgrade\n    using [M5Burner]\n > And "
+                                            "backup your record\n    files before upgrade";
     char Misc_Text_ConnectAp[11] = "Connect AP";
     char Misc_Text_OpenLink[14] = "Open the link";
 

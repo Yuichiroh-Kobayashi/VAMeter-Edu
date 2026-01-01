@@ -119,6 +119,11 @@ public:
     bool stopWebServer() override;
     std::string getSystemConfigUrl() override;
 
+    // Local download server
+    void startDownloadServer(const std::string& recordName) override;
+    void stopDownloadServer() override;
+    std::string getLocalIP() override;
+
     void baseGroveStartTest() override;
     void baseGroveStopTest() override;
     bool baseGroveGetIoALevel() override;
@@ -126,4 +131,5 @@ public:
 
     bool nvsSet(const char* key, const int32_t& value) override;
     int32_t nvsGet(const char* key) override;
+    std::string getApWifiSsid() override;
 };

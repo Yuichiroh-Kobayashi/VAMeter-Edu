@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "../app_files.h"
 #include "../../../hal/hal.h"
 #include "../../utils/system/system.h"
@@ -60,7 +60,7 @@ void AppFiles::_on_record_file_open(const std::string& fileName)
     {
         std::vector<std::string> option_list;
         option_list.push_back(AssetPool::GetText().AppFiles_Option_Open);
-        option_list.push_back(AssetPool::GetText().AppFiles_Option_Upload);
+        option_list.push_back(AssetPool::GetText().AppFiles_Option_Upload); // "Download (QR)"
         option_list.push_back(AssetPool::GetText().AppFiles_Option_Delete);
         option_list.push_back(AssetPool::GetText().AppSettings_Option_Back);
 
@@ -79,11 +79,10 @@ void AppFiles::_on_record_file_open(const std::string& fileName)
             VaRecordViewer::CreateAndWait(&record);
         }
 
-        // Upload
+        // Download (QR)
         else if (selected_index == 1)
         {
-            if (HAL::UploadVaRecordViaEzData(fileName, OnLogPageRender))
-                _on_page_upload_success(fileName);
+            _on_page_download_local(fileName);
         }
 
         // Delete

@@ -100,17 +100,25 @@ void HAL_VAMeter::_web_server_page_loading()
 {
     _web_server->on("/", [&](PsychicRequest* request) { return request->redirect("/syscfg"); });
 
-    _web_server->on("/syscfg", [&](PsychicRequest* request) {
-        MyChunkResponse response(
-            request, "text/html", (uint8_t*)AssetPool::GetWebPage().syscfg, sizeof(AssetPool::GetWebPage().syscfg));
-        return response.send();
-    });
+    _web_server->on("/syscfg",
+                    [&](PsychicRequest* request)
+                    {
+                        MyChunkResponse response(request,
+                                                 "text/html",
+                                                 (uint8_t*)AssetPool::GetWebPage().syscfg,
+                                                 sizeof(AssetPool::GetWebPage().syscfg));
+                        return response.send();
+                    });
 
-    _web_server->on("/favicon.ico", [&](PsychicRequest* request) {
-        MyChunkResponse response(
-            request, "image/x-icon", (uint8_t*)AssetPool::GetWebPage().favicon, sizeof(AssetPool::GetWebPage().favicon));
-        return response.send();
-    });
+    _web_server->on("/favicon.ico",
+                    [&](PsychicRequest* request)
+                    {
+                        MyChunkResponse response(request,
+                                                 "image/x-icon",
+                                                 (uint8_t*)AssetPool::GetWebPage().favicon,
+                                                 sizeof(AssetPool::GetWebPage().favicon));
+                        return response.send();
+                    });
 }
 
 void HAL_VAMeter::_print_stack_high_water_mark()
@@ -125,76 +133,85 @@ void HAL_VAMeter::_print_stack_high_water_mark()
 /* -------------------------------------------------------------------------- */
 void HAL_VAMeter::_web_server_api_loading()
 {
-    _web_server->on("/api/get_net_info", [&](PsychicRequest* request) {
-        std::string string_buffer;
-        {
-            JsonDocument doc;
-            doc["mac"] = _get_mac();
-            doc["ip"] = _get_ip();
+    _web_server->on("/api/get_net_info",
+                    [&](PsychicRequest* request)
+                    {
+                        std::string string_buffer;
+                        {
+                            JsonDocument doc;
+                            doc["mac"] = _get_mac();
+                            doc["ip"] = _get_ip();
 
-            serializeJson(doc, string_buffer);
-        }
-        return request->reply(string_buffer.c_str());
-    });
+                            serializeJson(doc, string_buffer);
+                        }
+                        return request->reply(string_buffer.c_str());
+                    });
 
-    _web_server->on("/api/set_syscfg", HTTP_POST, [&](PsychicRequest* request) {
-        // spdlog::info("get json:\n{}", request->body().c_str());
-        spdlog::info("handle set config");
+    _web_server->on("/api/set_syscfg",
+                    HTTP_POST,
+                    [&](PsychicRequest* request)
+                    {
+                        // spdlog::info("get json:\n{}", request->body().c_str());
+                        spdlog::info("handle set config");
 
-        // _print_stack_high_water_mark();
+                        // _print_stack_high_water_mark();
 
-        // Parse
-        {
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, request->body().c_str());
-            if (error != DeserializationError::Ok)
-            {
-                spdlog::error("json parse failed");
-                spdlog::error("get:\n{}", request->body().c_str());
-                return request->reply(500, "application/json", "{\"msg\":\"json parse failed\"}");
-            }
+                        // Parse
+                        {
+                            JsonDocument doc;
+                            DeserializationError error = deserializeJson(doc, request->body().c_str());
+                            if (error != DeserializationError::Ok)
+                            {
+                                spdlog::error("json parse failed");
+                                spdlog::error("get:\n{}", request->body().c_str());
+                                return request->reply(500, "application/json", "{\"msg\":\"json parse failed\"}");
+                            }
 
-            // Copy
-            std::string string_buffer;
+                            // Copy
+                            std::string string_buffer;
 
-            string_buffer = doc["wifiSsid"].as<std::string>();
-            if (string_buffer != "null")
-                _config.wifiSsid = string_buffer;
+                            string_buffer = doc["wifiSsid"].as<std::string>();
+                            if (string_buffer != "null")
+                                _config.wifiSsid = string_buffer;
 
-            string_buffer = doc["wifiPassword"].as<std::string>();
-            if (string_buffer != "null")
-                _config.wifiPassword = string_buffer;
+                            string_buffer = doc["wifiPassword"].as<std::string>();
+                            if (string_buffer != "null")
+                                _config.wifiPassword = string_buffer;
 
-            // ...
-        }
+                            // ...
+                        }
 
-        // _print_stack_high_water_mark();
+                        // _print_stack_high_water_mark();
 
-        saveSystemConfig();
+                        saveSystemConfig();
 
-        return request->reply(200, "application/json", "{\"msg\":\"ok\"}");
-    });
+                        return request->reply(200, "application/json", "{\"msg\":\"ok\"}");
+                    });
 
-    _web_server->on("/api/get_wifi_list", [&](PsychicRequest* request) {
-        std::string string_buffer;
+    _web_server->on("/api/get_wifi_list",
+                    [&](PsychicRequest* request)
+                    {
+                        std::string string_buffer;
 
-        auto wifi_list = _get_wifi_list();
+                        auto wifi_list = _get_wifi_list();
 
-        // Encode
-        JsonDocument doc;
-        for (int i = 0; i < wifi_list.size(); i++)
-        {
-            doc["wifiList"][i] = wifi_list[i];
-        }
-        serializeJson(doc, string_buffer);
+                        // Encode
+                        JsonDocument doc;
+                        for (int i = 0; i < wifi_list.size(); i++)
+                        {
+                            doc["wifiList"][i] = wifi_list[i];
+                        }
+                        serializeJson(doc, string_buffer);
 
-        return request->reply(string_buffer.c_str());
-    });
+                        return request->reply(string_buffer.c_str());
+                    });
 
-    _web_server->on("/api/get_syscfg", [&](PsychicRequest* request) {
-        std::string string_buffer = _create_config_json();
-        return request->reply(string_buffer.c_str());
-    });
+    _web_server->on("/api/get_syscfg",
+                    [&](PsychicRequest* request)
+                    {
+                        std::string string_buffer = _create_config_json();
+                        return request->reply(string_buffer.c_str());
+                    });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -232,19 +249,23 @@ void HAL_VAMeter::_web_server_ws_api_loading()
     _web_server->on("/api/ws/pm_data", _ws_pm_data);
 
     // Callbacks
-    _ws_pm_data->onOpen([](PsychicWebSocketClient* client) {
-        spdlog::info("[socket] connection #{} connected from {}", client->socket(), client->remoteIP().toString().c_str());
-        client->sendMessage("Hello!");
-    });
+    _ws_pm_data->onOpen(
+        [](PsychicWebSocketClient* client)
+        {
+            spdlog::info("[socket] connection #{} connected from {}", client->socket(), client->remoteIP().toString().c_str());
+            client->sendMessage("Hello!");
+        });
 
-    _ws_pm_data->onFrame([](PsychicWebSocketRequest* request, httpd_ws_frame* frame) {
-        spdlog::info("[socket] #{} sent: {}", request->client()->socket(), (char*)frame->payload);
-        return request->reply(frame);
-    });
+    _ws_pm_data->onFrame(
+        [](PsychicWebSocketRequest* request, httpd_ws_frame* frame)
+        {
+            spdlog::info("[socket] #{} sent: {}", request->client()->socket(), (char*)frame->payload);
+            return request->reply(frame);
+        });
 
-    _ws_pm_data->onClose([](PsychicWebSocketClient* client) {
-        spdlog::info("[socket] connection #{} closed from {}", client->socket(), client->remoteIP().toString().c_str());
-    });
+    _ws_pm_data->onClose(
+        [](PsychicWebSocketClient* client)
+        { spdlog::info("[socket] connection #{} closed from {}", client->socket(), client->remoteIP().toString().c_str()); });
 
     // Daemon
     xTaskCreate(_ws_pm_data_daemon, "ws", 4000, NULL, 5, NULL);
@@ -326,3 +347,97 @@ std::string HAL_VAMeter::getSystemConfigUrl()
     ret += "/syscfg";
     return ret;
 }
+
+/* -------------------------------------------------------------------------- */
+/*                            Local Download Server                           */
+/* -------------------------------------------------------------------------- */
+static std::string _download_file_path;
+static std::string _download_file_name;
+static PsychicHttpServer* _download_server = nullptr;
+
+void HAL_VAMeter::startDownloadServer(const std::string& recordName)
+{
+    spdlog::info("start download server for: {}", recordName);
+
+    // Start AP mode
+    _start_ap_mode();
+
+    // Store file path and name
+    _download_file_path = _fs_get_rec_file_path(recordName);
+    _download_file_name = recordName;
+
+    // Start server if not running
+    if (_download_server == nullptr)
+    {
+        _download_server = new PsychicHttpServer;
+        _download_server->listen(80);
+
+        // Add download endpoint
+        _download_server->on("/download/*",
+                             [](PsychicRequest* request)
+                             {
+                                 spdlog::info("download request: {}", request->path().c_str());
+
+                                 // Open file
+                                 FILE* f = fopen(_download_file_path.c_str(), "r");
+                                 if (f == nullptr)
+                                 {
+                                     spdlog::error("file not found: {}", _download_file_path);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+
+                                 // Get file size
+                                 fseek(f, 0, SEEK_END);
+                                 size_t file_size = ftell(f);
+                                 fseek(f, 0, SEEK_SET);
+                                 spdlog::info("file size: {} bytes", file_size);
+
+                                 // Read file content
+                                 char* buffer = (char*)malloc(file_size + 1);
+                                 if (buffer == nullptr)
+                                 {
+                                     fclose(f);
+                                     return request->reply(500, "text/plain", "Memory allocation failed");
+                                 }
+
+                                 size_t read_size = fread(buffer, 1, file_size, f);
+                                 buffer[read_size] = '\0';
+                                 fclose(f);
+
+                                 // Set Content-Disposition header for download
+                                 std::string header = "attachment; filename=\"" + _download_file_name + "\"";
+
+                                 // Send response
+                                 PsychicResponse response(request);
+                                 response.setContentType("text/csv");
+                                 response.addHeader("Content-Disposition", header.c_str());
+                                 response.setContent((uint8_t*)buffer, read_size);
+                                 esp_err_t result = response.send();
+
+                                 free(buffer);
+                                 spdlog::info("download response sent, result: {}", result);
+                                 return result;
+                             });
+
+        spdlog::info("download server started");
+    }
+}
+
+void HAL_VAMeter::stopDownloadServer()
+{
+    spdlog::info("stop download server");
+
+    // Stop AP mode
+    _stop_ap_mode();
+
+    // Note: Server is kept alive for potential reuse
+    // If you want to fully stop:
+    // if (_download_server != nullptr)
+    // {
+    //     _download_server->stop();
+    //     delete _download_server;
+    //     _download_server = nullptr;
+    // }
+}
+
+std::string HAL_VAMeter::getLocalIP() { return _get_ip(); }

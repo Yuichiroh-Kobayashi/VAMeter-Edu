@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #pragma once
 #include <cstdint>
 #include <functional>
@@ -43,5 +43,12 @@ namespace SYSTEM
         bool CreateNoticePage(const std::string& title,
                               std::function<void(SmoothUIToolKit::Transition2D& transition)> contentRenderCallback,
                               std::function<bool()> customInputCallback = nullptr);
+
+        /**
+         * @brief Create a download QR page
+         *
+         * @param recordName
+         */
+        void CreateDownloadQRPage(const std::string& recordName);
     } // namespace UI
 } // namespace SYSTEM

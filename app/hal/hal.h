@@ -547,6 +547,33 @@ public:
     virtual std::string getVaRecordEzDataUrl() { return "https://ezdatatatatattatat/vamter/1233211234567"; }
 
     /* -------------------------------------------------------------------------- */
+    /*                            Local Download Server                           */
+    /* -------------------------------------------------------------------------- */
+public:
+    /**
+     * @brief Start local download server for CSV file via AP mode
+     *
+     * @param recordName Name of the record file to serve
+     */
+    static void StartDownloadServer(const std::string& recordName) { Get()->startDownloadServer(recordName); }
+    virtual void startDownloadServer(const std::string& recordName) {}
+
+    /**
+     * @brief Stop local download server and AP mode
+     *
+     */
+    static void StopDownloadServer() { Get()->stopDownloadServer(); }
+    virtual void stopDownloadServer() {}
+
+    /**
+     * @brief Get local IP address
+     *
+     * @return std::string IP address (e.g., "192.168.4.1")
+     */
+    static std::string GetLocalIP() { return Get()->getLocalIP(); }
+    virtual std::string getLocalIP() { return "192.168.4.1"; }
+
+    /* -------------------------------------------------------------------------- */
     /*                                     OTA                                    */
     /* -------------------------------------------------------------------------- */
 public:

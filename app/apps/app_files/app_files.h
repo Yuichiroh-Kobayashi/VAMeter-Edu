@@ -1,8 +1,8 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include <cstdint>
 #include <mooncake.h>
 #include "../utils/system/system.h"
@@ -27,6 +27,7 @@ namespace MOONCAKE
             void _on_page_record_files();
             void _on_record_file_open(const std::string& fileName);
             void _on_page_msc_mode();
+            void _on_page_download_local(const std::string& recordName);
 
         public:
             static void _on_page_upload_success(const std::string& recordName);

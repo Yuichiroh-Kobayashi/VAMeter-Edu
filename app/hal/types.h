@@ -219,3 +219,4 @@ typedef std::function<void(const std::string& log, bool pushScreen, bool clear)>
 /* -------------------------------------------------------------------------- */
 #define NVS_KEY_APP_HISTORY "app_history"
 #define NVS_KEY_BOOT_COUNT "boot_count"
+#define NVS_KEY_AP_SUFFIX "ap_suffix"

@@ -41,7 +41,7 @@ struct TextPool_cn_t
     char AppFiles_Option_RecordFiles[13] = "录制文件";
     char AppFiles_Option_MscMode[11] = "MSC 模式";
     char AppFiles_Option_Open[7] = "打开";
-    char AppFiles_Option_Upload[16] = "上传 (EzData)";
+    char AppFiles_Option_Upload[12] = "下载 (QR)";
     char AppFiles_Option_Delete[7] = "删除";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "输入电压";
     char AppPowerMonitor_PageSingle_InputPower[13] = "输入功率";

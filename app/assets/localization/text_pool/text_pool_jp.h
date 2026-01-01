@@ -41,7 +41,7 @@ struct TextPool_jp_t
     char AppFiles_Option_RecordFiles[25] = "レコードファイル";
     char AppFiles_Option_MscMode[13] = "MSCモード";
     char AppFiles_Option_Open[7] = "開く";
-    char AppFiles_Option_Upload[19] = "アップロード";
+    char AppFiles_Option_Upload[25] = "ダウンロード (QR)";
     char AppFiles_Option_Delete[7] = "削除";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "入力電圧";
     char AppPowerMonitor_PageSingle_InputPower[16] = "入力パワー";
@@ -92,7 +92,9 @@ struct TextPool_jp_t
     char Misc_Text_NoRecordFiles[37] = "記録ファイルがありません";
     char Misc_Text_UploadDone[26] = "アップロード完了!";
     char Misc_Text_UpgradeDone[29] = "アップグレード完了!";
-    char Misc_Text_UsbFlashingNotice[198] = " > USB フラッシングが必要です\n > [M5Burner] を使用して、\n   アップグレードしてください\n > あなたの記録ファイルを\n   バックアップしてください";
+    char Misc_Text_UsbFlashingNotice[198] =
+        " > USB フラッシングが必要です\n > [M5Burner] を使用して、\n   アップグレードしてください\n > あなたの記録ファイルを\n "
+        "  バックアップしてください";
     char Misc_Text_ConnectAp[10] = "接続 AP";
     char Misc_Text_OpenLink[19] = "リンクを開く";
 

@@ -94,11 +94,10 @@ void AppWaveform::_handle_recording_finished()
             VaRecordViewer::CreateAndWait(&record);
         }
 
-        // Upload
+        // Download (QR)
         else if (selected_index == 1)
         {
-            if (HAL::UploadVaRecordViaEzData(HAL::GetLatestVaRecordName(), OnLogPageRender))
-                AppFiles::_on_page_upload_success(HAL::GetLatestVaRecordName());
+            _on_page_download_local(HAL::GetLatestVaRecordName());
         }
 
         // Delete
@@ -113,3 +112,5 @@ void AppWaveform::_handle_recording_finished()
     _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 }
+
+void AppWaveform::_on_page_download_local(const std::string& recordName) { SYSTEM::UI::CreateDownloadQRPage(recordName); }

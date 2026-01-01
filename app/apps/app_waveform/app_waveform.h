@@ -46,6 +46,7 @@ namespace MOONCAKE
             void onRunning() override;
             void onDestroy() override;
             void _handle_recording_finished();
+            void _on_page_download_local(const std::string& recordName);
         };
 
         class AppWaveform_Packer : public APP_PACKER_BASE
