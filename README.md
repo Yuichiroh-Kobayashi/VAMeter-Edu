@@ -1,8 +1,8 @@
 # VAMeter-Edu
 
-Educational firmware for [M5Stack VAMeter](https://docs.m5stack.com/en/products/sku/K136), customized for Japanese classroom use.
-
-VAMeter-Edu provides intuitive guidance, flexible configuration, and adaptable modes for hands-on student learning about electricity.
+**Designed for real classrooms.**  
+Educational firmware for [M5Stack VAMeter](https://docs.m5stack.com/en/products/sku/K136), customized for use in real Japanese classrooms.  
+VAMeter-Edu visualizes invisible electricity using a **digital readings** and **waveform view (mini oscilloscope)**, supporting beginners in hands-on learning.  
 
 ## Features
 
@@ -10,9 +10,18 @@ VAMeter-Edu provides intuitive guidance, flexible configuration, and adaptable m
 
 - **Simplified Menu**: Voltage Meter → Current Meter → USB-C Power Monitor → Settings
 - **Guide Screens**: Connection diagrams showing proper circuit setup for beginners
-- **Probe Mode Setting**: Switch between Normal Probe and Training Probe modes
 - **Fixed Display Mode**: Locks display to selected measurement (prevents accidental page switching)
 - **Japanese Localization**: Full Japanese UI support
+
+### Local Data Download (v1.1.0+)
+
+VAMeter-Edu can run as a **Wi-Fi Access Point (AP)**. Students scan the on-screen **QR code** to access a local page and **download CSV data directly**—**no internet connection or cloud account required**.
+
+- Easier to use under restricted school networks
+- CSV can be viewed, processed, and shared on student devices
+- **EzData cloud upload was removed in v1.1.0** and replaced by this local download workflow
+
+For classrooms using multiple devices, you can set an **AP suffix (01–40)** to help distinguish units.
 
 ### Safety Features
 
@@ -23,7 +32,6 @@ VAMeter-Edu provides intuitive guidance, flexible configuration, and adaptable m
 
 - High-precision current detection (2.5 µA / 250 µA resolution)
 - Waveform recording and display
-- EzData cloud upload support
 - USB MSC mode for data export
 
 ## Hardware
@@ -34,6 +42,16 @@ VAMeter-Edu uses the M5Stack VAMeter hardware with optional custom enclosure:
 - **Training Probe**: Custom probe with RCA connectors for analog meter practice
 
 For hardware details, see the [Hackster.io project page](https://www.hackster.io/Yuichiroh-Kobayashi/vameter-edu-easy-tester-for-everyone-learning-electricity-9d06c6).
+
+## Firmware
+
+### v1.1.0 (2026-01-01)
+
+- **Local CSV download**: Replaced cloud upload with QR-code based local download
+- **AP suffix setting**: Device identification for multi-unit classroom use (01–40)
+- **Bug fix**: Fixed an issue where waveform recording did not start after returning from Voltage/Current meter screens
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Project Structure
 
