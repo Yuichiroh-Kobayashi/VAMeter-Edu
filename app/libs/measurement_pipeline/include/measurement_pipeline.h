@@ -1,7 +1,6 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
-#include "cal_store.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +17,7 @@ float mp_unit_scale_current(char range); // 'L','M','S'
 float mp_unit_scale_voltage(char range); // 'L','M','S'
 
 // 補正適用（測定値→補正後値）
+// NOTE: Calibration is disabled until cal_store is integrated.
 float mp_apply_current(float measured_A, char range);
 float mp_apply_voltage(float measured_V, char range);
 
