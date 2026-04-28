@@ -197,6 +197,73 @@ rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" app/l
 - BackendController が `isPhysicalOutputAllowed()` false の状態で backend に non-zero target を適用する場合
 - Fake backend fault 後に Fault 状態、target 0、physical output disallow を維持できない場合
 
+## 2026-04-29 Motor Observe host test CTest registration
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 8c4be8a
+
+### Firmware version
+
+- APP_VERSION: V1.2.2
+
+### Target behavior
+
+- `tests/motor_observe/CMakeLists.txt` に CTest 登録を追加
+- `tests/motor_observe/README.md` に host-side test 実行手順を記録
+- GPIO未実装
+- PWM未実装
+- CytronMotorDriver未導入
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" tests/motor_observe app/libs/motor_observe_safety app/libs/motor_observe_backend || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- device build: pass
+- Motor Observe safety/backend/test 内に禁止語句は未検出
+
+### Judgment
+
+- pass: CTest 登録と通常開発手順への組み込み
+- 未確認: CIへの組み込み、他host環境での実行
+- 未検証: 実機、GPIO、PWM、MAKER-DRIVE、モータ接続
+
+### Next action
+
+- CIまたは開発手順で `ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure` を実行する運用を決める
+- GPIO/PWM backend 実装前に Port.A 割当と disabled 時出力を計測器で確認する
+
+### Rollback condition
+
+- CTest 登録により standalone build / direct execution が壊れる場合
+- test が firmware runtime や device build に混入する場合
+- Motor Observe safety/backend/test 内に GPIO/PWM/Cytron/Base relay 依存が入る場合
+
 ## Entry template
 
 ### Date
