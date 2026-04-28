@@ -2,7 +2,7 @@
 
 **Designed for real classrooms.**  
 Educational firmware for [M5Stack VAMeter](https://docs.m5stack.com/en/products/sku/K136), customized for use in real Japanese classrooms.  
-VAMeter-Edu visualizes invisible electricity using a **digital readings** and **waveform view (mini oscilloscope)**, supporting beginners in hands-on learning.  
+VAMeter-Edu visualizes invisible electricity using **digital readings** and **waveform view (mini oscilloscope)**, supporting beginners in hands-on learning.  
 
 ## Features
 
@@ -108,6 +108,7 @@ cd desktop && ./app_desktop_build
 #### Build
 
 ```bash
+. $HOME/esp/esp-idf/export.sh
 cd platforms/vameter
 idf.py build
 ```
