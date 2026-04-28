@@ -130,6 +130,73 @@ rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" app/l
 - Fault / timeout / leaveMode 相当で backend が target 0 に戻らない場合
 - no-op backend scaffold が既存 voltage/current/waveform/USB-C/settings 動作へ影響する場合
 
+## 2026-04-29 Motor Observe state transition host test
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: d3ad24e
+
+### Firmware version
+
+- APP_VERSION: V1.2.2
+
+### Target behavior
+
+- SafetyController state transition test
+- BackendController + NoopBackend test
+- Fake fault backend test
+- GPIO未実装
+- PWM未実装
+- CytronMotorDriver未導入
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" app/libs/motor_observe_safety app/libs/motor_observe_backend tests/motor_observe || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test execution: pass
+- output: `motor_observe_state_test: pass`
+- device build: pass
+- Motor Observe safety/backend/test 内に禁止語句は未検出
+
+### Judgment
+
+- pass: 物理出力なしの状態遷移テスト
+- 未確認: 将来 Motor Observe app との接続、CIへの組み込み
+- 未検証: 実機、GPIO、PWM、MAKER-DRIVE、モータ接続
+
+### Next action
+
+- Motor Observe app 追加前に、host-side test を通常の開発手順へ組み込む
+- GPIO/PWM backend 実装前に Port.A 割当と disabled 時出力を計測器で確認する
+
+### Rollback condition
+
+- SafetyController が Fault / timeout / leaveMode で target 0 に戻らない場合
+- BackendController が `isPhysicalOutputAllowed()` false の状態で backend に non-zero target を適用する場合
+- Fake backend fault 後に Fault 状態、target 0、physical output disallow を維持できない場合
+
 ## Entry template
 
 ### Date
