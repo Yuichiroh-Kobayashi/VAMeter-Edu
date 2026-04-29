@@ -16,7 +16,12 @@
 #include "app_startup_anim/app_startup_anim.h"
 #include "app_edu_current/app_edu_current.h"        // 電流計測支援画面
 #include "app_edu_volt/app_edu_volt.h"              // 電圧計測支援画面
+#include "app_motor_observe_bringup/app_motor_observe_bringup.h"
 /* Header files locator (Don't remove) */
+
+#ifndef MOTOR_OBSERVE_BRINGUP_AUTOSTART
+#define MOTOR_OBSERVE_BRINGUP_AUTOSTART 0
+#endif
 
 /**
  * @brief Run startup anim app
@@ -47,10 +52,17 @@ inline void app_run_startup_anim(MOONCAKE::Mooncake* mooncake)
  */
 inline void app_install_launcher(MOONCAKE::Mooncake* mooncake)
 {
+#if MOTOR_OBSERVE_BRINGUP_AUTOSTART
+    // Development-only no-motor waveform bring-up path. Do not enable for classroom release builds.
+    auto bringup = new MOONCAKE::APPS::AppMotorObserveBringup_Packer;
+    mooncake->installApp(bringup);
+    mooncake->createAndStartApp(bringup);
+#else
     auto launcher = new MOONCAKE::APPS::AppLauncher_Packer;
     // auto launcher = new MOONCAKE::APPS::AppWaveform_Packer;
     mooncake->installApp(launcher);
     mooncake->createAndStartApp(launcher);
+#endif
 }
 
 /**

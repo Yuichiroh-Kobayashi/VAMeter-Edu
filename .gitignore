@@ -3,7 +3,8 @@
 .codex
 build
 dependencies
- 
+build_motor_observe_bringup
+
 # allow LovyanGFX submodule
 !dependencies/LovyanGFX/
 build_clangd/

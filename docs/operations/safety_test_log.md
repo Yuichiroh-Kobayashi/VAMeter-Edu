@@ -426,6 +426,203 @@ rg -n "ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM|gpio_set_level" platf
 - GPIO10またはBase relayに依存する設計になる場合
 - High/High coast、PWM/High、High/PWM が必要になる場合
 
+## 2026-04-29 Motor Observe no-motor bring-up UI
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 2262b72
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-11-g2262b72
+
+### Target behavior
+
+- no-motor bring-up UI
+- launcher未登録
+- assets/localization未追加
+- `SafetyController` / `BackendController` 経由でbackend targetを操作する
+- device buildでは `VAMeterMotorObservePwmBackend`
+- desktop buildでは `NoopBackend`
+- GPIO10未使用
+- Base relay未使用
+- High/High coast未実装
+- PWM/HighまたはHigh/PWM未実装
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Expected safe behavior
+
+- app open直後は `SafeDisabled / target 0 / Low-Low`
+- `OutputArmed` は target 0 を維持し、PWMを出さない
+- `OutputEnabled` で target 変更を許可する
+- brake停止は target 0 / Low-Low とし、`OutputArmed` へ戻る
+- app close / destroy 相当では backend を `leaveMode()` で disarmする
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+cmake -S . -B build
+cmake --build build -j8
+cd build/desktop
+timeout -s KILL 5s ./app_desktop_build
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+find app/apps/app_motor_observe_bringup platforms/vameter/build build -iname '*motor_observe*' -print
+rg -n "app_motor_observe_bringup|Motor Observe Bring-up|BRING-UP ONLY|MAKER-DRIVE|Motor: NOT CONNECTED|GPIO10: NOT USED|Base relay: NOT USED" app platforms CMakeLists.txt
+rg -n "SetBaseRelay|CytronMD|PWM_PWM|ledcWrite|analogWrite|gpio_set_level" app/apps/app_motor_observe_bringup app/libs/motor_observe_safety app/libs/motor_observe_backend platforms/vameter/main/hal_vameter/components/motor_observe_pwm_backend.* || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- desktop build: pass
+- desktop runtime: 起動確認のみ。bring-up appはlauncher未登録のため通常メニューから未到達
+- device build: pass
+- build artifact:
+  - `platforms/vameter/build/esp-idf/main/CMakeFiles/__idf_main.dir/home/yu-ichirou/Dev/VAMeter-Edu/app/apps/app_motor_observe_bringup/app_motor_observe_bringup.cpp.obj`
+  - `build/CMakeFiles/app_layer.dir/app/apps/app_motor_observe_bringup/app_motor_observe_bringup.cpp.o`
+- 禁止語句確認: bring-up app / Motor Observe safety/backend / PWM backend 内に `SetBaseRelay`、`CytronMD`、`PWM_PWM`、`ledcWrite`、`analogWrite`、`gpio_set_level` は未検出
+
+### Judgment
+
+- pass: no-motor bring-up UI の build取込確認
+- 未確認: 実機での起動手段、app lifecycleとGPIO所有権の完全な切替、Fault相当操作の実機手順
+- 未検証: 実機波形、GPIO8/GPIO9/GPIO10、MAKER-DRIVE接続、モータ接続
+
+### Next action
+
+- MAKER-DRIVE / モータ未接続のまま、限定的な起動手段でbring-up UIを起動する
+- ロジックアナライザまたはオシロスコープで、SafeDisabled、OutputArmed、OutputEnabled target 0 / +10% / -10%、方向切替、brake停止、app close相当を確認する
+
+### Rollback condition
+
+- launcher通常メニューへ混入する場合
+- assets/localization追加が必要になる場合
+- app open / OutputArmed でPWMが出る場合
+- GPIO10またはBase relayに依存する場合
+- High/High coast、PWM/High、High/PWM が必要になる場合
+
+## 2026-04-29 Motor Observe bring-up UI limited startup path
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 2262b72
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-11-g2262b72-dirty
+
+### Target behavior
+
+- bring-up UI limited startup path
+- `MOTOR_OBSERVE_BRINGUP_AUTOSTART` を明示的に有効化した場合だけ、StartupAnim後に `AppMotorObserveBringup` を起動する
+- defaultでは従来どおり StartupAnim から Launcher に進む
+- launcher通常登録なし
+- assets/localization未追加
+- MAKER-DRIVE未接続
+- モータ未接続
+- Base relay未使用
+- GPIO10未使用
+
+### Enable procedure
+
+Desktop bring-up build:
+
+```bash
+cmake -S . -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1"
+cmake --build build_motor_observe_bringup -j8
+```
+
+Device bring-up build:
+
+```bash
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build
+```
+
+Do not enable `MOTOR_OBSERVE_BRINGUP_AUTOSTART` for classroom release builds.
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+cmake -S . -B build
+cmake --build build -j8
+cd build/desktop
+timeout -s KILL 8s ./app_desktop_build
+cmake -S . -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1"
+cmake --build build_motor_observe_bringup -j8
+cd build/desktop
+timeout -s KILL 8s ./app_desktop_build
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build
+rg -n "MOTOR_OBSERVE|BRINGUP|AUTOSTART|AppMotorObserveBringup|app_motor_observe_bringup" app platforms CMakeLists.txt
+rg -n "SetBaseRelay|CytronMD|PWM_PWM|ledcWrite|analogWrite|gpio_set_level" app/apps/app_motor_observe_bringup app/apps/app_startup_anim app/apps/app_launcher app/libs/motor_observe_safety app/libs/motor_observe_backend platforms/vameter/main/hal_vameter/components/motor_observe_pwm_backend.* || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- desktop normal build: pass
+- desktop normal runtime: 起動確認のみ。8秒timeout kill
+- desktop bring-up build: pass
+- desktop bring-up runtime: 起動確認のみ。8秒timeout kill。StartupAnim後の画面遷移は未確認
+- device normal build: pass
+- device bring-up build: pass
+- default behavior: `MOTOR_OBSERVE_BRINGUP_AUTOSTART` 未定義時は StartupAnim から Launcher に進む
+- flag behavior: `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1` のビルドで StartupAnim後の起動先を `AppMotorObserveBringup` に差し替える
+- 禁止語句確認: `SetBaseRelay` は既存 `app_launcher.cpp` で検出。bring-up app / StartupAnim hook / PWM backend には新規使用なし
+
+### Judgment
+
+- pass: limited startup path の build取込確認
+- 未確認: desktop runtimeでStartupAnim後にbring-up画面へ到達すること、実機での起動操作
+- 未検証: 実機波形、GPIO8/GPIO9/GPIO10、MAKER-DRIVE接続、モータ接続
+
+### Next action
+
+- `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1` のdevice buildをflashし、MAKER-DRIVE / モータ未接続のまま、ロジックアナライザまたはオシロスコープでGPIO8/GPIO9/GPIO10を確認する
+- SafeDisabled、OutputArmed、OutputEnabled target 0 / +10% / -10%、方向切替、brake停止、app close相当を記録する
+
+### Rollback condition
+
+- default buildで StartupAnim から Launcher へ進まない場合
+- bring-up UI が launcher通常メニューへ混入する場合
+- assets/localization追加が必要になる場合
+- app open / OutputArmed でPWMが出る場合
+- GPIO10またはBase relayに依存する場合
+- classroom releaseで `MOTOR_OBSERVE_BRINGUP_AUTOSTART` が有効化される場合
+
 ## Entry template
 
 ### Date
