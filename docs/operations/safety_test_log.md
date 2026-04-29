@@ -648,3 +648,254 @@ rg -n "SetBaseRelay|CytronMD|PWM_PWM|ledcWrite|analogWrite|gpio_set_level" app/a
 ### Rollback condition
 
 - 
+
+## Motor Observe bring-up waveform check - initial armed state
+
+- Date: 2026-04-29
+- Branch / commit: 未記録
+- Build: `build_motor_observe_bringup`
+- Build flag: `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`
+- Hardware:
+  - VAMeter-Edu
+  - MAKER-DRIVE: not connected
+  - Motor: not connected
+- Instrument:
+  - Oscilloscope
+
+### Checked items
+
+- Firmware flashed successfully from WSL using `/dev/ttyACM0`.
+- Bring-up UI started.
+- Encoder long press changed state to `OutputArmed`.
+- UI showed:
+  - `State: OutputArmed`
+  - `Target: 0%`
+  - `Output: Low-Low`
+- GPIO8 waveform:
+  - 0 V, no change observed
+- GPIO9 waveform:
+  - 0 V, no change observed
+- Encoder rotation in `OutputArmed`:
+  - no target change
+  - no waveform change
+
+### Judgment
+
+PASS for `OutputArmed` no-output behavior.
+
+### Notes
+
+- This matches the intended design:
+  - `OutputArmed` keeps target 0.
+  - `OutputArmed` does not emit PWM.
+  - target changes are allowed only in `OutputEnabled`.
+
+### 未確認
+
+- `OutputEnabled` transition by encoder short press
+- target +10% waveform
+- target -10% waveform
+- direction change waveform
+- brake stop waveform
+- GPIO10 no-PWM confirmation
+- Base relay non-operation confirmation
+
+### 未検証
+
+- MAKER-DRIVE connection
+- Motor connection
+- Motor current / voltage / power measurement path
+
+### Next action
+
+- In `OutputArmed`, press encoder shortly to enter `OutputEnabled`.
+- Confirm `OutputEnabled target 0` remains Low-Low.
+- Rotate encoder right and confirm GPIO9 PWM / GPIO8 Low.
+- Rotate encoder left and confirm GPIO9 Low / GPIO8 PWM.
+- Confirm GPIO10 remains unused.
+
+## 2026-04-29 Motor Observe bring-up waveform and basic motor check
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 未記録
+- build: `build_motor_observe_bringup`
+- build flag: `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-12-g1b9636e
+- Flash:
+  - result: pass
+  - port: `/dev/ttyACM0`
+  - baudrate: 1500000
+
+### Target behavior
+
+- no-motor bring-up UI and Motor Observe PWM backend verification
+- `SafeDisabled / OutputArmed / Fault / timeout / leaveMode / target 0`: Low-Low
+- `target > 0`: GPIO9 candidate PWM / GPIO8 candidate Low
+- `target < 0`: GPIO9 candidate Low / GPIO8 candidate PWM
+- High/High coast: not implemented
+- PWM/High or High/PWM: not implemented
+- GPIO10: not used
+- Base relay: not used as a safety disconnect
+
+### Hardware setup
+
+Initial waveform check:
+
+- VAMeter-Edu
+- VAMeter Base
+- MAKER-DRIVE: initially not connected
+- Motor: initially not connected
+- Instrument: oscilloscope
+
+Basic motor check after waveform result looked acceptable:
+
+- MAKER-DRIVE connected
+- Small DC motor connected
+- Motor supply: two alkaline cells in series
+- Motor supply voltage: approximately 3 V
+- Current-limited bench supply: not used
+- Load condition: no intentional mechanical load
+
+### Test procedure
+
+1. Flash Motor Observe bring-up build.
+2. Confirm bring-up UI starts.
+3. Confirm encoder long press changes state from `SafeDisabled` to `OutputArmed`.
+4. Confirm `OutputArmed` keeps:
+   - `Target: 0%`
+   - `Output: Low-Low`
+   - GPIO8: 0 V
+   - GPIO9: 0 V
+5. Confirm encoder rotation in `OutputArmed` does not change target or waveform.
+6. Encoder short press: `OutputArmed` to `OutputEnabled`.
+7. Confirm `OutputEnabled target 0` remains Low-Low.
+8. Rotate encoder right and confirm positive target behavior.
+9. Rotate encoder left and confirm negative target behavior.
+10. Confirm direction change behavior.
+11. Encoder short press in `OutputEnabled` and confirm brake stop / target 0 / Low-Low.
+12. Confirm Base relay does not appear to operate.
+13. After no-motor waveform result looked acceptable, connect MAKER-DRIVE and motor for basic low-voltage motor check.
+14. Confirm target operation drives motor and brake stop stops motor.
+
+### Result
+
+No-motor waveform check:
+
+- `SafeDisabled`: pass
+- `OutputArmed`: pass
+  - UI changed to `OutputArmed`
+  - `Target: 0%`
+  - `Output: Low-Low`
+  - GPIO8 stayed 0 V
+  - GPIO9 stayed 0 V
+- Encoder rotation in `OutputArmed`: pass
+  - no target change
+  - no waveform change
+- `OutputEnabled target 0`: pass
+  - Low-Low maintained
+- `target > 0`: pass
+  - expected PWM behavior observed
+- `target < 0`: pass
+  - expected PWM behavior observed
+- direction change: pass
+  - expected behavior observed
+- brake stop: pass
+  - target returned to 0
+  - output returned to Low-Low
+
+GPIO10 / Base relay:
+
+- GPIO10 direct measurement: 未確認
+- Base relay sound: no relay click heard
+- Judgment: no observed Base relay operation, but GPIO10 remains 未確認
+
+Basic motor check:
+
+- Motor supply: alkaline cells x2, approximately 3 V
+- Motor operation: pass
+  - motor rotation observed with target command
+  - brake stop behavior observed
+- Motor current / voltage / power measurement: 未検証
+- VAMeter measurement path: 未検証
+- Load behavior: 未検証
+- Stall behavior: 未検証
+- Thermal behavior: 未検証
+- Hand-load behavior: not tested
+
+Video records:
+
+- `MOV_4767`: OutputEnabled / target operation / direction behavior
+- `MOV_4769`: brake stop behavior
+
+### Judgment
+
+条件付きPASS.
+
+The Motor Observe bring-up UI and PWM backend behaved as expected for the checked states.
+
+The transition sequence and output policy are consistent with the intended design:
+
+- `OutputArmed` does not output PWM.
+- target changes are accepted only in `OutputEnabled`.
+- positive target and negative target drive different PWM sides.
+- brake stop returns target to 0 and output to Low-Low.
+- High/High coast is not used.
+- PWM/High and High/PWM are not used.
+
+However, GPIO10 direct waveform verification was not possible, so GPIO10 remains `未確認`.
+
+The basic motor connection check passed at approximately 3 V with two alkaline cells, but current, thermal behavior, measurement path, and load behavior remain `未検証`.
+
+### 未確認
+
+- GPIO10 waveform during bring-up operation
+- exact Base relay electrical state during operation
+- branch / commit at test time
+- VAMeter measurement values during motor operation
+
+### 未検証
+
+- current-limited supply operation
+- motor current / voltage / power measurement
+- motor current limit behavior
+- load behavior
+- stall behavior
+- hand-load behavior
+- thermal behavior of MAKER-DRIVE
+- thermal behavior of motor
+- VAMeter current / voltage / power measurement path for Motor Observe
+- classroom-safe motor fixture
+- repeated operation durability
+
+### Next action
+
+Before expanding UI or classroom use:
+
+1. Define the Motor Observe measurement path.
+2. Record where VAMeter measures current and voltage during MAKER-DRIVE motor operation.
+3. Add a current-limited supply or fuse/protection condition before load testing.
+4. Perform low-voltage, no-load current / voltage / power observation.
+5. Keep High/High coast, PWM/High, and High/PWM unimplemented.
+6. Keep Base relay out of the safety chain.
+
+### Rollback condition
+
+Rollback or stop Motor Observe motor testing if any of the following occurs:
+
+- Output appears in `SafeDisabled` or `OutputArmed`.
+- GPIO8/GPIO9 do not return to Low-Low on brake stop.
+- Direction change produces simultaneous unexpected drive behavior.
+- Base relay operates unexpectedly.
+- GPIO10 is found to be driven by Motor Observe.
+- Motor or MAKER-DRIVE heats abnormally.
+- Current exceeds the planned classroom-safe limit.
+- VAMeter measurement path cannot be explained.

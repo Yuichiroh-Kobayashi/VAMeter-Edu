@@ -110,6 +110,18 @@ Possible measurement targets:
 
 Do not assume that measured current equals motor winding current unless the wiring path is verified.
 
+For the next low-voltage motor test, record one of the following before judging VAMeter readings:
+
+| Measurement wiring | Meaning of VAMeter value | Status |
+|---|---|---|
+| Driver input side, VB+ / VB- supply path | Motor supply voltage or driver input current / input power | 未検証 |
+| Motor terminal side, between MAKER-DRIVE output and motor | PWM-switched motor terminal voltage or motor-side current | 未検証 |
+| Other wiring | Must be drawn and described before use | 未確認 |
+
+The driver input current and motor winding current may differ.
+During PWM drive, instantaneous waveform, average value, VAMeter displayed value, and CSV recorded value may differ.
+VAMeter sampling and display must not be treated as a complete reproduction of the PWM instantaneous waveform.
+
 The selected measurement path must be documented in:
 
 - `docs/hardware/VAMeter/measurement_path.md`
