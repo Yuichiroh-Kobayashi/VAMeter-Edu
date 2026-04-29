@@ -1069,3 +1069,58 @@ Rollback or stop Motor Observe motor testing if any of the following occurs:
 - Motor or MAKER-DRIVE heats abnormally.
 - Current exceeds the planned classroom-safe limit.
 - VAMeter measurement path cannot be explained.
+
+## 2026-04-29 Motor Observe CSV download QR access
+
+### Scope
+
+- Add development-only access from Motor Observe bring-up to the existing local CSV download QR page.
+- Keep normal launcher registration unchanged.
+- Keep assets and localization unchanged.
+- Keep GPIO10 and Base relay unused.
+- Keep existing waveform `REC-*.csv` format unchanged.
+
+### Implementation note
+
+- Right-side switch short press in Motor Observe bring-up enters the existing CSV download QR page.
+- Before QR entry, the app forces `SafeDisabled / target 0 / Low-Low`.
+- Before QR entry, the app writes a CSV `stop` row and closes the current `MO-*.csv`.
+- During QR display, Motor Observe output control and CSV appending do not continue.
+- Returning from the QR page starts a new `MO-*.csv` session with a new `start` row.
+- Local download names are limited to basename `REC-*.csv` or `MO-*.csv`.
+- Paths, `..`, query strings, non-CSV suffixes, and other prefixes are rejected.
+
+### Expected CSV state before QR
+
+- `safety_state`: `SafeDisabled`
+- `physical_output_allowed`: `0`
+- `requested_target_percent`: `0`
+- `applied_target_percent`: `0`
+- `output_pattern`: `LOW_LOW`
+- `event`: `stop`
+
+### Measurement caveat
+
+- `MO-*.csv` remains a development log, not a classroom UI.
+- If `measurement_path_code=unknown`, V/I/P values must not be used for教材判断.
+
+### Verification
+
+- `cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build`: pass.
+- `cmake --build /tmp/vameter_motor_observe_test_build`: pass.
+- `/tmp/vameter_motor_observe_test_build/motor_observe_state_test`: pass.
+- `ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure`: pass.
+- `cmake -S . -B build`: pass.
+- `cmake --build build -j8`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build`: pass.
+- ESP-IDF configure reported that the component registry connection could not be established and skipped dependency-change checks, but both device builds completed using available dependencies.
+- Existing `REC-*.csv` QR download path should continue to use the same QR page and web endpoint.
+
+### Remaining 未検証
+
+- actual QR display on VAMeter hardware.
+- actual `MO-*.csv` download from the device AP.
+- actual return from QR page and creation of a new `MO-*.csv` session on hardware.
+- GPIO8/GPIO9 waveform during QR transition.
+- GPIO10 direct waveform during QR transition.

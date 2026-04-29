@@ -52,6 +52,9 @@ namespace MOONCAKE
             void _applyTargetPercent(int targetPercent);
             void _syncFaultState();
             void _handleInput();
+            void _beginCsvSession(uint32_t nowMs);
+            void _stopCsvSession(uint32_t nowMs);
+            void _openCsvDownloadQr();
             void _logCsvIfDue();
             MOTOR_OBSERVE::CSV::Row _createCsvRow(const char* event, uint32_t nowMs);
             const char* _detectCsvEvent();

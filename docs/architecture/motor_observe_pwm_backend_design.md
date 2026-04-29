@@ -281,6 +281,11 @@ Rules:
 - Do not use GPIO10 or Base relay for CSV logging.
 - In the initial development build, brake stop returns to `SafeDisabled`.
 - Stop / leaveMode / app close must not leave physical output allowed.
+- Right-side switch access to the existing local CSV download QR page is development-only.
+- Before entering the QR page, the bring-up app must force `SafeDisabled / target 0 / Low-Low`, write a CSV `stop` row, and close the current `MO-*.csv`.
+- While the QR page is shown, Motor Observe output control and CSV appending must not continue.
+- Returning from the QR page starts a new `MO-*.csv` session; it does not append to the downloaded file.
+- Local CSV download allows only basename `REC-*.csv` or `MO-*.csv`; arbitrary paths are not allowed.
 
 Initial sampling interval:
 

@@ -3,6 +3,7 @@
  */
 #include "libs/motor_observe_backend/motor_observe_backend.h"
 #include "libs/motor_observe_csv/motor_observe_csv_logger.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -378,6 +379,24 @@ namespace
         CHECK(fields[9] == "0");
         CHECK(fields[10] == "LOW_LOW");
     }
+
+    void testLocalCsvDownloadRecordNameAllowlist()
+    {
+        CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-000.csv"));
+        CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-1000.csv"));
+        CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-000.csv"));
+        CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-001.csv"));
+
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("/spiflash/rec/MO-000.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("../MO-000.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("../../etc/passwd"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-000.csv?x=1"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-abc.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-000.txt"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("OTHER-000.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-00/0.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-00\\0.csv"));
+    }
 } // namespace
 
 int main()
@@ -388,6 +407,7 @@ int main()
     testCsvHeaderAndRows();
     testBrakeStopCsvState();
     testStopRowCsvState();
+    testLocalCsvDownloadRecordNameAllowlist();
 
     if (g_failureCount != 0)
     {

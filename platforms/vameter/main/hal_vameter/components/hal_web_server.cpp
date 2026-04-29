@@ -6,6 +6,7 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include "../../../app/assets/assets.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
@@ -357,6 +358,12 @@ static PsychicHttpServer* _download_server = nullptr;
 
 void HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
+    if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
+    {
+        spdlog::warn("reject local download for invalid record name: {}", recordName);
+        return;
+    }
+
     spdlog::info("start download server for: {}", recordName);
 
     // Start AP mode
@@ -377,6 +384,16 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                              [](PsychicRequest* request)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
+
+                                 const std::string expectedPath = "/download/" + _download_file_name;
+                                 const std::string actualPath = request->path().c_str();
+                                 if (actualPath != expectedPath)
+                                 {
+                                     spdlog::warn("download path mismatch: expected {}, got {}",
+                                                  expectedPath,
+                                                  actualPath);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
 
                                  // Open file
                                  FILE* f = fopen(_download_file_path.c_str(), "r");

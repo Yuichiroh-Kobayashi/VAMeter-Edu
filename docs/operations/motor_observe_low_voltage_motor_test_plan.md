@@ -98,8 +98,21 @@ Motor Observe bring-up appは、開発用CSVを専用ファイルとして記録
 
 - bring-up appの`onResume()`で自動的に記録開始する。
 - bring-up appの`onDestroy()`で`stop`行を出して記録停止する。
+- bring-up app内の右スイッチ短押しで、既存のCSVダウンロードQR画面へ入る。
+- QR画面へ入る前に`SafeDisabled / target 0 / Low-Low`へ戻し、`stop`行を書いてCSVをcloseする。
+- QR画面表示中はMotor Observe出力制御とCSV追記を継続しない。
+- QR画面から戻る場合は、既存CSVへ追記せず、新しい`MO-*.csv`セッションを開始する。
 - 通常launcher登録はしない。
 - assets / localizationは追加しない。
+
+### QR download
+
+- `MO-*.csv`は開発用ログとして、既存ローカルCSVダウンロードQR画面から取得できる。
+- local download対象のbasenameは`REC-*.csv`または`MO-*.csv`だけを許可する。
+- slash、`..`、query、`.csv`以外、`REC-` / `MO-`以外のprefixは許可しない。
+- 既存waveform `REC-*.csv`のヘッダ、保存形式、readerは変更しない。
+- `MO-*.csv`をwaveform CSVと同じ意味で扱ってはいけない。
+- 実機での`MO-*.csv` QRダウンロード確認は未実施なら`未検証`として記録する。
 
 ### サンプリング周期
 

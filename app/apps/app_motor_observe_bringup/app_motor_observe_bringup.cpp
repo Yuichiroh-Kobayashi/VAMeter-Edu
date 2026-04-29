@@ -6,6 +6,7 @@
 #include "../../assets/assets.h"
 #include "../../hal/hal.h"
 #include "../utils/system/system.h"
+#include "../utils/system/ui/misc/misc.h"
 #include "apps/utils/system/inputs/encoder/encoder.h"
 
 #include <algorithm>
@@ -40,10 +41,7 @@ void AppMotorObserveBringup::onResume()
     _data.controller.reset(new MOTOR_OBSERVE::BackendController(_data.safetyController, *_data.backend));
     _data.backendReady = _data.controller->begin();
     _resetToSafeDisabled();
-    _data.csvStartMs = HAL::Millis();
-    _data.lastCsvSampleMs = _data.csvStartMs;
-    _data.hasLastCsvSample = false;
-    _data.csvReady = _data.csvLogger.begin(_createCsvRow("start", _data.csvStartMs));
+    _beginCsvSession(HAL::Millis());
     Encoder::Reset();
 }
 
@@ -65,9 +63,7 @@ void AppMotorObserveBringup::onRunning()
 void AppMotorObserveBringup::onDestroy()
 {
     _resetToSafeDisabled();
-
-    if (_data.csvLogger.isOpen())
-        _data.csvLogger.stop(_createCsvRow("stop", HAL::Millis()));
+    _stopCsvSession(HAL::Millis());
 
     _data.controller.reset();
     _data.backend.reset();
@@ -166,6 +162,12 @@ void AppMotorObserveBringup::_handleInput()
     if (!_data.controller)
         return;
 
+    if (Button::Side()->wasClicked())
+    {
+        _openCsvDownloadQr();
+        return;
+    }
+
     if (Button::Encoder()->wasHold())
     {
         if (_data.uiState == BringupState::SafeDisabled)
@@ -192,6 +194,45 @@ void AppMotorObserveBringup::_handleInput()
         _applyTargetPercent(_data.targetPercent + kTargetStepPercent);
     else if (direction < 0)
         _applyTargetPercent(_data.targetPercent - kTargetStepPercent);
+}
+
+void AppMotorObserveBringup::_beginCsvSession(uint32_t nowMs)
+{
+    _data.csvStartMs = nowMs;
+    _data.lastCsvSampleMs = nowMs;
+    _data.hasLastCsvSample = false;
+    _data.lastCsvSafetyState = MOTOR_OBSERVE::SafetyState::SafeDisabled;
+    _data.lastCsvRequestedTargetPercent = 0;
+    _data.lastCsvAppliedTargetPercent = 0;
+    _data.csvReady = _data.csvLogger.begin(_createCsvRow("start", nowMs));
+}
+
+void AppMotorObserveBringup::_stopCsvSession(uint32_t nowMs)
+{
+    if (!_data.csvLogger.isOpen())
+    {
+        _data.csvReady = false;
+        return;
+    }
+
+    _data.csvLogger.stop(_createCsvRow("stop", nowMs));
+    _data.csvReady = false;
+}
+
+void AppMotorObserveBringup::_openCsvDownloadQr()
+{
+    if (!_data.csvReady || !_data.csvLogger.isOpen())
+        return;
+
+    const std::string recordName = _data.csvLogger.fileName();
+
+    _resetToSafeDisabled();
+    _stopCsvSession(HAL::Millis());
+
+    SYSTEM::UI::CreateDownloadQRPage(recordName);
+
+    _resetToSafeDisabled();
+    _beginCsvSession(HAL::Millis());
 }
 
 void AppMotorObserveBringup::_logCsvIfDue()
