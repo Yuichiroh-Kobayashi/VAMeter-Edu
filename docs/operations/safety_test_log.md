@@ -264,6 +264,168 @@ rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" tests
 - test が firmware runtime や device build に混入する場合
 - Motor Observe safety/backend/test 内に GPIO/PWM/Cytron/Base relay 依存が入る場合
 
+## 2026-04-29 Motor Observe minimal no-motor PWM backend
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 8dec2c4
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-10-g8dec2c4
+
+### Target behavior
+
+- device専用の最小PWM backend
+- GPIO8/GPIO9候補を ESP-IDF native LEDC で制御する
+- `SafetyController` / `BackendController` は変更なし
+- GPIO10未使用
+- Base relay未使用
+- High/High coast未実装
+- PWM/HighまたはHigh/PWM未実装
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Expected safe behavior
+
+- `disarm()` は GPIO8/GPIO9 を Low/Low 相当へ戻す
+- target 0 は Low/Low 相当
+- target > 0 は GPIO9候補PWM / GPIO8候補Low
+- target < 0 は GPIO9候補Low / GPIO8候補PWM
+- `BackendController::isPhysicalOutputAllowed()` が false の場合、backendへ渡るtargetは0
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+find platforms/vameter/build -iname '*motor_observe*' -print
+rg -n "motor_observe_pwm_backend|HAL_PIN_BASE_GROVE_IOA|HAL_PIN_BASE_GROVE_IOB|HAL_PIN_BASE_RELAY_CTRL|ledc|LEDC" platforms/vameter/main app tests CMakeLists.txt
+rg -n "ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM|gpio_set_level" platforms/vameter/main/hal_vameter/components/motor_observe_pwm_backend.* app/libs/motor_observe_safety app/libs/motor_observe_backend tests/motor_observe || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- device build: pass
+- build artifact: `platforms/vameter/build/esp-idf/main/CMakeFiles/__idf_main.dir/hal_vameter/components/motor_observe_pwm_backend.cpp.obj`
+- 禁止語句確認: 新規PWM backend / Motor Observe safety/backend/test 内に `ledcWrite`、`analogWrite`、`CytronMD`、`SetBaseRelay`、`PWM_PWM`、`gpio_set_level` は未検出
+
+### Judgment
+
+- pass: device buildに最小PWM backendが取込まれた
+- 未確認: LEDC timer/channel の最終割当、PWM周波数の教育用最終値、将来Motor Observe appとの接続
+- 未検証: 実機波形、GPIO8/GPIO9 Low維持、起動時グリッチ、MAKER-DRIVE接続、モータ接続
+
+### Next action
+
+- MAKER-DRIVE / モータ未接続のまま、ロジックアナライザまたはオシロスコープでGPIO8/GPIO9/GPIO10を確認する
+- power-on直後、firmware起動直後、backend begin直後、disabled、OutputArmed、OutputEnabled + target、Fault、timeout、leaveMode、disableを確認する
+
+### Rollback condition
+
+- host-side test / CTest / device build が壊れる場合
+- `SafetyController` / `BackendController` を迂回する出力経路が必要になる場合
+- disabled / disarm / fault / timeout / leaveMode でGPIO8/GPIO9がLow/Low相当にならない場合
+- GPIO10またはBase relayに依存する設計になる場合
+- High/High coast、PWM/High、High/PWM が必要になる場合
+
+## 2026-04-29 Motor Observe PWM backend safety hardening
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 8dec2c4
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-10-g8dec2c4
+
+### Target behavior
+
+- PWM backend safety hardening
+- fault時に duty 0 / duty 0 を試みる
+- `disarm()` はfault中でも duty 0 / duty 0 を試みる
+- 方向切替時に先に duty 0 / duty 0 を通す
+- GPIO10未使用
+- Base relay未使用
+- High/High coast未実装
+- PWM/HighまたはHigh/PWM未実装
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Expected safe behavior
+
+- fault時は pending target / last applied target を 0 に戻す
+- fault中に `setTargetPercent()` が呼ばれても pending target は 0 を維持する
+- forward / reverse duty が同時に非ゼロになり得る入力はfault扱いにする
+- non-zero duty適用前に、両channelへ duty 0 を適用する
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+. $HOME/esp/esp-idf/export.sh
+cd platforms/vameter
+idf.py build
+rg -n "motor_observe_pwm_backend|HAL_PIN_BASE_GROVE_IOA|HAL_PIN_BASE_GROVE_IOB|HAL_PIN_BASE_RELAY_CTRL|ledc|LEDC" platforms/vameter/main app tests CMakeLists.txt
+rg -n "ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM|gpio_set_level" platforms/vameter/main/hal_vameter/components/motor_observe_pwm_backend.* app/libs/motor_observe_safety app/libs/motor_observe_backend tests/motor_observe || true
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- device build: pass
+- 禁止語句確認: 新規PWM backend / Motor Observe safety/backend/test 内に `ledcWrite`、`analogWrite`、`CytronMD`、`SetBaseRelay`、`PWM_PWM`、`gpio_set_level` は未検出
+
+### Judgment
+
+- pass: PWM backend safety hardening の build / host-side test 確認
+- 未確認: fault時の実GPIO波形、方向切替時の実GPIO波形、LEDC resource割当の最終確定
+- 未検証: 実機波形、GPIO8/GPIO9 Low維持、起動時グリッチ、MAKER-DRIVE接続、モータ接続
+
+### Next action
+
+- UI実装前に no-motor bring-up UI の設計を確認する
+- MAKER-DRIVE / モータ未接続のまま、ロジックアナライザまたはオシロスコープでfault時、disarm時、方向切替時のGPIO8/GPIO9/GPIO10を確認する
+
+### Rollback condition
+
+- host-side test / CTest / device build が壊れる場合
+- fault時またはfault中disarm時に duty 0 / duty 0 を試みられない場合
+- 方向切替時に両方向PWMが出る場合
+- GPIO10またはBase relayに依存する設計になる場合
+- High/High coast、PWM/High、High/PWM が必要になる場合
+
 ## Entry template
 
 ### Date
