@@ -100,6 +100,8 @@ Motor Observe bring-up appは、開発用CSVを専用ファイルとして記録
 - bring-up appの`onDestroy()`で`stop`行を出して記録停止する。
 - bring-up app内の右スイッチ短押しで、既存のCSVダウンロードQR画面へ入る。
 - QR画面へ入る前に`SafeDisabled / target 0 / Low-Low`へ戻し、`stop`行を書いてCSVをcloseする。
+- QR画面へ渡す前のfile size確認は、CSV close後に限定する。
+- close後に0 byteまたはstat失敗の場合はQR画面へ渡さない。
 - QR画面表示中はMotor Observe出力制御とCSV追記を継続しない。
 - QR画面から戻る場合は、既存CSVへ追記せず、新しい`MO-*.csv`セッションを開始する。
 - 通常launcher登録はしない。

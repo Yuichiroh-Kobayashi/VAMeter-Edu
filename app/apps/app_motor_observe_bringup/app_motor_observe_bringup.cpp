@@ -8,6 +8,7 @@
 #include "../utils/system/system.h"
 #include "../utils/system/ui/misc/misc.h"
 #include "apps/utils/system/inputs/encoder/encoder.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -37,11 +38,21 @@ namespace
 
 void AppMotorObserveBringup::onResume()
 {
+    spdlog::info("motor observe bringup onResume start");
+    spdlog::info("motor observe bringup create backend");
     _data.backend = createMotorObserveBackend();
+    spdlog::info("motor observe bringup create controller");
     _data.controller.reset(new MOTOR_OBSERVE::BackendController(_data.safetyController, *_data.backend));
     _data.backendReady = _data.controller->begin();
+    spdlog::info("motor observe bringup backend begin: {}", _data.backendReady ? "success" : "failed");
     _resetToSafeDisabled();
+    spdlog::info("motor observe bringup reset to SafeDisabled complete");
+    spdlog::info("motor observe bringup csv begin start");
     _beginCsvSession(HAL::Millis());
+    spdlog::info("motor observe bringup csv begin: {}", _data.csvReady ? "success" : "failed");
+    spdlog::info("motor observe bringup csv file name: {}", _data.csvLogger.fileName());
+    spdlog::info("motor observe bringup csv file path: {}", _data.csvLogger.filePath());
+    spdlog::info("motor observe bringup csvReady: {}", _data.csvReady ? 1 : 0);
     Encoder::Reset();
 }
 
@@ -205,18 +216,23 @@ void AppMotorObserveBringup::_beginCsvSession(uint32_t nowMs)
     _data.lastCsvRequestedTargetPercent = 0;
     _data.lastCsvAppliedTargetPercent = 0;
     _data.csvReady = _data.csvLogger.begin(_createCsvRow("start", nowMs));
+    _data.csvStatus = _data.csvReady ? CsvStatus::Ready : CsvStatus::OpenFail;
 }
 
-void AppMotorObserveBringup::_stopCsvSession(uint32_t nowMs)
+bool AppMotorObserveBringup::_stopCsvSession(uint32_t nowMs)
 {
     if (!_data.csvLogger.isOpen())
     {
         _data.csvReady = false;
-        return;
+        return false;
     }
 
-    _data.csvLogger.stop(_createCsvRow("stop", nowMs));
+    const bool stopped = _data.csvLogger.stop(_createCsvRow("stop", nowMs));
     _data.csvReady = false;
+    if (!stopped)
+        _data.csvStatus = CsvStatus::CloseFail;
+
+    return stopped;
 }
 
 void AppMotorObserveBringup::_openCsvDownloadQr()
@@ -225,9 +241,26 @@ void AppMotorObserveBringup::_openCsvDownloadQr()
         return;
 
     const std::string recordName = _data.csvLogger.fileName();
+    const std::string filePath = _data.csvLogger.filePath();
 
     _resetToSafeDisabled();
-    _stopCsvSession(HAL::Millis());
+    if (!_stopCsvSession(HAL::Millis()))
+        return;
+
+    const LOCAL_CSV_DOWNLOAD::RecordFileStatus recordStatus =
+        LOCAL_CSV_DOWNLOAD::CheckClosedRecordFileForDownload(recordName, filePath);
+    if (recordStatus == LOCAL_CSV_DOWNLOAD::RecordFileStatus::StatFailed ||
+        recordStatus == LOCAL_CSV_DOWNLOAD::RecordFileStatus::InvalidName)
+    {
+        _data.csvStatus = CsvStatus::CloseFail;
+        return;
+    }
+
+    if (recordStatus == LOCAL_CSV_DOWNLOAD::RecordFileStatus::Empty)
+    {
+        _data.csvStatus = CsvStatus::Empty;
+        return;
+    }
 
     SYSTEM::UI::CreateDownloadQRPage(recordName);
 
@@ -245,7 +278,13 @@ void AppMotorObserveBringup::_logCsvIfDue()
         return;
 
     _data.lastCsvSampleMs = nowMs;
-    _data.csvLogger.append(_createCsvRow(_detectCsvEvent(), nowMs));
+    if (!_data.csvLogger.append(_createCsvRow(_detectCsvEvent(), nowMs)))
+    {
+        _resetToSafeDisabled();
+        _data.csvLogger.stop(_createCsvRow("stop", HAL::Millis()));
+        _data.csvReady = false;
+        _data.csvStatus = CsvStatus::WriteFail;
+    }
 }
 
 MOTOR_OBSERVE::CSV::Row AppMotorObserveBringup::_createCsvRow(const char* event, uint32_t nowMs)
@@ -347,7 +386,7 @@ void AppMotorObserveBringup::_render()
     std::snprintf(lineBuffer,
                   sizeof(lineBuffer),
                   "CSV: %s",
-                  _data.csvReady ? _data.csvLogger.fileName().c_str() : "OPEN FAIL");
+                  _data.csvReady ? _data.csvLogger.fileName().c_str() : _csvStatusText());
     drawLine(lineBuffer);
 
     if (!_data.backendReady)
@@ -378,6 +417,24 @@ const char* AppMotorObserveBringup::_stateText() const
         return "Fault";
     }
     return "Unknown";
+}
+
+const char* AppMotorObserveBringup::_csvStatusText() const
+{
+    switch (_data.csvStatus)
+    {
+    case CsvStatus::Ready:
+        return _data.csvLogger.fileName().c_str();
+    case CsvStatus::OpenFail:
+        return "OPEN FAIL";
+    case CsvStatus::WriteFail:
+        return "WRITE FAIL";
+    case CsvStatus::CloseFail:
+        return "CLOSE FAIL";
+    case CsvStatus::Empty:
+        return "EMPTY";
+    }
+    return "OPEN FAIL";
 }
 
 const char* AppMotorObserveBringup::_outputText() const

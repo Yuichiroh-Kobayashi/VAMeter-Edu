@@ -4,6 +4,7 @@
 #include "local_csv_download_name.h"
 
 #include <cctype>
+#include <sys/stat.h>
 
 namespace LOCAL_CSV_DOWNLOAD
 {
@@ -57,5 +58,20 @@ namespace LOCAL_CSV_DOWNLOAD
         }
 
         return true;
+    }
+
+    RecordFileStatus CheckClosedRecordFileForDownload(const std::string& recordName, const std::string& filePath)
+    {
+        if (!IsAllowedRecordName(recordName))
+            return RecordFileStatus::InvalidName;
+
+        struct stat fileStat;
+        if (stat(filePath.c_str(), &fileStat) != 0)
+            return RecordFileStatus::StatFailed;
+
+        if (fileStat.st_size <= 0)
+            return RecordFileStatus::Empty;
+
+        return RecordFileStatus::Ready;
     }
 } // namespace LOCAL_CSV_DOWNLOAD

@@ -1124,3 +1124,250 @@ Rollback or stop Motor Observe motor testing if any of the following occurs:
 - actual return from QR page and creation of a new `MO-*.csv` session on hardware.
 - GPIO8/GPIO9 waveform during QR transition.
 - GPIO10 direct waveform during QR transition.
+
+## 2026-04-30 Motor Observe CSV QR empty-file guard
+
+### Background
+
+- A previous validation change was reverted after hardware regression.
+- Hardware symptom after the reverted change:
+  - startup showed `CSV: OPEN FAIL`.
+  - right-side switch could not enter the QR download page.
+- Before that regression, right-side switch QR transition and QR display worked, but downloaded `MO-002.csv` was 0 byte.
+- The saved broken patch was not present in `/tmp`, so this entry records the hypothesis from the hardware symptom.
+
+### Cause hypothesis
+
+- Making `fsync()` a required success condition may not match the device VFS behavior.
+- Checking file size during `begin()` or while the file is still open may not match the device VFS behavior.
+- Either condition could make `begin()` fail and show `CSV: OPEN FAIL`.
+- Once `csvReady` is false, the bring-up app does not enter the QR path.
+
+### Minimal fix policy
+
+- Do not require `fsync()` for `begin()`, `append()`, or `stop()`.
+- Do not check file size during `begin()`.
+- Do not check file size while the CSV file is open.
+- Treat `begin()` as successful when folder preparation, `fopen`, header row write, start row write, and `fflush()` succeed.
+- Treat `append()` as successful when row write and `fflush()` succeed.
+- Treat `stop()` as successful when stop row write, `fflush()`, and `fclose()` succeed.
+- Before QR entry, force `SafeDisabled / target 0 / Low-Low`, write `stop`, and close the CSV.
+- Check file size only after close.
+- Do not pass 0 byte or stat-failed CSV files to the QR page.
+
+### Verification
+
+- `cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build`: pass.
+- `cmake --build /tmp/vameter_motor_observe_test_build`: pass.
+- `/tmp/vameter_motor_observe_test_build/motor_observe_state_test`: pass.
+- `ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure`: pass.
+- `cmake -S . -B build`: pass.
+- `cmake --build build -j8`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build`: pass.
+- `git diff --check`: pass.
+- ESP-IDF bring-up configure reported that the component registry connection could not be established and skipped dependency-change checks, but the build completed using available dependencies.
+
+### Remaining 未検証
+
+- startup shows `CSV: MO-xxx.csv` on actual hardware.
+- right-side switch enters QR page after the close/file-size guard.
+- downloaded `MO-*.csv` contains header, `event=start`, and `event=stop`.
+- returning from QR starts a new `MO-*.csv` session.
+- GPIO8/GPIO9 remain Low-Low during QR transition.
+
+## 2026-04-30 Motor Observe CSV begin diagnosis logs
+
+### Scope
+
+- Add diagnosis logs for Motor Observe bring-up startup and CSV begin failure analysis.
+- Do not add `fsync()`.
+- Do not add file size checks during `begin()`.
+- Do not add open-file `stat()` checks.
+- Do not change QR transition behavior, REC CSV format, launcher registration, assets, localization, GPIO10, Base relay, or PWM backend policy.
+
+### Added log points
+
+- Startup route:
+  - `motor observe autostart: enabled`
+  - `motor observe autostart: disabled`
+  - `startup next app: AppMotorObserveBringup`
+  - `startup next app: Launcher`
+- Motor Observe bring-up:
+  - `motor observe bringup onResume start`
+  - backend creation
+  - controller creation
+  - backend begin result
+  - reset to `SafeDisabled`
+  - CSV begin start/result
+  - CSV file name/path
+  - `csvReady`
+- CSV begin:
+  - record folder path
+  - `opendir()` result and errno/message on failure
+  - `mkdir()` result and errno/message on failure
+  - `find max session id` counts
+  - next session id
+  - file name/path
+  - `fopen()` result and errno/message on failure
+  - header write result
+  - start row write result
+  - begin success/failure reason
+- CSV write failure:
+  - label such as `header`, `start`, `sample`, or `stop`
+  - failing operation: `fputs`, `fputc`, or `fflush`
+  - errno and message
+
+### Verification
+
+- `cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build`: pass.
+- `cmake --build /tmp/vameter_motor_observe_test_build`: pass.
+- `/tmp/vameter_motor_observe_test_build/motor_observe_state_test`: pass.
+- `ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure`: pass.
+- `cmake -S . -B build`: pass.
+- `cmake --build build -j8`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build`: pass.
+- `git diff --check`: pass.
+- ESP-IDF configure reported that the component registry connection could not be established and skipped dependency-change checks, but both device builds completed using available dependencies.
+
+### Remaining 未検証
+
+- actual hardware log output after flashing `build_motor_observe_bringup`.
+- exact cause of the observed `CSV: OPEN FAIL`.
+- whether `/spiflash/rec` is missing, not writable, or rejected by `fopen()` on the device.
+
+## 2026-04-30 Motor Observe CSV storage EACCES diagnosis
+
+### Hardware finding before this change
+
+- Motor Observe bring-up autostart reached `AppMotorObserveBringup`.
+- backend begin succeeded and `_resetToSafeDisabled()` completed.
+- CSV begin reached `/spiflash/rec`.
+- `/spiflash/rec` `opendir()` succeeded.
+- `_findMaxSessionId()` succeeded:
+  - scanned: 14
+  - matched `MO-*.csv`: 4
+  - ignored: 10
+  - max session id: 3
+- next file was `MO-004.csv`.
+- `fopen("/spiflash/rec/MO-004.csv", "w")` failed with `errno=13`, `Permission denied`.
+
+### Added diagnostics
+
+- Added storage diagnostics on CSV `fopen()` failure.
+- Candidate file `stat()` is logged before `fopen()`.
+- `/spiflash/rec` directory diagnostics log:
+  - total entry count
+  - `MO-*.csv` count
+  - `REC-*.csv` count
+  - other count
+  - zero-byte file count
+  - stat-failed count
+  - total regular file size
+  - total `MO-*.csv` size
+  - total `REC-*.csv` size
+  - largest file top 5 by name and size
+- `statvfs()` diagnostics log `/spiflash` and `/spiflash/rec` when available:
+  - `f_bsize`
+  - `f_blocks`
+  - `f_bfree`
+  - `f_bavail`
+  - estimated total/free/available bytes
+- Probe create diagnostics run only on ESP hardware after CSV `fopen()` failure:
+  - `/spiflash/rec/MO-PROBE.tmp` with `w` and `wb`
+  - `/spiflash/rec/TEST.TXT` with `w` and `wb`
+  - `/spiflash/MO-PROBE.tmp` with `w` and `wb`
+- Each probe logs `fopen`, short write, `fflush`, `fclose`, close-after `stat()`, and probe-file `remove()` result.
+
+### Safety and non-destruction
+
+- No `fsync()` was added.
+- No begin-time file size success condition was added.
+- No open-file `stat()` success condition was added.
+- No filesystem format was added.
+- No `REC-*.csv` or `MO-*.csv` delete path was added.
+- Probe cleanup removes only the explicit probe files listed above.
+- PWM backend policy, GPIO10, Base relay, launcher registration, assets, and localization were not changed.
+
+### Verification
+
+- `cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build`: pass.
+- `cmake --build /tmp/vameter_motor_observe_test_build`: pass.
+- `/tmp/vameter_motor_observe_test_build/motor_observe_state_test`: pass.
+- `ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure`: pass.
+- `cmake -S . -B build`: pass.
+- `cmake --build build -j8`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build`: pass.
+- `. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build`: pass.
+- ESP-IDF configure reported that the component registry connection could not be established and skipped dependency-change checks, but both device builds completed using available dependencies.
+
+### Remaining 未検証
+
+- actual storage diagnostic log output on VAMeter hardware.
+- whether `/spiflash/rec` is full, has a file-count limitation, or rejects new files for another VFS/FAT reason.
+- whether probe create succeeds in `/spiflash/rec`.
+- whether probe create succeeds in `/spiflash`.
+- whether `w` and `wb` differ on the hardware VFS.
+
+## 2026-04-30 Motor Observe CSV storage recovery confirmation
+
+### Storage recovery result
+
+- After storage partition initialization, `/spiflash/rec` did not exist at startup and `mkdir("/spiflash/rec")` succeeded.
+- `MO-000.csv` creation succeeded:
+  - `fopen("/spiflash/rec/MO-000.csv", "w")`: success.
+  - header row write: success.
+  - start row write: success.
+  - CSV begin: success.
+  - `csvReady=1`.
+- Right-side switch transition to the QR download page succeeded.
+- Download path was requested:
+  - `download request: /download/MO-000.csv`
+  - file size: `48791` bytes.
+  - `download response sent, result: 0`.
+- After leaving the QR page, a new `MO-001.csv` session started successfully.
+
+### Downloaded CSV content check
+
+- Checked downloaded `MO-000.csv`.
+- CSV schema:
+  - 24 columns.
+  - `schema_version=motor_observe_csv_v0.1`.
+- Data rows: 242.
+- `event=start`: present.
+- `event=stop`: present.
+- `measurement_path_code=unknown`.
+- `voltage_v`, `current_a`, and `power_w` were `0` on all rows.
+- Forbidden output patterns were not present:
+  - `HIGH_HIGH`: absent.
+  - `PWM_HIGH`: absent.
+  - `HIGH_PWM`: absent.
+- `OutputArmed` rows:
+  - `physical_output_allowed=0`.
+  - `applied_target_percent=0`.
+  - `output_pattern=LOW_LOW`.
+- `OutputEnabled target 0` rows:
+  - `physical_output_allowed=1`.
+  - `applied_target_percent=0`.
+  - `output_pattern=LOW_LOW`.
+- `target=-10` rows used `output_pattern=GPIO9_LOW_GPIO8_PWM`.
+- `target=10` rows used `output_pattern=GPIO9_PWM_GPIO8_LOW`.
+- After return to `SafeDisabled`, the `stop` row used:
+  - `requested_target_percent=0`.
+  - `applied_target_percent=0`.
+  - `output_pattern=LOW_LOW`.
+
+### Remaining risks
+
+- Storage full condition or FAT/storage abnormality may recur.
+- The 100 ms sample interval is nominal / best effort; the actual CSV timestamps are not guaranteed to be exactly 100 ms apart.
+- Because `measurement_path_code=unknown`, V/I/P values must not be used for instructional judgment.
+- Measurement path, load behavior, stall behavior, and thermal behavior remain 未検証.
+- GPIO10 direct waveform remains 未確認.
+- Monitor message `device reports readiness to read but returned no data` remains under observation.
+
+### Safety and scope
+
+- This entry records post-recovery hardware behavior only.
+- No code change, automatic delete, automatic format, launcher registration, assets/localization change, GPIO10 use, Base relay use, or PWM backend policy change is associated with this log entry.

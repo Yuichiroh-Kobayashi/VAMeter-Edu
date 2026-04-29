@@ -55,8 +55,8 @@ namespace MOTOR_OBSERVE
         {
         public:
             bool begin(const Row& startRow);
-            void append(const Row& row);
-            void stop(const Row& stopRow);
+            bool append(const Row& row);
+            bool stop(const Row& stopRow);
             bool isOpen() const;
             const std::string& fileName() const;
             const std::string& filePath() const;
@@ -75,7 +75,13 @@ namespace MOTOR_OBSERVE
             static std::string _recordFolderPath();
             static std::string _createFileName(int sessionId);
             static std::string _createFilePath(const std::string& fileName);
-            void _writeLine(const std::string& line);
+            static void _logStorageDiagnostics(const std::string& candidateFilePath);
+            static void _logCandidateFileStat(const std::string& filePath);
+            static void _logRecordFolderDiagnostics();
+            static void _logStatvfsDiagnostics(const std::string& path);
+            static void _logProbeCreateDiagnostics();
+            static void _logSingleProbeCreate(const std::string& path, const char* mode);
+            bool _writeLine(const std::string& label, const std::string& line);
         };
     } // namespace CSV
 } // namespace MOTOR_OBSERVE

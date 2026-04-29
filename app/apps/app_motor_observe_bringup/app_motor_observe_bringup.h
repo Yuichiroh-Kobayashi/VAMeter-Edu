@@ -25,6 +25,15 @@ namespace MOONCAKE
                 Fault,
             };
 
+            enum class CsvStatus
+            {
+                Ready,
+                OpenFail,
+                WriteFail,
+                CloseFail,
+                Empty,
+            };
+
             struct Data_t
             {
                 MOTOR_OBSERVE::SafetyController safetyController;
@@ -35,6 +44,7 @@ namespace MOONCAKE
                 int targetPercent = 0;
                 bool backendReady = false;
                 bool csvReady = false;
+                CsvStatus csvStatus = CsvStatus::OpenFail;
                 bool hasLastCsvSample = false;
                 MOTOR_OBSERVE::SafetyState lastCsvSafetyState = MOTOR_OBSERVE::SafetyState::SafeDisabled;
                 int lastCsvRequestedTargetPercent = 0;
@@ -53,7 +63,7 @@ namespace MOONCAKE
             void _syncFaultState();
             void _handleInput();
             void _beginCsvSession(uint32_t nowMs);
-            void _stopCsvSession(uint32_t nowMs);
+            bool _stopCsvSession(uint32_t nowMs);
             void _openCsvDownloadQr();
             void _logCsvIfDue();
             MOTOR_OBSERVE::CSV::Row _createCsvRow(const char* event, uint32_t nowMs);
@@ -61,6 +71,7 @@ namespace MOONCAKE
             void _render();
             const char* _stateText() const;
             const char* _outputText() const;
+            const char* _csvStatusText() const;
 
         public:
             void onResume() override;

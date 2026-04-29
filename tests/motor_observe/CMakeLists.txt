@@ -18,5 +18,6 @@ target_include_directories(motor_observe_state_test PRIVATE
 )
 
 target_compile_features(motor_observe_state_test PRIVATE cxx_std_11)
+target_compile_definitions(motor_observe_state_test PRIVATE MOTOR_OBSERVE_CSV_DISABLE_SPDLOG=1)
 
 add_test(NAME motor_observe_state_test COMMAND motor_observe_state_test)

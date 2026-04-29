@@ -5,10 +5,15 @@
 #include "libs/motor_observe_csv/motor_observe_csv_logger.h"
 #include "libs/local_csv_download/local_csv_download_name.h"
 
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <limits.h>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 using MOTOR_OBSERVE::Backend;
@@ -73,6 +78,14 @@ namespace
         while (std::getline(stream, field, ','))
             fields.push_back(field);
         return fields;
+    }
+
+    std::string readWholeFile(const std::string& filePath)
+    {
+        std::ifstream input(filePath.c_str());
+        std::stringstream buffer;
+        buffer << input.rdbuf();
+        return buffer.str();
     }
 
     void testSafetyController()
@@ -397,6 +410,75 @@ namespace
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-00/0.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("MO-00\\0.csv"));
     }
+
+    void testFileLoggerWritesStartAndStopRows()
+    {
+        char originalDir[PATH_MAX];
+        CHECK(getcwd(originalDir, sizeof(originalDir)) != nullptr);
+
+        char tempDir[] = "/tmp/vameter_mo_csv_test_XXXXXX";
+        CHECK(mkdtemp(tempDir) != nullptr);
+        CHECK(chdir(tempDir) == 0);
+
+        MOTOR_OBSERVE::CSV::FileLogger logger;
+        MOTOR_OBSERVE::CSV::Row startRow;
+        startRow.event = "start";
+        startRow.safetyState = SafetyState::SafeDisabled;
+        startRow.measurementPathCode = "unknown";
+        startRow.voltageSemantics = "unknown";
+        startRow.currentSemantics = "unknown";
+        startRow.powerSemantics = "unknown";
+        startRow.physicalBackendAvailable = true;
+
+        CHECK(logger.begin(startRow));
+        CHECK(logger.isOpen());
+        CHECK(logger.fileName() == "MO-000.csv");
+        CHECK(logger.append(startRow));
+
+        MOTOR_OBSERVE::CSV::Row stopRow = startRow;
+        stopRow.event = "stop";
+        CHECK(logger.stop(stopRow));
+        CHECK(!logger.isOpen());
+
+        struct stat fileStat;
+        CHECK(stat("MO-000.csv", &fileStat) == 0);
+        CHECK(fileStat.st_size > 0);
+
+        const std::string fileContent = readWholeFile("MO-000.csv");
+        CHECK(fileContent.find(MOTOR_OBSERVE::CSV::headerLine()) != std::string::npos);
+        CHECK(fileContent.find(",start,SafeDisabled,") != std::string::npos);
+        CHECK(fileContent.find(",stop,SafeDisabled,") != std::string::npos);
+
+        CHECK(chdir(originalDir) == 0);
+        CHECK(std::remove(std::string(std::string(tempDir) + "/MO-000.csv").c_str()) == 0);
+        CHECK(rmdir(tempDir) == 0);
+    }
+
+    void testClosedRecordFileDownloadReadiness()
+    {
+        char nonEmptyPath[] = "/tmp/vameter_mo_nonempty_XXXXXX";
+        int nonEmptyFd = mkstemp(nonEmptyPath);
+        CHECK(nonEmptyFd >= 0);
+        CHECK(write(nonEmptyFd, "x", 1) == 1);
+        CHECK(close(nonEmptyFd) == 0);
+
+        char emptyPath[] = "/tmp/vameter_mo_empty_XXXXXX";
+        int emptyFd = mkstemp(emptyPath);
+        CHECK(emptyFd >= 0);
+        CHECK(close(emptyFd) == 0);
+
+        CHECK(LOCAL_CSV_DOWNLOAD::CheckClosedRecordFileForDownload("MO-000.csv", nonEmptyPath) ==
+              LOCAL_CSV_DOWNLOAD::RecordFileStatus::Ready);
+        CHECK(LOCAL_CSV_DOWNLOAD::CheckClosedRecordFileForDownload("MO-000.csv", emptyPath) ==
+              LOCAL_CSV_DOWNLOAD::RecordFileStatus::Empty);
+        CHECK(LOCAL_CSV_DOWNLOAD::CheckClosedRecordFileForDownload("../MO-000.csv", nonEmptyPath) ==
+              LOCAL_CSV_DOWNLOAD::RecordFileStatus::InvalidName);
+        CHECK(LOCAL_CSV_DOWNLOAD::CheckClosedRecordFileForDownload("MO-000.csv", "/tmp/vameter_missing_mo_file.csv") ==
+              LOCAL_CSV_DOWNLOAD::RecordFileStatus::StatFailed);
+
+        CHECK(std::remove(nonEmptyPath) == 0);
+        CHECK(std::remove(emptyPath) == 0);
+    }
 } // namespace
 
 int main()
@@ -408,6 +490,8 @@ int main()
     testBrakeStopCsvState();
     testStopRowCsvState();
     testLocalCsvDownloadRecordNameAllowlist();
+    testFileLoggerWritesStartAndStopRows();
+    testClosedRecordFileDownloadReadiness();
 
     if (g_failureCount != 0)
     {
