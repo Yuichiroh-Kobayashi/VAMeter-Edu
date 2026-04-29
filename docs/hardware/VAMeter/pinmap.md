@@ -38,3 +38,16 @@ Do not introduce new GPIO use without checking:
 4. hardware test log
 
 If not verified, mark `未検証`.
+
+## Code-name alignment
+
+Use code-aligned names when discussing Base Grove pins:
+
+| Code name | GPIO | Physical note |
+|---|---:|---|
+| `HAL_PIN_BASE_GROVE_IOA` | GPIO9 | Port.A C9 / White candidate |
+| `HAL_PIN_BASE_GROVE_IOB` | GPIO8 | Port.A C8 / Yellow candidate |
+| `HAL_PIN_BASE_RELAY_CTRL` | GPIO10 | Base relay control / G10_REL risk |
+
+Avoid ambiguous names such as `Port.A signal 1` and `Port.A signal 2`.
+Use `C9(White)` and `C8(Yellow)` when referring to the observed connector pins.

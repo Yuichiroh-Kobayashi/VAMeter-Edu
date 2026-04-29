@@ -61,3 +61,13 @@ If generated headers or binary assets are updated, summarize:
 - verification status
 
 Generated assets must be treated as drafts until human review is recorded.
+
+## Font / localization caution
+
+When changing UI text:
+
+- Do not assume Japanese glyphs are available.
+- If Japanese text is added, verify font subset coverage.
+- Bring-up UI should use ASCII or English-first text unless font coverage is verified.
+- Do not add or regenerate font assets without explicit request.
+- Do not add localization entries for development-only bring-up UI unless explicitly requested.

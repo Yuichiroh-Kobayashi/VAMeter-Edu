@@ -91,6 +91,27 @@ Initial Motor Observe Mode should be limited to:
 - no hand-stall tests
 - no claim of torque control
 
+## VAMeter-Edu initial PWM policy
+
+For VAMeter-Edu Motor Observe initial implementation:
+
+| State / target | M1A candidate | M1B candidate | Notes |
+|---|---|---|---|
+| SafeDisabled | Low | Low | Brake-side safe state |
+| OutputArmed | Low | Low | No PWM output |
+| Fault / timeout / leaveMode | Low | Low | Best-effort safe output |
+| target = 0 | Low | Low | Brake-side stop |
+| target > 0 | PWM | Low | Forward candidate |
+| target < 0 | Low | PWM | Reverse candidate |
+
+Do not use:
+
+- High/High coast
+- PWM/High
+- High/PWM
+
+`PWM/High` and `High/PWM` are not equivalent to normal forward/reverse PWM. They can alternate between coast and the opposite drive state depending on the PWM phase. Do not implement them without a separate design review.
+
 ## Unverified
 
 - Exact VAMeter Base Port.A signal names and GPIO mapping for Motor Observe Mode.

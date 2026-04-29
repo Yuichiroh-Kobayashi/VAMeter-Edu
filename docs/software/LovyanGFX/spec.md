@@ -56,6 +56,18 @@ LovyanGFX is a display graphics library for:
 
 LovyanGFX should only receive values prepared for display.
 
+## Font and glyph coverage rule
+
+VAMeter-Edu display text depends on registered fonts and glyph subsets.
+
+Rules:
+
+- Do not assume Japanese text will render correctly.
+- If UI text includes Japanese, verify glyph coverage in desktop build and device build.
+- Bring-up UI should prefer ASCII / English text unless Japanese font coverage is explicitly verified.
+- If tofu boxes such as `□` appear, treat it as a font coverage issue, not a logic error.
+- Do not expand font subsets casually; font changes affect binary size and must be reviewed separately.
+
 ## Unverified in VAMeter-Edu
 
 - Exact LovyanGFX configuration used by VAMeter-Edu.

@@ -26,6 +26,17 @@ The relay must not be used as a safety claim until the exact affected nets and f
 GPIO10 is also listed as `EXT_G10` in the VAMeter expansion pin map.
 Do not assign GPIO10 to another purpose unless the Base relay interaction has been checked and recorded.
 
+## Motor Observe caution
+
+Motor Observe must not use the Base relay as a safety disconnect.
+
+Rules:
+
+- Do not use `HAL::SetBaseRelay()` for Motor Observe safety.
+- Do not assume GPIO10 disconnects GPIO8/GPIO9, USB-C, or all measurement paths.
+- GPIO10 / G10_REL / EXT_G10 must be treated as relay-related and excluded from Motor Observe PWM candidates.
+- If a future design requires relay interaction, create a separate design review before implementation.
+
 ## Future current-limit cutoff
 
 If current-limit cutoff is implemented later:

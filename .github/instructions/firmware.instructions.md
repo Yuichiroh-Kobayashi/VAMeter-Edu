@@ -143,3 +143,27 @@ If verification is not performed, write `未検証` or `未確認` explicitly.
 - Do not mix generated asset changes with logic changes unless necessary.
 - Do not implement future work unless explicitly requested.
 - Do not document future work as implemented.
+
+## Motor Observe active-output rule
+
+If a task touches Motor Observe, PWM, GPIO8/GPIO9/GPIO10, Port.A, MAKER-DRIVE, motor output, or bring-up UI:
+
+Read first:
+
+- `docs/architecture/motor_observe_pwm_backend_design.md`
+- `docs/hardware/MAKER_DRIVE/spec.md`
+- `docs/hardware/MAKER_DRIVE/interface_port_a_1ch.md`
+- `docs/hardware/VAMeter/pinmap.md`
+- `docs/hardware/VAMeter_Base/relay_control.md`
+- `docs/operations/port_a_verification_plan.md`
+- `docs/operations/safety_test_log.md`
+
+Hard rules:
+
+- Do not bypass `SafetyController` or `BackendController`.
+- Do not use GPIO10 for Motor Observe PWM.
+- Do not use Base relay as a safety disconnect.
+- Do not implement High/High coast without a separate review.
+- Do not implement PWM/High or High/PWM.
+- Do not connect MAKER-DRIVE or motor in code assumptions.
+- UI work must run host-side test, desktop build, and device build.

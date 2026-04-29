@@ -74,6 +74,25 @@ VAMeter-Edu must keep these separate:
 
 Do not use animated display state as the source for measurement, calibration, or CSV recording.
 
+## Bring-up UI rule
+
+Bring-up UI must stay simple.
+
+Rules:
+
+- Do not depend on animation timing for safety.
+- Do not hide safety-critical state behind transitions.
+- Always show the current state and target.
+- Always show whether the feature is bring-up only.
+- For Motor Observe, display at least:
+  - state
+  - target percent
+  - output pattern
+  - MAKER-DRIVE not connected
+  - motor not connected
+  - GPIO10 not used
+  - Base relay not used
+
 ## Unverified in VAMeter-Edu
 
 - Exact smooth_ui_toolkit components used by each app.

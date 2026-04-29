@@ -13,6 +13,21 @@
 - GPIO10はPWM候補にしない。
 - firmware runtimeは変更しない。
 
+## Current implementation note
+
+As of the Motor Observe bring-up work, an initial device-only PWM backend and no-motor bring-up UI exist.
+
+This document remains the design review and safety constraint source for:
+
+- current initial PWM backend behavior
+- future PWM backend changes
+- bring-up UI changes
+- MAKER-DRIVE connection review
+- motor connection review
+
+Do not read older `future PWM backend` wording as permission to ignore the current implementation.
+When changing existing Motor Observe PWM behavior, treat this document as active constraints.
+
 ## Confirmed facts from Port.A verification
 
 根拠: `docs/operations/port_a_verification_plan.md` の `Verification Record 2026-04-29`。
@@ -42,6 +57,8 @@ M1A / M1B の極性は、この文書では最終断定しない。
 GPIO10は relay 系として扱い、Motor Observe PWM候補から除外する。Base relayを安全遮断として使う設計にしてはならない。
 
 ## Backend architecture
+
+In this document, `future PWM backend` includes the current initial PWM backend and any later extension unless explicitly distinguished.
 
 Motor Observe の物理出力は、既存の no-output 構造を迂回しない。
 
@@ -205,3 +222,42 @@ Motor Observe PWM backend は、GPIO8 / GPIO9 を将来 output として使う�
 - モータ未接続のPWM backend実装前レビューに進む。
 - そのレビューで、device固有実装をHAL側に置く場合の依存方向、初期化順、GPIO所有権、測定手順を確定する。
 - 実装へ進む場合も、最初は MAKER-DRIVE / モータ未接続の最小PWM backendに限定する。
+
+## Motor input policy for initial implementation
+
+Initial Motor Observe PWM backend uses MAKER-DRIVE compatible PWM_PWM style.
+
+- SafeDisabled / OutputArmed / Fault / timeout / leaveMode / target 0: Low/Low
+- target > 0: GPIO9 candidate PWM / GPIO8 candidate Low
+- target < 0: GPIO9 candidate Low / GPIO8 candidate PWM
+- High/High coast: not implemented
+- PWM/High and High/PWM: not implemented
+
+Reason:
+
+- Low/Low is treated as brake by MAKER-DRIVE truth table.
+- For initial no-motor verification, brake-side behavior is acceptable.
+- Coast behavior must not be introduced without separate safety review.
+
+## Bring-up UI implementation rule
+
+Motor Observe bring-up UI is a development-only UI for no-motor waveform verification.
+
+Rules:
+
+- Do not register it in the normal launcher.
+- Do not add app icons for bring-up only.
+- Do not add localization or assets unless explicitly requested.
+- Default build must keep the normal StartupAnim -> Launcher flow.
+- Bring-up UI may be opened only when an explicit development flag is enabled.
+- Recommended flag: `MOTOR_OBSERVE_BRINGUP_AUTOSTART`.
+- Do not enable the flag for classroom release builds.
+
+When UI code changes:
+
+- run host-side Motor Observe tests
+- run desktop build
+- run desktop runtime smoke test
+- run device build
+
+Desktop runtime may not fully validate GPIO/PWM, but it is required to catch UI, lifecycle, include, and device-dependency leakage errors.

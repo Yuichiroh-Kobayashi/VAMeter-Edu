@@ -65,15 +65,16 @@ Motor power uses a separate power path:
 
 Use MAKER-DRIVE channel 1:
 
-| Function           | MAKER-DRIVE | VAMeter-Edu side                           | Status |
-| ------------------ | ----------- | ------------------------------------------ | ------ |
-| Forward PWM input  | M1A         | VAMeter Base Port.A signal 1               | 未検証 |
-| Backward PWM input | M1B         | VAMeter Base Port.A signal 2               | 未検証 |
-| Logic reference    | GND         | VAMeter Base / system GND                  | 未検証 |
-| Motor supply +     | VB+         | external or future protected supply        | 未検証 |
-| Motor supply -     | VB-         | external or future protected supply return | 未検証 |
+| Function | MAKER-DRIVE | VAMeter-Edu side | Status |
+|---|---|---|---|
+| Forward PWM input candidate | M1A | Port.A C9(White) / `HAL_PIN_BASE_GROVE_IOA` / GPIO9 | 条件付き候補 |
+| Backward PWM input candidate | M1B | Port.A C8(Yellow) / `HAL_PIN_BASE_GROVE_IOB` / GPIO8 | 条件付き候補 |
+| Logic reference | GND | VAMeter Base / system GND | 未検証 |
+| Motor supply + | VB+ | external or future protected supply | 未検証 |
+| Motor supply - | VB- | external or future protected supply return | 未検証 |
 
-Do not assign final GPIO names in this document until the VAMeter Base Port.A schematic and firmware pin assignment are verified.
+Do not use ambiguous names such as `Port.A signal 1` or `Port.A signal 2`.
+Use `C9(White)` and `C8(Yellow)` when referring to the observed connector pins.
 
 ## PWM_PWM behavior
 
@@ -143,3 +144,19 @@ Before connecting a motor:
 9. Record results in docs/operations/safety_test_log.md.
 
 If not verified, write `未検証`.
+
+## Verified Port.A candidate mapping
+
+Based on `docs/operations/port_a_verification_plan.md` Verification Record 2026-04-29:
+
+| VAMeter Base Port.A | Code name | GPIO | Motor Observe candidate |
+|---|---|---:|---|
+| C9 / White | `HAL_PIN_BASE_GROVE_IOA` | GPIO9 | M1A candidate |
+| C8 / Yellow | `HAL_PIN_BASE_GROVE_IOB` | GPIO8 | M1B candidate |
+| G10 / Relay-related | `HAL_PIN_BASE_RELAY_CTRL` | GPIO10 | Do not use |
+
+Caution:
+
+- GPIO8/GPIO9 are still conditional candidates until no-motor waveform verification passes.
+- GPIO10 must not be used for Motor Observe PWM.
+- Base relay must not be treated as a safety disconnect.

@@ -86,10 +86,32 @@ idf.py build
 Typical flash command:
 
 ```bash
-idf.py -p <YourPort> flash -b 1500000
+idf.py -p /dev/<YourPort> flash -b 1500000
+```
+
+Example:
+
+```bash
+idf.py -p /dev/ttyACM0 flash -b 1500000
 ```
 
 If AssetPool is flashed, record the exact command and input file path.
+
+## WSL2 / usbipd / ESP-IDF flash rule
+
+When writing or changing VAMeter-Edu flash instructions for Windows + WSL2 + usbipd, refer to:
+
+- `docs/operations/wsl_usbipd_flash_guide.md`
+
+Rules:
+
+- In WSL, specify serial ports as `/dev/ttyACM0` or `/dev/ttyUSB0`.
+- Do not write `ttyACM0` without `/dev/`.
+- Windows COM numbers and WSL device paths are different.
+- BUSID may change after reconnecting USB.
+- If `Could not open ttyACM0` appears, first check whether `/dev/` is missing.
+- For Motor Observe bring-up, confirm MAKER-DRIVE and motor are not connected before flashing.
+- Do not enable `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1` for classroom release builds.
 
 ## Prohibited content
 
