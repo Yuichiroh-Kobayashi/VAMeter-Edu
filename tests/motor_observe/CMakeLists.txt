@@ -9,6 +9,7 @@ add_executable(motor_observe_state_test
     motor_observe_state_test.cpp
     "${REPO_ROOT}/app/libs/motor_observe_safety/motor_observe_safety.cpp"
     "${REPO_ROOT}/app/libs/motor_observe_backend/motor_observe_backend.cpp"
+    "${REPO_ROOT}/app/libs/motor_observe_csv/motor_observe_csv_logger.cpp"
 )
 
 target_include_directories(motor_observe_state_test PRIVATE

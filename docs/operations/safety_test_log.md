@@ -649,6 +649,176 @@ rg -n "SetBaseRelay|CytronMD|PWM_PWM|ledcWrite|analogWrite|gpio_set_level" app/a
 
 - 
 
+## 2026-04-29 Motor Observe development CSV logger
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 08ad4cc-dirty
+
+### Read files
+
+- `README.md`
+- `CHANGELOG.md`
+- `AGENTS.md`
+- `.github/copilot-instructions.md`
+- `.github/instructions/firmware.instructions.md`
+- `.github/instructions/docs.instructions.md`
+- `.github/instructions/operations.instructions.md`
+- `docs/canon/minimum_constraints.md`
+- `docs/standards/measurement_safety_policy.md`
+- `docs/standards/coding_standard.md`
+- `docs/standards/naming_units.md`
+- `docs/standards/review_checklist.md`
+- `docs/architecture/app_map.md`
+- `docs/architecture/measurement_state_machine.md`
+- `docs/architecture/probe_mode_matrix.md`
+- `docs/architecture/motor_observe_pwm_backend_design.md`
+- `docs/hardware/VAMeter/measurement_path.md`
+- `docs/hardware/MAKER_DRIVE/interface_port_a_1ch.md`
+- `docs/operations/motor_observe_low_voltage_motor_test_plan.md`
+- `docs/operations/safety_test_log.md`
+- Motor Observe implementation files under `app/apps/app_motor_observe_bringup/`, `app/libs/motor_observe_safety/`, `app/libs/motor_observe_backend/`, `platforms/vameter/main/hal_vameter/components/motor_observe_pwm_backend.*`
+- Existing waveform CSV / local download implementation files under `platforms/vameter/main/hal_vameter/components/hal_fs.cpp`, `hal_va_recorder.cpp`, `hal_web_server.cpp`, `app/apps/app_waveform/`, and `app/apps/app_files/`
+
+### Target behavior
+
+- Add Motor Observe dedicated development CSV logging.
+- Keep existing waveform `REC-*.csv` format unchanged.
+- Use `MO-000.csv`, `MO-001.csv`, ... for Motor Observe logs.
+- Record safety state, requested target, applied target, output pattern, measurement path code, V/I/P values, and notes.
+- Do not add launcher registration.
+- Do not add assets or localization.
+- Do not use GPIO10.
+- Do not use Base relay as a safety disconnect.
+- Do not implement High/High coast, PWM/High, or High/PWM.
+
+### CSV specification
+
+- schema: `motor_observe_csv_v0.1`
+- sample interval: 100 ms / 10 Hz
+- start: bring-up app `onResume()`
+- stop: bring-up app `onDestroy()`
+- measurement values: HAL numeric power-monitor data
+- default `measurement_path_code`: `unknown`
+- default semantics: `unknown`
+- note: `measurement_path_unknown_not_for_classroom_use`
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build
+. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build
+cmake -S . -B build
+cmake --build build -j8
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- device build: pass
+- device bring-up build with `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`: pass
+- desktop build: pass
+- registry notice during ESP-IDF configure: component registry connection unavailable, dependency change check skipped; build continued using available dependencies
+- device runtime CSV creation: 未検証
+
+### Remaining 未確認
+
+- exact commit after implementation
+- Motor Observe CSV file visibility in local QR download workflow
+- whether `MO-*.csv` should be hidden from normal record-file viewer later
+
+### Remaining 未検証
+
+- device runtime CSV file creation
+- Motor Observe CSV contents on actual VAMeter hardware
+- GPIO8/GPIO9 waveform while CSV logging is active
+- GPIO10 direct waveform while CSV logging is active
+- MAKER-DRIVE / motor operation while CSV logging is active
+- Motor Observe measurement path
+
+### Rollback condition
+
+- existing waveform CSV header or reader changes are required
+- CSV logging changes PWM or safety behavior
+- `OutputArmed` logs or applies non-zero output
+- Fault / timeout / leaveMode does not return to Low-Low
+- GPIO10 or Base relay becomes part of Motor Observe logging or safety behavior
+- launcher registration, assets, or localization are needed
+
+## 2026-04-29 Motor Observe brake stop CSV state alignment
+
+### Date
+
+2026-04-29
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 08ad4cc-dirty
+
+### Target behavior
+
+- Fix brake stop state mismatch risk.
+- Brake stop returns UI and controller state to `SafeDisabled`.
+- Brake stop CSV state is `SafeDisabled / requested 0 / applied 0 / LOW_LOW`.
+- Brake stop CSV `physical_output_allowed` is `0`.
+- `onDestroy()` writes the `stop` row after forcing requested target 0, applied target 0, and Low-Low.
+- Existing waveform `REC-*.csv` format remains unchanged.
+- GPIO10 unused.
+- Base relay unused.
+- High/High coast, PWM/High, High/PWM remain unimplemented.
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py build
+. $HOME/esp/esp-idf/export.sh && cd platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build
+cmake -S . -B build
+cmake --build build -j8
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass
+- CTest execution: pass, 1/1 tests passed
+- device normal build: pass
+- device bring-up build with `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`: pass
+- desktop build: pass
+- ESP-IDF configure note: component registry connection unavailable notice occurred during bring-up build configure; build continued using available dependencies
+- device runtime CSV creation: 未検証
+
+### Remaining 未検証
+
+- device runtime CSV creation.
+- actual brake stop CSV row on hardware.
+- actual `stop` row on hardware.
+- GPIO8/GPIO9 waveform while CSV logging is active.
+- GPIO10 direct waveform while CSV logging is active.
+
+### Rollback condition
+
+- brake stop leaves `physical_output_allowed=1`.
+- brake stop leaves non-zero `applied_target_percent`.
+- `stop` row contains previous non-zero requested target.
+- CSV logging changes PWM or safety behavior.
+- GPIO10 or Base relay becomes part of Motor Observe logging or safety behavior.
+
 ## Motor Observe bring-up waveform check - initial armed state
 
 - Date: 2026-04-29

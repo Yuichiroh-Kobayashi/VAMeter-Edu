@@ -261,3 +261,29 @@ When UI code changes:
 - run device build
 
 Desktop runtime may not fully validate GPIO/PWM, but it is required to catch UI, lifecycle, include, and device-dependency leakage errors.
+
+## Development CSV logging
+
+Motor Observe bring-up app may write a development-only CSV log for safety and measurement-path review.
+
+Rules:
+
+- Use a Motor Observe dedicated schema: `motor_observe_csv_v0.1`.
+- Use Motor Observe dedicated file names such as `MO-000.csv`.
+- Do not add Motor Observe columns to existing waveform `REC-*.csv`.
+- Do not change existing waveform CSV headers or reader behavior.
+- Record `requested_target_percent` and `applied_target_percent` separately.
+- Derive `output_pattern` from the applied target, not from UI text.
+- Use HAL/internal numeric measurement values, not display strings.
+- Default `measurement_path_code` to `unknown` until wiring is explicitly recorded.
+- If `measurement_path_code=unknown`, do not use V/I/P values for classroom or教材判断.
+- Do not record `HIGH_HIGH`, `PWM_HIGH`, or `HIGH_PWM`.
+- Do not use GPIO10 or Base relay for CSV logging.
+- In the initial development build, brake stop returns to `SafeDisabled`.
+- Stop / leaveMode / app close must not leave physical output allowed.
+
+Initial sampling interval:
+
+- 100 ms / 10 Hz.
+- PWM instantaneous waveform is not captured by this CSV.
+- Use an oscilloscope or logic analyzer for PWM waveform verification.

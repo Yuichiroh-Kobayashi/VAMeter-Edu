@@ -22,6 +22,7 @@ using namespace SYSTEM::INPUTS;
 namespace
 {
     constexpr int kTargetStepPercent = 10;
+    constexpr uint32_t kCsvSampleIntervalMs = MOTOR_OBSERVE::CSV::kDefaultSampleIntervalMs;
 
     std::unique_ptr<MOTOR_OBSERVE::Backend> createMotorObserveBackend()
     {
@@ -39,6 +40,10 @@ void AppMotorObserveBringup::onResume()
     _data.controller.reset(new MOTOR_OBSERVE::BackendController(_data.safetyController, *_data.backend));
     _data.backendReady = _data.controller->begin();
     _resetToSafeDisabled();
+    _data.csvStartMs = HAL::Millis();
+    _data.lastCsvSampleMs = _data.csvStartMs;
+    _data.hasLastCsvSample = false;
+    _data.csvReady = _data.csvLogger.begin(_createCsvRow("start", _data.csvStartMs));
     Encoder::Reset();
 }
 
@@ -51,6 +56,7 @@ void AppMotorObserveBringup::onRunning()
     _syncFaultState();
     _handleInput();
     _syncFaultState();
+    _logCsvIfDue();
     _render();
     HAL::CanvasUpdate();
     HAL::Delay(50);
@@ -58,8 +64,10 @@ void AppMotorObserveBringup::onRunning()
 
 void AppMotorObserveBringup::onDestroy()
 {
-    if (_data.controller)
-        _data.controller->leaveMode();
+    _resetToSafeDisabled();
+
+    if (_data.csvLogger.isOpen())
+        _data.csvLogger.stop(_createCsvRow("stop", HAL::Millis()));
 
     _data.controller.reset();
     _data.backend.reset();
@@ -111,7 +119,9 @@ void AppMotorObserveBringup::_brakeStop()
     _data.targetPercent = 0;
     _data.controller->setTargetPercent(0);
     _data.controller->update();
-    _data.uiState = BringupState::OutputArmed;
+    _data.controller->disableOutput();
+    _data.controller->update();
+    _data.uiState = BringupState::SafeDisabled;
 }
 
 void AppMotorObserveBringup::_clearFault()
@@ -184,6 +194,82 @@ void AppMotorObserveBringup::_handleInput()
         _applyTargetPercent(_data.targetPercent - kTargetStepPercent);
 }
 
+void AppMotorObserveBringup::_logCsvIfDue()
+{
+    if (!_data.csvReady || !_data.csvLogger.isOpen())
+        return;
+
+    const uint32_t nowMs = HAL::Millis();
+    if (nowMs - _data.lastCsvSampleMs < kCsvSampleIntervalMs)
+        return;
+
+    _data.lastCsvSampleMs = nowMs;
+    _data.csvLogger.append(_createCsvRow(_detectCsvEvent(), nowMs));
+}
+
+MOTOR_OBSERVE::CSV::Row AppMotorObserveBringup::_createCsvRow(const char* event, uint32_t nowMs)
+{
+    MOTOR_OBSERVE::CSV::Row row;
+    row.elapsedMs = nowMs - _data.csvStartMs;
+    row.event = event;
+    row.note = "measurement_path_unknown_not_for_classroom_use";
+
+    if (_data.controller)
+    {
+        row.safetyState = _data.controller->getState();
+        row.physicalOutputAllowed = _data.controller->isPhysicalOutputAllowed();
+        row.requestedTargetPercent = _data.targetPercent;
+        row.appliedTargetPercent = _data.controller->getLastAppliedTargetPercent();
+    }
+
+#if defined(ESP_PLATFORM)
+    row.physicalBackendAvailable = true;
+#else
+    row.physicalBackendAvailable = false;
+#endif
+
+    HAL::UpdatePowerMonitor();
+    const auto& pmData = HAL::GetPowerMonitorData();
+    row.measurement.voltageV = pmData.busVoltage;
+    row.measurement.currentA = pmData.shuntCurrent;
+    row.measurement.powerW = pmData.busPower;
+    row.measurementPathCode = "unknown";
+    row.voltageSemantics = "unknown";
+    row.currentSemantics = "unknown";
+    row.powerSemantics = "unknown";
+    row.powerSource = "hal";
+    row.pwmWaveformCaptured = false;
+    row.abnormalFlag = _data.controller && _data.controller->hasFault();
+
+    return row;
+}
+
+const char* AppMotorObserveBringup::_detectCsvEvent()
+{
+    if (!_data.controller)
+        return "sample";
+
+    const MOTOR_OBSERVE::SafetyState currentState = _data.controller->getState();
+    const int currentRequestedTargetPercent = _data.targetPercent;
+    const int currentAppliedTargetPercent = _data.controller->getLastAppliedTargetPercent();
+
+    const char* event = "sample";
+    if (_data.controller->hasFault())
+        event = "fault";
+    else if (!_data.hasLastCsvSample || currentState != _data.lastCsvSafetyState)
+        event = "state_change";
+    else if (currentRequestedTargetPercent != _data.lastCsvRequestedTargetPercent ||
+             currentAppliedTargetPercent != _data.lastCsvAppliedTargetPercent)
+        event = "target_change";
+
+    _data.hasLastCsvSample = true;
+    _data.lastCsvSafetyState = currentState;
+    _data.lastCsvRequestedTargetPercent = currentRequestedTargetPercent;
+    _data.lastCsvAppliedTargetPercent = currentAppliedTargetPercent;
+
+    return event;
+}
+
 void AppMotorObserveBringup::_render()
 {
     auto* canvas = HAL::GetCanvas();
@@ -217,6 +303,11 @@ void AppMotorObserveBringup::_render()
     drawLine("GPIO8: M1B candidate");
     drawLine("GPIO10: NOT USED");
     drawLine("Base relay: NOT USED");
+    std::snprintf(lineBuffer,
+                  sizeof(lineBuffer),
+                  "CSV: %s",
+                  _data.csvReady ? _data.csvLogger.fileName().c_str() : "OPEN FAIL");
+    drawLine(lineBuffer);
 
     if (!_data.backendReady)
     {

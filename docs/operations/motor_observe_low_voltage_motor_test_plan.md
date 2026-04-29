@@ -46,7 +46,7 @@
 | target +30%程度 | 回転 | pass / fail / 未検証 |
 | target -10% | 逆方向または反対入力側回転 | pass / fail / 未検証 |
 | direction change | 異常なく方向が変わる | pass / fail / 未検証 |
-| brake停止 | target 0 / Low-Lowで停止 | pass / fail / 未検証 |
+| brake停止 | SafeDisabled / requested target 0 / applied target 0 / Low-Lowで停止 | pass / fail / 未検証 |
 | 電源電圧 | 極端に落ちない | measuredVoltageV / 未検証 |
 | 可能なら電源電流 | 過大でない | measuredCurrentA / 未検証 |
 | VAMeter表示値 | 測定経路と意味を説明できる | displayedVoltageV / displayedCurrentA / displayedPowerW / 未確認 |
@@ -67,6 +67,7 @@
 
 測定配線を説明できない場合、VAMeter表示値は`未確認`として記録する。
 ハードウェア挙動を確認していない場合は`未検証`として記録する。
+Motor Observe開発用CSVで`measurement_path_code=unknown`が出ている場合、そのV/I/P値を教材用判断に使ってはいけない。
 
 ### Direct VAMeter connection note
 
@@ -80,6 +81,108 @@ Record whether VAMeter is connected to:
 - another explicitly drawn path
 
 Do not record VAMeter values without the wiring description.
+
+## Motor Observe development CSV
+
+Motor Observe bring-up appは、開発用CSVを専用ファイルとして記録する。
+これは授業用UIではない。
+既存waveform CSVの列構造、保存形式、UIは変更しない。
+
+### ファイル名
+
+- device build: `/spiflash/rec/MO-000.csv`、`/spiflash/rec/MO-001.csv` のように保存する。
+- desktop build: 実行ディレクトリに `MO-000.csv`、`MO-001.csv` のように保存する。
+- 既存waveform CSVの `REC-*.csv` とは接頭辞で区別する。
+
+### 記録開始・停止
+
+- bring-up appの`onResume()`で自動的に記録開始する。
+- bring-up appの`onDestroy()`で`stop`行を出して記録停止する。
+- 通常launcher登録はしない。
+- assets / localizationは追加しない。
+
+### サンプリング周期
+
+- 初期値: 100 ms、10 Hz。
+- PWM瞬時波形は記録しない。
+- PWM瞬時波形の確認はオシロスコープまたはロジックアナライザで行う。
+
+### CSV仕様
+
+- schema: `motor_observe_csv_v0.1`
+- columns:
+  - `schema_version`
+  - `session_id`
+  - `sample_index`
+  - `t_ms`
+  - `t_s`
+  - `event`
+  - `safety_state`
+  - `physical_output_allowed`
+  - `requested_target_percent`
+  - `applied_target_percent`
+  - `output_pattern`
+  - `gpio9_duty_percent`
+  - `gpio8_duty_percent`
+  - `measurement_path_code`
+  - `voltage_semantics`
+  - `current_semantics`
+  - `power_semantics`
+  - `voltage_v`
+  - `current_a`
+  - `power_w`
+  - `power_source`
+  - `pwm_waveform_captured`
+  - `abnormal_flag`
+  - `note`
+
+### 初期値と注意
+
+- `measurement_path_code`: `unknown`
+- `voltage_semantics`: `unknown`
+- `current_semantics`: `unknown`
+- `power_semantics`: `unknown`
+- `power_source`: `hal`
+- `pwm_waveform_captured`: `0`
+- note: `measurement_path_unknown_not_for_classroom_use`
+
+`current_a`は、測定配線が確定するまでmotor winding currentとみなしてはいけない。
+`voltage_v`、`current_a`、`power_w`はHALの数値データから記録する。
+UI表示文字列はCSVへ使わない。
+
+### output_pattern
+
+| 条件 | output_pattern | GPIO9 duty | GPIO8 duty |
+|---|---|---:|---:|
+| physical backendなし | `NOT_APPLICABLE` | 0 | 0 |
+| applied target = 0 | `LOW_LOW` | 0 | 0 |
+| applied target > 0 | `GPIO9_PWM_GPIO8_LOW` | applied target | 0 |
+| applied target < 0 | `GPIO9_LOW_GPIO8_PWM` | 0 | abs(applied target) |
+
+`HIGH_HIGH`、`PWM_HIGH`、`HIGH_PWM`は出力しない。
+
+### CSVで確認するGo条件
+
+- `OutputArmed`で`physical_output_allowed=0`、`applied_target_percent=0`、`output_pattern=LOW_LOW`になる。
+- `OutputEnabled target 0`で`output_pattern=LOW_LOW`になる。
+- `target > 0`で`output_pattern=GPIO9_PWM_GPIO8_LOW`になる。
+- `target < 0`で`output_pattern=GPIO9_LOW_GPIO8_PWM`になる。
+- brake stop後は`SafeDisabled`、`requested_target_percent=0`、`applied_target_percent=0`、`output_pattern=LOW_LOW`になる。
+- brake stop後の再開には、再度OutputArmed / OutputEnabledへ進む操作が必要になる。
+- Fault / timeout / leaveMode後に`applied_target_percent=0`、`output_pattern=LOW_LOW`になる。
+- `stop`行は`requested_target_percent=0`、`applied_target_percent=0`、`output_pattern=LOW_LOW`になる。
+- `measurement_path_code`が空欄にならない。
+- `measurement_path_code=unknown`の場合、教材用判断へ進まない。
+
+### CSVで確認するNoGO条件
+
+- `OutputArmed`で`physical_output_allowed=1`または非ゼロ`applied_target_percent`になる。
+- brake stop後に`physical_output_allowed=1`が残る。
+- `stop`行に終了前のnon-zero requested targetが残る。
+- Fault中に非ゼロ`applied_target_percent`が残る。
+- `HIGH_HIGH`、`PWM_HIGH`、`HIGH_PWM`が出る。
+- `measurement_path_code`が空欄になる。
+- `current_a`を測定経路未確認のままmotor winding currentとして扱う。
 
 ## 記録テンプレート
 

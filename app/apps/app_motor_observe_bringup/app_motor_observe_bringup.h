@@ -3,10 +3,12 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <mooncake.h>
 
 #include "libs/motor_observe_backend/motor_observe_backend.h"
+#include "libs/motor_observe_csv/motor_observe_csv_logger.h"
 
 namespace MOONCAKE
 {
@@ -28,9 +30,17 @@ namespace MOONCAKE
                 MOTOR_OBSERVE::SafetyController safetyController;
                 std::unique_ptr<MOTOR_OBSERVE::Backend> backend;
                 std::unique_ptr<MOTOR_OBSERVE::BackendController> controller;
+                MOTOR_OBSERVE::CSV::FileLogger csvLogger;
                 BringupState uiState = BringupState::SafeDisabled;
                 int targetPercent = 0;
                 bool backendReady = false;
+                bool csvReady = false;
+                bool hasLastCsvSample = false;
+                MOTOR_OBSERVE::SafetyState lastCsvSafetyState = MOTOR_OBSERVE::SafetyState::SafeDisabled;
+                int lastCsvRequestedTargetPercent = 0;
+                int lastCsvAppliedTargetPercent = 0;
+                uint32_t csvStartMs = 0;
+                uint32_t lastCsvSampleMs = 0;
             };
             Data_t _data;
 
@@ -42,6 +52,9 @@ namespace MOONCAKE
             void _applyTargetPercent(int targetPercent);
             void _syncFaultState();
             void _handleInput();
+            void _logCsvIfDue();
+            MOTOR_OBSERVE::CSV::Row _createCsvRow(const char* event, uint32_t nowMs);
+            const char* _detectCsvEvent();
             void _render();
             const char* _stateText() const;
             const char* _outputText() const;

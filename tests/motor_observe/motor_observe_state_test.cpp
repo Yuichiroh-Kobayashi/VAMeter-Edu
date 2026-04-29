@@ -2,10 +2,13 @@
  * SPDX-License-Identifier: MIT
  */
 #include "libs/motor_observe_backend/motor_observe_backend.h"
+#include "libs/motor_observe_csv/motor_observe_csv_logger.h"
 
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 using MOTOR_OBSERVE::Backend;
 using MOTOR_OBSERVE::BackendController;
@@ -60,6 +63,16 @@ namespace
         int _lastAppliedTargetPercent = 0;
         std::string _faultReason;
     };
+
+    std::vector<std::string> splitCsvLine(const std::string& line)
+    {
+        std::vector<std::string> fields;
+        std::stringstream stream(line);
+        std::string field;
+        while (std::getline(stream, field, ','))
+            fields.push_back(field);
+        return fields;
+    }
 
     void testSafetyController()
     {
@@ -212,6 +225,159 @@ namespace
         CHECK(controller.getTargetPercent() == 0);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
     }
+
+    void testCsvHeaderAndRows()
+    {
+        const std::string expectedHeader =
+            "schema_version,session_id,sample_index,t_ms,t_s,event,safety_state,physical_output_allowed,"
+            "requested_target_percent,applied_target_percent,output_pattern,gpio9_duty_percent,"
+            "gpio8_duty_percent,measurement_path_code,voltage_semantics,current_semantics,power_semantics,"
+            "voltage_v,current_a,power_w,power_source,pwm_waveform_captured,abnormal_flag,note";
+        CHECK(MOTOR_OBSERVE::CSV::headerLine() == expectedHeader);
+
+        MOTOR_OBSERVE::CSV::Row row;
+        row.sessionId = "MO-000";
+        row.sampleIndex = 12;
+        row.elapsedMs = 1200;
+        row.event = "sample";
+        row.safetyState = SafetyState::SafeDisabled;
+        row.physicalOutputAllowed = false;
+        row.requestedTargetPercent = 30;
+        row.appliedTargetPercent = 0;
+        row.measurementPathCode = "unknown";
+        row.voltageSemantics = "unknown";
+        row.currentSemantics = "unknown";
+        row.powerSemantics = "unknown";
+        row.measurement.voltageV = 2.84f;
+        row.measurement.currentA = 0.132f;
+        row.measurement.powerW = 0.37488f;
+        row.powerSource = "hal";
+        row.note = "test";
+        row.physicalBackendAvailable = true;
+
+        std::vector<std::string> fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields.size() == 24);
+        CHECK(fields[0] == "motor_observe_csv_v0.1");
+        CHECK(fields[1] == "MO-000");
+        CHECK(fields[6] == "SafeDisabled");
+        CHECK(fields[7] == "0");
+        CHECK(fields[8] == "30");
+        CHECK(fields[9] == "0");
+        CHECK(fields[10] == "LOW_LOW");
+        CHECK(fields[11] == "0");
+        CHECK(fields[12] == "0");
+        CHECK(!fields[13].empty());
+
+        row.safetyState = SafetyState::OutputArmed;
+        row.physicalOutputAllowed = false;
+        row.requestedTargetPercent = 30;
+        row.appliedTargetPercent = 0;
+        fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields[6] == "OutputArmed");
+        CHECK(fields[7] == "0");
+        CHECK(fields[9] == "0");
+        CHECK(fields[10] == "LOW_LOW");
+
+        row.safetyState = SafetyState::OutputEnabled;
+        row.physicalOutputAllowed = true;
+        row.requestedTargetPercent = 30;
+        row.appliedTargetPercent = 30;
+        fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields[10] == "GPIO9_PWM_GPIO8_LOW");
+        CHECK(fields[11] == "30");
+        CHECK(fields[12] == "0");
+
+        row.requestedTargetPercent = -30;
+        row.appliedTargetPercent = -30;
+        fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields[10] == "GPIO9_LOW_GPIO8_PWM");
+        CHECK(fields[11] == "0");
+        CHECK(fields[12] == "30");
+
+        row.safetyState = SafetyState::Fault;
+        row.physicalOutputAllowed = false;
+        row.requestedTargetPercent = 0;
+        row.appliedTargetPercent = 0;
+        fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields[6] == "Fault");
+        CHECK(fields[10] == "LOW_LOW");
+
+        row.physicalBackendAvailable = false;
+        fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(row));
+        CHECK(fields[10] == "NOT_APPLICABLE");
+    }
+
+    void testBrakeStopCsvState()
+    {
+        SafetyController safetyController;
+        NoopBackend backend;
+        BackendController controller(safetyController, backend);
+
+        CHECK(controller.begin());
+        CHECK(controller.prepareOutput());
+        CHECK(controller.enableOutput());
+        controller.setTargetPercent(40);
+        controller.update();
+        CHECK(controller.getState() == SafetyState::OutputEnabled);
+        CHECK(controller.isPhysicalOutputAllowed());
+        CHECK(controller.getLastAppliedTargetPercent() == 40);
+
+        int requestedTargetPercent = 0;
+        controller.setTargetPercent(0);
+        controller.update();
+        controller.disableOutput();
+        controller.update();
+
+        MOTOR_OBSERVE::CSV::Row brakeRow;
+        brakeRow.sessionId = "MO-001";
+        brakeRow.sampleIndex = 1;
+        brakeRow.elapsedMs = 100;
+        brakeRow.event = "target_change";
+        brakeRow.safetyState = controller.getState();
+        brakeRow.physicalOutputAllowed = controller.isPhysicalOutputAllowed();
+        brakeRow.requestedTargetPercent = requestedTargetPercent;
+        brakeRow.appliedTargetPercent = controller.getLastAppliedTargetPercent();
+        brakeRow.measurementPathCode = "unknown";
+        brakeRow.voltageSemantics = "unknown";
+        brakeRow.currentSemantics = "unknown";
+        brakeRow.powerSemantics = "unknown";
+        brakeRow.note = "brake_stop";
+        brakeRow.physicalBackendAvailable = true;
+
+        std::vector<std::string> fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(brakeRow));
+        CHECK(fields[6] == "SafeDisabled");
+        CHECK(fields[7] == "0");
+        CHECK(fields[8] == "0");
+        CHECK(fields[9] == "0");
+        CHECK(fields[10] == "LOW_LOW");
+        CHECK(!fields[13].empty());
+    }
+
+    void testStopRowCsvState()
+    {
+        MOTOR_OBSERVE::CSV::Row stopRow;
+        stopRow.sessionId = "MO-002";
+        stopRow.sampleIndex = 2;
+        stopRow.elapsedMs = 200;
+        stopRow.event = "stop";
+        stopRow.safetyState = SafetyState::SafeDisabled;
+        stopRow.physicalOutputAllowed = false;
+        stopRow.requestedTargetPercent = 0;
+        stopRow.appliedTargetPercent = 0;
+        stopRow.measurementPathCode = "unknown";
+        stopRow.voltageSemantics = "unknown";
+        stopRow.currentSemantics = "unknown";
+        stopRow.powerSemantics = "unknown";
+        stopRow.note = "stop";
+        stopRow.physicalBackendAvailable = true;
+
+        std::vector<std::string> fields = splitCsvLine(MOTOR_OBSERVE::CSV::formatRow(stopRow));
+        CHECK(fields[5] == "stop");
+        CHECK(fields[7] == "0");
+        CHECK(fields[8] == "0");
+        CHECK(fields[9] == "0");
+        CHECK(fields[10] == "LOW_LOW");
+    }
 } // namespace
 
 int main()
@@ -219,6 +385,9 @@ int main()
     testSafetyController();
     testBackendControllerWithNoopBackend();
     testBackendControllerWithFaultBackend();
+    testCsvHeaderAndRows();
+    testBrakeStopCsvState();
+    testStopRowCsvState();
 
     if (g_failureCount != 0)
     {
