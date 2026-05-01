@@ -21,6 +21,8 @@
 - Base relayはmeasurement path relayとして使うが、安全遮断として使わない。
 - GPIO10はPWM/方向制御に使わない。
 - `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1` は開発者向けbring-up buildだけで使う。
+- VAMeter単体でモータ端子間の正逆両方向電圧を測らない。
+- モータ端子側測定は、VAMeterの逆電圧入力可否・PWM波形・絶縁条件が未確認のためNoGOとする。
 
 ## 安全条件
 
@@ -33,7 +35,9 @@
 7. 生徒には触らせない。
 8. 学校名、生徒名、校内情報を記録しない。
 9. Base relayを安全遮断として扱わない。
-10. GPIO10をMotor Observeの制御信号として使わない。
+10. GPIO10をMotor ObserveのPWM/方向制御信号として使わない。
+11. VAMeterに逆極性の端子電圧を加える可能性がある配線をしない。
+12. MAKER-DRIVEのモータ出力端子間をVAMeterで直接測らない。
 
 ## 確認項目
 
@@ -63,11 +67,29 @@
 | 測定配線 | VAMeterが測るもの | 注意 |
 |---|---|---|
 | MAKER-DRIVE電源入力側 | VB+ / VB-へ入る電源電圧、ドライバ入力電流、入力電力 | ドライバ入力電流とモータ巻線電流は一致しない可能性がある |
-| モータ端子側 | モータ端子電圧、モータ側配線電流 | PWM瞬時値と平均値、表示値、CSV値は一致しない可能性がある |
+| モータ端子側 | 原則測定しない | H-bridge出力で極性が反転するため、VAMeter単体ではNoGO |
 
 測定配線を説明できない場合、VAMeter表示値は`未確認`として記録する。
 ハードウェア挙動を確認していない場合は`未検証`として記録する。
 Motor Observe開発用CSVで`measurement_path_code=unknown`が出ている場合、そのV/I/P値を教材用判断に使ってはいけない。
+
+### Reverse-voltage NoGO
+
+VAMeter単体を、MAKER-DRIVE のモータ出力端子間へ接続してはいけない。
+
+理由:
+
+- MAKER-DRIVE の driver_output は H-bridge 出力であり、方向によりモータ端子間の極性が反転する。
+- VAMeter は INA226 を用いた測定器であり、bus voltage 入力は逆電圧入力を前提にしない。
+- `current_a` の符号や driver input current の観察は、VAMeter 端子へ逆電圧を加えてよいことを意味しない。
+- PWM 瞬時波形、平均値、VAMeter 表示値、CSV 値は同じ意味ではない。
+
+判断:
+
+- `motor_terminal_voltage` は VAMeter 単体では NoGO。
+- `motor_side_inline` は、双方向電流センサまたは絶縁測定器を別途設計するまで NoGO。
+- モータ端子波形を確認する場合は、オシロスコープ、差動プローブ、または適切な絶縁測定器を使う。
+- Motor Observe の開発用 CSV 測定は、当面 `driver_input_inline` に限定する.
 
 ### Invalid / observation-only wiring example
 
@@ -95,10 +117,10 @@ No additional external probe accessory is used.
 Record whether VAMeter is connected to:
 
 - MAKER-DRIVE input-side supply path
-- motor terminal-side path
 - another explicitly drawn path
 
 Do not record VAMeter values without the wiring description.
+Do not use `motor terminal-side path` with VAMeter unless a separate design review marks it Go.
 
 ## Motor Observe development CSV
 
@@ -132,7 +154,11 @@ Motor Observe bring-up appは、開発用CSVを専用ファイルとして記録
 - slash、`..`、query、`.csv`以外、`REC-` / `MO-`以外のprefixは許可しない。
 - 既存waveform `REC-*.csv`のヘッダ、保存形式、readerは変更しない。
 - `MO-*.csv`をwaveform CSVと同じ意味で扱ってはいけない。
-- 実機での`MO-*.csv` QRダウンロード確認は未実施なら`未検証`として記録する。
+- Local CSV download endpointは、CSV全体をRAMへ読む方式ではなく、固定長bufferによるchunked streaming方式で送信する。
+- driver_outputにモータを接続した試運転では、CSV記録は進んでいるように見えたが、長めの`MO-*.csv`でQR download時に`Memory allocation failed`が出た。
+- 原因仮説は、download endpointがCSV全体をRAMへ読む全量malloc方式だったことである。
+- 修正後も`MO-*.csv`と`REC-*.csv`のdownload path制限を維持し、任意ファイルdownloadを許可しない。
+- 実機での長めの`MO-*.csv` QR download確認、および既存`REC-*.csv` download確認は未実施なら`未検証`として記録する。
 
 ### サンプリング周期
 
@@ -183,6 +209,15 @@ Motor Observe bring-up appは、開発用CSVを専用ファイルとして記録
 `voltage_v`、`current_a`、`power_w`はHALの数値データから記録する。
 UI表示文字列はCSVへ使わない。
 
+Next measurement path target:
+
+- `measurement_path_code`: `driver_input_inline`
+- `voltage_semantics`: `driver_input_voltage`
+- `current_semantics`: `driver_input_current`
+- `power_semantics`: `driver_input_power`
+
+Do not add `motor_terminal_voltage` or `motor_side_inline` as active measurement paths until reverse-voltage and waveform safety are reviewed.
+
 ### output_pattern
 
 | 条件 | output_pattern | GPIO9 duty | GPIO8 duty |
@@ -216,6 +251,33 @@ UI表示文字列はCSVへ使わない。
 - `HIGH_HIGH`、`PWM_HIGH`、`HIGH_PWM`が出る。
 - `measurement_path_code`が空欄になる。
 - `current_a`を測定経路未確認のままmotor winding currentとして扱う。
+- VAMeterをMAKER-DRIVEのモータ出力端子間に直接接続する。
+- VAMeter端子の極性がモータ方向で反転する。
+
+### Gearmotor start / run hysteresis check
+
+For a gearmotor, record the following separately:
+
+| Item | Meaning |
+|---|---|
+| start_threshold_pwm_percent | PWM percent where the motor starts rotating from standstill |
+| keep_running_min_pwm_percent | minimum PWM percent where the motor continues rotating after it has already started |
+| stall_pwm_percent | PWM percent where rotation stops during ramp-down |
+| load_condition | no_load / fixture_load / unknown |
+| observation_method | human visual observation / tachometer / other |
+
+Observed example:
+
+- Motor type: 130-size gearmotor
+- Gearbox output: no external load
+- From standstill: stalled up to about 40% PWM
+- Started rotating around 50% PWM
+- While rotating: continued down to about 20% PWM
+- Stalled around 10% PWM
+
+This behavior must be treated as mechanical hysteresis caused by starting torque, static friction, and gearbox resistance.
+
+Do not interpret PWM percent directly as motor torque or pulling force.
 
 ## 記録テンプレート
 
@@ -271,6 +333,7 @@ UI表示文字列はCSVへ使わない。
 - VAMeter表示値の意味が説明できる、または未確認として記録されている。
 - MAKER-DRIVE / モータに異常がない。
 - Base relayを安全遮断として使わずに成立する。
+- `driver_input_inline` の測定経路で説明できる。
 
 ## NoGO条件
 
@@ -283,6 +346,8 @@ UI表示文字列はCSVへ使わない。
 - VAMeter測定経路が説明できないのに教材化へ進む。
 - Base relayを安全遮断として使わないと成立しない。
 - GPIO10をMotor Observe制御に使う必要が出る。
+- VAMeterに逆電圧を入れる可能性がある。
+- MAKER-DRIVE driver_outputをVAMeter端子へ直接入れてmotor terminal voltageとして扱う。
 
 ## Rollback condition
 
@@ -293,3 +358,4 @@ UI表示文字列はCSVへ使わない。
 - GPIO10またはBase relayに依存しないと停止できない。
 - MAKER-DRIVE、モータ、電池、配線が異常発熱する。
 - 測定経路とVAMeter表示値の意味を記録できない。
+- motor terminal側の測定をVAMeter単体で続ける必要が出る。

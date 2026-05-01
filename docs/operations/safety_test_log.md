@@ -1,5 +1,77 @@
 # Safety Test Log
 
+## 2026-05-02 Motor Observe development freeze for constant-force device work
+
+Motor Observe on VAMeter-Edu is fixed at the low-voltage development-validation stage for the constant-force device project.
+
+Reason:
+
+- VAMeter cannot be used as a standalone measurement device for polarity-reversing H-bridge motor terminal voltage.
+- Bidirectional motor winding current measurement requires an additional suitable current-sensing device.
+- The tested 130-size gearmotor showed start/run hysteresis and mechanical loss that make PWM/current-based force estimation unsuitable for a constant-force device.
+- The constant-force device project should move to a direct-drive motor platform with torque-command capability.
+
+Motor Observe remains useful as:
+
+- a low-voltage motor observation prototype
+- a safety-state / CSV logging / QR transfer reference
+- a measurement-path documentation case study
+
+Do not continue VAMeter-Edu Motor Observe toward classroom force-control use without a separate design review.
+
+## 2026-05-01 Motor Observe reverse terminal voltage review
+
+### Date
+
+2026-05-01
+
+### Target behavior
+
+- Review whether VAMeter can be used on the MAKER-DRIVE motor output side.
+- Decide whether motor terminal voltage / current measurement with VAMeter should remain in the Motor Observe plan.
+
+### Reviewed material
+
+- VAMeter V1.2 schematic
+- VAMeter Base V1.0 schematic
+- `docs/hardware/VAMeter/measurement_path.md`
+- `docs/hardware/VAMeter_Base/relay_control.md`
+- `docs/operations/motor_observe_low_voltage_motor_test_plan.md`
+- `docs/architecture/motor_observe_measurement_ui_plan.md`
+
+### Finding
+
+- VAMeter uses INA226-based sensing.
+- INA226 can be used for bidirectional shunt-current measurement, but its bus-voltage input is not a reverse-voltage input.
+- The VAMeter Base relay closes the measurement path but does not provide reverse-voltage protection.
+- MAKER-DRIVE driver_output is an H-bridge motor output.
+- Motor terminal polarity reverses with direction.
+
+### Judgment
+
+- NoGO: use VAMeter directly across MAKER-DRIVE motor output terminals.
+- NoGO: treat VAMeter values as motor terminal voltage during bidirectional PWM drive.
+- NoGO: treat VAMeter values as motor winding current on the driver output side.
+- Go: continue `driver_input_inline` as the Motor Observe measurement path.
+- Go: use oscilloscope / differential probe / logic analyzer for motor terminal waveform observation.
+- Conditional future work: use a separate bidirectional/isolated current sensor if motor-side current is required.
+
+### Impact on plan
+
+- `driver_input_inline` remains the first formal measurement path candidate.
+- `motor_terminal_voltage` and `motor_side_inline` are removed from near-term VAMeter-based measurement plans.
+- Stage 1 measurement-ready UI should not expose motor-terminal measurement as a selectable VAMeter path.
+- Next implementation should inject:
+  - `measurement_path_code=driver_input_inline`
+  - `voltage_semantics=driver_input_voltage`
+  - `current_semantics=driver_input_current`
+  - `power_semantics=driver_input_power`
+
+### Rollback condition
+
+- If future hardware review proves a safe isolated/differential motor-terminal measurement path, create a separate design review before reintroducing motor-terminal measurement.
+- Do not re-enable motor-terminal measurement by UI or CSV change alone.
+
 ## 2026-04-29 Motor Observe no-output safety scaffold
 
 ### Date
@@ -263,6 +335,92 @@ rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" tests
 - CTest 登録により standalone build / direct execution が壊れる場合
 - test が firmware runtime や device build に混入する場合
 - Motor Observe safety/backend/test 内に GPIO/PWM/Cytron/Base relay 依存が入る場合
+
+## 2026-05-01 Motor Observe driver_input_inline gearmotor no-load test
+
+### Hardware setup
+
+- VAMeter-Edu
+- VAMeter Base
+- MAKER-DRIVE
+- Gearmotor using a 130-size motor
+- Gearbox output: no external load
+- Measurement path:
+  - driver_input_inline
+  - power + -> VAMeter IN -> VAMeter OUT -> MAKER-DRIVE VB+
+  - power - -> MAKER-DRIVE VB-
+- driver_output:
+  - connected to gearmotor
+- Build:
+  - `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`
+
+### CSV
+
+- File: `MO-014.xlsx`
+- schema: `motor_observe_csv_v0.1`
+- 24 columns
+- 391 data rows
+- `event=start` / `event=stop` present
+- `abnormal_flag=0`
+- forbidden output patterns absent:
+  - `HIGH_HIGH`
+  - `PWM_HIGH`
+  - `HIGH_PWM`
+- `measurement_path_code=unknown`
+
+### Result
+
+- `SafeDisabled`:
+  - current approximately 0 A
+  - output pattern `LOW_LOW`
+- `OutputArmed`:
+  - relay ON
+  - PWM output disabled
+  - driver input current approximately 25 mA
+- `OutputEnabled target 0`:
+  - output pattern `LOW_LOW`
+  - driver input current approximately 26 mA
+- target < 0:
+  - `GPIO9_LOW_GPIO8_PWM`
+- target > 0:
+  - `GPIO9_PWM_GPIO8_LOW`
+- driver input voltage stayed around 3.0 V.
+- maximum observed driver input current was approximately 0.16 A.
+- maximum observed driver input power was approximately 0.48 W.
+
+### Mechanical observation
+
+- The motor is not a bare 130 motor.
+- It is a gearmotor with the gearbox output unloaded.
+- From standstill, the gearmotor did not rotate up to about 40% PWM.
+- It started rotating around 50% PWM.
+- Once rotating, it continued down to about 20% PWM.
+- It stalled around 10% PWM.
+
+### Interpretation
+
+- The measurement represents driver input-side current and power.
+- It is not motor winding current.
+- The result shows start/run hysteresis caused by static friction, gear resistance, and starting torque.
+- PWM percent must not be interpreted directly as motor torque or pulling force.
+- State transition rows may contain non-synchronized V/I/P values; use stable samples after state transition for judgment.
+
+### Judgment
+
+- PASS: CSV structure and state logging.
+- PASS: relay and PWM policy.
+- PASS: low-voltage no-load gearmotor trial.
+- Conditional PASS: driver_input_inline measurement, based on human-recorded wiring.
+- NoGO: classroom use.
+- NoGO: treating V/I/P as motor winding current.
+- NoGO: treating PWM percent as force.
+
+### Next action
+
+- Inject `measurement_path_code=driver_input_inline` into the existing `MO-*.csv` columns.
+- Add a human-observed rotation state to the operation log, or consider a future CSV note/marker for mechanical observation.
+- Repeat with current-limited power supply if moving toward load tests.
+- Do not proceed to load/stall tests until current limit and thermal criteria are defined.
 
 ## 2026-05-01 Motor Observe measurement path relay hardware check
 
@@ -1512,3 +1670,33 @@ Rollback or stop Motor Observe motor testing if any of the following occurs:
 
 - This entry records post-recovery hardware behavior only.
 - No code change, automatic delete, automatic format, launcher registration, assets/localization change, GPIO10 use, Base relay use, or PWM backend policy change is associated with this log entry.
+
+## 2026-05-01 Local CSV download streaming fix
+
+### Observed issue
+
+- During Motor Observe trial operation with a motor connected to driver_output, CSV numbering incremented and recording appeared to progress.
+- After scanning the QR code, Web download showed `Memory allocation failed` and the CSV could not be downloaded.
+- This affected the local CSV download path used for `MO-*.csv`; the same endpoint can also serve existing waveform `REC-*.csv`.
+
+### Cause hypothesis and fix
+
+- Cause hypothesis: `/download/*` read the entire CSV into RAM with a whole-file `malloc(file_size + 1)` before calling `response.setContent()`.
+- Larger `MO-*.csv` files could fail on ESP32-S3 when contiguous heap was not available.
+- The download endpoint was changed to open the CSV in binary mode and stream it using a fixed-size chunk buffer with `sendHeaders()`, repeated `sendChunk()`, and `finishChunking()`.
+- The basename allowlist and path match remain limited to `MO-*.csv` and `REC-*.csv`; arbitrary file download must remain impossible.
+- `REC-*.csv` generation format, headers, and reader behavior were not changed.
+
+### Required hardware recheck
+
+- Recheck QR download of a short existing `MO-*.csv`.
+- Recheck QR download of a longer recorded `MO-*.csv`.
+- Confirm `Memory allocation failed` does not appear during download.
+- Confirm downloaded `MO-*.csv` still contains header, `event=start`, and `event=stop`.
+- Confirm `REC-*.csv` local download remains usable.
+- Confirm returning from the QR page starts a new `MO-*.csv` session.
+
+### Remaining 未検証
+
+- Long `MO-*.csv` QR download on VAMeter hardware after this change.
+- Existing `REC-*.csv` QR download on VAMeter hardware after this change.

@@ -1,5 +1,24 @@
 # Motor Observe Measurement UI Plan
 
+## Motor Observe development freeze for constant-force device work
+
+Motor Observe on VAMeter-Edu is fixed at the low-voltage development-validation stage for the constant-force device project.
+
+Reason:
+
+- VAMeter cannot be used as a standalone measurement device for polarity-reversing H-bridge motor terminal voltage.
+- Bidirectional motor winding current measurement requires an additional suitable current-sensing device.
+- The tested 130-size gearmotor showed start/run hysteresis and mechanical loss that make PWM/current-based force estimation unsuitable for a constant-force device.
+- The constant-force device project should move to a direct-drive motor platform with torque-command capability.
+
+Motor Observe remains useful as:
+
+- a low-voltage motor observation prototype
+- a safety-state / CSV logging / QR transfer reference
+- a measurement-path documentation case study
+
+Do not continue VAMeter-Edu Motor Observe toward classroom force-control use without a separate design review.
+
 ## Scope
 
 この文書は、Motor Observe の次段階として作る計測用UIの計画である。
@@ -27,7 +46,8 @@ Motor Observe bring-up UI、device側 `VAMeterMotorObservePwmBackend`、開発�
 | assets / localization | 未追加 |
 | device側 `VAMeterMotorObservePwmBackend` | 実装済み |
 | 開発用 `MO-*.csv` logger | 実装済み |
-| `MO-*.csv` QR download | 動作確認済み |
+| `MO-*.csv` QR download | chunked streaming化済み / 長めのCSVは実機再確認が必要 |
+| Local CSV download transport | 固定長bufferのchunked streaming方式 |
 | storage初期化後の `MO-000.csv` 作成 | 確認済み |
 | `MO-000.csv` QR download | 確認済み |
 | QR後の `MO-001.csv` 新規セッション開始 | 確認済み |
@@ -38,6 +58,7 @@ Motor Observe bring-up UI、device側 `VAMeterMotorObservePwmBackend`、開発�
 | Base relay | measurement path relayとして使う (安全遮断として使わない) |
 | High/High coast | 未実装 / 入れない |
 | PWM/High / High/PWM | 未実装 / 入れない |
+| motor terminal measurement by VAMeter | NoGO |
 
 PWM出力方針は維持する。
 
@@ -84,6 +105,7 @@ Motor Observe 計測用UIの目的は、開発者または計測者が小型DC�
 - requested target と applied target を分けて記録する。
 - 測定値が何を表すかを `measurement_path_code` と semantics で説明できるようにする。
 - `measurement_path_code=unknown` の V/I/P を教材判断に使わない。
+- VAMeter単体で正逆に極性が反転するモータ端子電圧を測らない。
 - 生徒用UI化は、測定経路、安全治具、負荷・stall・thermal behavior の確認後に判断する。
 
 このUIは、測定の意味を確定するための開発者向け・計測者向けUIであり、授業で生徒が直接使うUIではない。
@@ -116,6 +138,26 @@ Motor Observe 計測用UIの目的は、開発者または計測者が小型DC�
 - QR download へ安全に遷移する。
 - QR download 前に `SafeDisabled / target 0 / Low-Low` を保証する。
 - QR後は既存CSVへ追記せず、新規 `MO-*.csv` セッションを開始する。
+- motor terminal voltage/current pathはStage 1対象外にする。
+
+### Mechanical observation fields
+
+Stage 1 measurement-ready UI may need to record mechanical observation separately from electrical measurement.
+
+Candidate fields:
+
+| Field | Meaning |
+|---|---|
+| motor_mechanical_type | bare_motor / gearmotor / unknown |
+| load_condition | no_load / fixture_load / unknown |
+| rotation_observed | stopped / rotating / stalled / unknown |
+| start_threshold_pwm_percent | PWM where rotation starts from standstill |
+| keep_running_min_pwm_percent | minimum PWM where rotation continues after starting |
+| stall_pwm_percent | PWM where rotation stops during ramp-down |
+
+These fields are not electrical measurements.
+
+CSV V/I/P values alone cannot determine whether the motor is rotating. Rotation state must be observed by a person or measured by an external sensor.
 
 ### Stage 2: classroom UI
 
@@ -181,6 +223,14 @@ Stage 1 の最小操作フロー案:
 13. QRから measurement UI へ戻る。
 14. 新規 `MO-*.csv` セッションを開始する。
 
+QR downloadの注意:
+
+- driver_outputにモータを接続した試運転では、CSV記録は進んでいるように見えたが、QR downloadで`Memory allocation failed`が出た。
+- 原因仮説は、download endpointがCSV全体をRAMへ読む全量malloc方式だったことである。
+- Local CSV downloadは固定長bufferのchunked streaming方式へ変更済みである。
+- `MO-*.csv`と既存`REC-*.csv`のdownload path制限を維持し、任意ファイルdownloadを許可しない。
+- 長めの`MO-*.csv` downloadと既存`REC-*.csv` downloadは実機で再確認する。
+
 操作割当案:
 
 | Operation | Stage 0 current behavior | Stage 1 proposal |
@@ -200,8 +250,8 @@ Stage 1 で測定経路選択UIを入れる場合、target操作より前に測�
 |---|---|
 | `driver_input_inline` | 最初の正式候補 |
 | `driver_input_voltage_only` | 電圧のみ |
-| `motor_terminal_voltage` | 後回し |
-| `motor_side_inline` | 後回し |
+| `motor_terminal_voltage` | VAMeter単体ではNoGO |
+| `motor_side_inline` | VAMeter単体ではNoGO |
 | `unknown` | 教材判断に使わない |
 
 ### Observation-only path: motor_output_to_vameter_input_open_output
@@ -231,13 +281,21 @@ and keep semantics as `unknown`.
 | 教材判断に使ってよい条件 | 配線、電源、負荷条件、VAMeter表示値、CSV値、参考測定器の結果を同じログに記録し、current / thermal / load 条件が Go になった場合 |
 | NoGO条件 | 配線説明ができない、電流が過大、発熱・異臭・異音、storage failure、`measurement_path_code=unknown`、driver input current を motor winding current として扱う必要がある場合 |
 
+Observed development result:
+
+- `driver_input_inline` with gearmotor no-load produced coherent driver input-side voltage/current/power.
+- Relay OFF / SafeDisabled was approximately 0 A.
+- Relay ON / OutputArmed was approximately 25 mA.
+- PWM operation increased driver input current, but this is still not motor winding current.
+- Use this path as the next measurement-ready UI target.
+
 ### Other Paths
 
 | measurement_path_code | 測っている値 | 測っていない値 | 注意 |
 |---|---|---|---|
 | `driver_input_voltage_only` | driver input-side voltage 候補 | current / power / motor winding current | 電圧のみ。電流・電力の教材判断に使わない |
-| `motor_terminal_voltage` | motor terminal voltage 候補 | motor winding current、driver input current | PWM波形を含む可能性。VAMeter表示値と瞬時波形は同じ意味ではない |
-| `motor_side_inline` | motor-side inline current 候補 | driver input current | PWM、回生、ブレーキ時の挙動を別途確認するまで後回し |
+| `motor_terminal_voltage` | NoGO | motor winding current、driver input current | H-bridge output polarity reverses. Do not use VAMeter as the measuring instrument. Use oscilloscope/differential probe instead. |
+| `motor_side_inline` | NoGO | driver input current | Requires separate bidirectional/isolated current measurement design. |
 | `unknown` | 未確認 | すべて教材判断不可 | bring-up baseline。V/I/Pを教材判断に使わない |
 
 NoGO条件:
@@ -428,11 +486,13 @@ Go条件:
 - 既存24列の順序が変わらない。
 - `REC-*.csv` が変わらない。
 - `driver_input_inline` の意味がUIとCSVで一致する。
+- `motor_terminal_voltage` / `motor_side_inline` を有効化しない。
 
 NoGO条件:
 
 - 測定経路をUI表示せずにCSVだけ変える。
 - `driver_input_inline` の V/I/P を motor winding current として扱う。
+- VAMeter単体のmotor terminal measurementを復活させる。
 
 撤退条件:
 
@@ -463,12 +523,14 @@ Go条件:
 
 - UI表示値とCSV recorded value の関係を説明できる。
 - `driver_input_inline` で測っている値と測っていない値が表示または文書で明確。
+- motor terminal voltage/currentは表示対象外であることが明確。
 
 NoGO条件:
 
 - 表示文字列からCSV値を作る。
 - VAMeter表示値をPWM瞬時波形として扱う。
 - 実測前に教材判断へ進む。
+- VAMeter単体でH-bridge出力を測る前提に戻す。
 
 撤退条件:
 
@@ -618,6 +680,7 @@ NoGO条件:
 - PWM/High / High/PWMを実装しない。
 - driver input current を motor winding current として扱わない。
 - `measurement_path_code=unknown` の V/I/P を教材判断に使わない。
+- VAMeter単体でH-bridge motor outputを測らない。
 
 ## Remaining 未確認 / 未検証
 
@@ -632,7 +695,7 @@ NoGO条件:
 
 ### 未検証
 
-- 実電流測定結果。
+- `driver_input_inline` の正式CSV注入。
 - モータ巻線電流。
 - モータ端子電圧。
 - 負荷時挙動。
@@ -641,6 +704,7 @@ NoGO条件:
 - current limit 条件。
 - classroom-safe fixture。
 - `driver_input_inline` の配線安全性と測定値の教材利用条件。
+- reverse terminal voltageへの対応。現時点ではNoGO。
 
 ## Next Human Measurements
 
@@ -666,6 +730,7 @@ NoGO条件:
 3. `REC-*.csv` は変更しない。
 4. UI上に `Measurement Path: driver_input_inline` または `unknown` を表示する。
 5. classroom release、launcher登録、assets/localization、storage cleanup は含めない。
+6. `motor_terminal_voltage` / `motor_side_inline` は含めない。
 
 ## Go / NoGO
 
@@ -690,3 +755,4 @@ NoGO条件:
 - `REC-*.csv` を勝手に削除する提案をした。
 - GPIO10をPWMに使う、またはBase relayを安全遮断として扱う提案をした。
 - High/High coast / PWM/High / High/PWMを入れた。
+- VAMeter単体でH-bridge motor outputを測る前提に戻した。
