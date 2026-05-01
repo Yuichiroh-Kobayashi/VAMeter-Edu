@@ -356,6 +356,15 @@ static std::string _download_file_path;
 static std::string _download_file_name;
 static PsychicHttpServer* _download_server = nullptr;
 
+static std::string _csv_download_heap_info()
+{
+#if defined(ESP_PLATFORM)
+    return std::to_string(ESP.getFreeHeap());
+#else
+    return "unavailable";
+#endif
+}
+
 void HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
     if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
@@ -384,9 +393,11 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                              [](PsychicRequest* request)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
+                                 spdlog::info("download start free heap: {}", _csv_download_heap_info());
 
                                  const std::string expectedPath = "/download/" + _download_file_name;
                                  const std::string actualPath = request->path().c_str();
+                                 spdlog::info("download expected path: {}", expectedPath);
                                  if (actualPath != expectedPath)
                                  {
                                      spdlog::warn("download path mismatch: expected {}, got {}",
@@ -395,44 +406,109 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                                      return request->reply(404, "text/plain", "File not found");
                                  }
 
-                                 // Open file
-                                 FILE* f = fopen(_download_file_path.c_str(), "r");
-                                 if (f == nullptr)
+                                 if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(_download_file_name))
                                  {
-                                     spdlog::error("file not found: {}", _download_file_path);
+                                     spdlog::warn("download rejected invalid record name: {}", _download_file_name);
                                      return request->reply(404, "text/plain", "File not found");
                                  }
 
-                                 // Get file size
-                                 fseek(f, 0, SEEK_END);
-                                 size_t file_size = ftell(f);
-                                 fseek(f, 0, SEEK_SET);
-                                 spdlog::info("file size: {} bytes", file_size);
+                                 spdlog::info("download file path: {}", _download_file_path);
 
-                                 // Read file content
-                                 char* buffer = (char*)malloc(file_size + 1);
-                                 if (buffer == nullptr)
+                                 // Open file
+                                 FILE* f = fopen(_download_file_path.c_str(), "rb");
+                                 if (f == nullptr)
                                  {
-                                     fclose(f);
-                                     return request->reply(500, "text/plain", "Memory allocation failed");
+                                     spdlog::error("download fopen failed: {}", _download_file_path);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+                                 spdlog::info("download fopen success: {}", _download_file_path);
+
+                                 // Get file size for diagnostics only. Streaming can continue if size probing fails.
+                                 long fileSize = -1;
+                                 if (fseek(f, 0, SEEK_END) == 0)
+                                 {
+                                     fileSize = ftell(f);
+                                     if (fileSize < 0)
+                                         spdlog::warn("download ftell failed for: {}", _download_file_path);
+                                 }
+                                 else
+                                 {
+                                     spdlog::warn("download fseek end failed for: {}", _download_file_path);
                                  }
 
-                                 size_t read_size = fread(buffer, 1, file_size, f);
-                                 buffer[read_size] = '\0';
-                                 fclose(f);
+                                 if (fseek(f, 0, SEEK_SET) != 0)
+                                 {
+                                     spdlog::warn("download fseek set failed, using rewind for: {}", _download_file_path);
+                                     rewind(f);
+                                 }
+                                 spdlog::info("download file size: {} bytes", fileSize);
+
+                                 const size_t chunkBufferSize = FILE_CHUNK_SIZE;
+                                 spdlog::info("download chunk buffer size: {} bytes", chunkBufferSize);
+                                 uint8_t* buffer = (uint8_t*)malloc(chunkBufferSize);
+                                 if (buffer == nullptr)
+                                 {
+                                     spdlog::error("download chunk buffer allocation failed, free heap: {}", _csv_download_heap_info());
+                                     const int closeResult = fclose(f);
+                                     spdlog::info("download fclose result after allocation failure: {}", closeResult);
+                                     return request->reply(500, "text/plain", "Memory allocation failed");
+                                 }
 
                                  // Set Content-Disposition header for download
                                  std::string header = "attachment; filename=\"" + _download_file_name + "\"";
 
-                                 // Send response
                                  PsychicResponse response(request);
                                  response.setContentType("text/csv");
                                  response.addHeader("Content-Disposition", header.c_str());
-                                 response.setContent((uint8_t*)buffer, read_size);
-                                 esp_err_t result = response.send();
+                                 response.sendHeaders();
+
+                                 esp_err_t result = ESP_OK;
+                                 size_t totalReadSize = 0;
+                                 while (true)
+                                 {
+                                     const size_t readSize = fread(buffer, 1, chunkBufferSize, f);
+                                     if (readSize > 0)
+                                     {
+                                         totalReadSize += readSize;
+                                         result = response.sendChunk(buffer, readSize);
+                                         if (result != ESP_OK)
+                                         {
+                                             spdlog::error("download sendChunk failed, result: {}, total read: {} bytes, free heap: {}",
+                                                          result,
+                                                          totalReadSize,
+                                                          _csv_download_heap_info());
+                                             break;
+                                         }
+                                     }
+
+                                     if (readSize < chunkBufferSize)
+                                     {
+                                         if (ferror(f))
+                                         {
+                                             spdlog::error("download fread failed after {} bytes, free heap: {}",
+                                                          totalReadSize,
+                                                          _csv_download_heap_info());
+                                             result = ESP_FAIL;
+                                         }
+                                         break;
+                                     }
+                                 }
+
+                                 esp_err_t finishResult = ESP_FAIL;
+                                 if (result == ESP_OK)
+                                     finishResult = response.finishChunking();
+                                 spdlog::info("download chunk read total: {} bytes", totalReadSize);
+                                 spdlog::info("download finishChunking result: {}", finishResult);
+                                 if (result == ESP_OK && finishResult != ESP_OK)
+                                     result = finishResult;
+
+                                 const int closeResult = fclose(f);
+                                 spdlog::info("download fclose result: {}", closeResult);
 
                                  free(buffer);
-                                 spdlog::info("download response sent, result: {}", result);
+                                 spdlog::info("download response sent, result: {}, free heap: {}",
+                                              result,
+                                              _csv_download_heap_info());
                                  return result;
                              });
 
