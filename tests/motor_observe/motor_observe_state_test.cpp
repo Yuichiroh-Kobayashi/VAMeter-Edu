@@ -46,7 +46,15 @@ namespace
             return true;
         }
 
-        void disarm() override { _lastAppliedTargetPercent = 0; }
+        void disarm() override
+        {
+            _lastAppliedTargetPercent = 0;
+            _measurementPathRelayEnabled = false;
+        }
+
+        void setMeasurementPathRelayEnabled(bool enabled) override { _measurementPathRelayEnabled = enabled; }
+
+        bool isMeasurementPathRelayEnabled() const override { return _measurementPathRelayEnabled; }
 
         void setTargetPercent(int targetPercent) override { _lastAppliedTargetPercent = targetPercent; }
 
@@ -67,6 +75,53 @@ namespace
     private:
         bool _hasFault = false;
         int _lastAppliedTargetPercent = 0;
+        bool _measurementPathRelayEnabled = false;
+        std::string _faultReason;
+    };
+
+    class UpdateFaultBackend : public Backend
+    {
+    public:
+        bool begin() override
+        {
+            disarm();
+            return true;
+        }
+
+        void disarm() override
+        {
+            _lastAppliedTargetPercent = 0;
+            _measurementPathRelayEnabled = false;
+        }
+
+        void setMeasurementPathRelayEnabled(bool enabled) override { _measurementPathRelayEnabled = enabled; }
+
+        bool isMeasurementPathRelayEnabled() const override { return _measurementPathRelayEnabled; }
+
+        void setTargetPercent(int targetPercent) override { _lastAppliedTargetPercent = targetPercent; }
+
+        void update() override
+        {
+            if (_faultOnUpdate)
+            {
+                _hasFault = true;
+                _faultReason = "update fault";
+            }
+        }
+
+        bool hasFault() const override { return _hasFault; }
+
+        const std::string& getFaultReason() const override { return _faultReason; }
+
+        int getLastAppliedTargetPercent() const override { return _lastAppliedTargetPercent; }
+
+        void triggerFaultOnUpdate() { _faultOnUpdate = true; }
+
+    private:
+        bool _hasFault = false;
+        bool _faultOnUpdate = false;
+        int _lastAppliedTargetPercent = 0;
+        bool _measurementPathRelayEnabled = false;
         std::string _faultReason;
     };
 
@@ -154,6 +209,7 @@ namespace
         CHECK(controller.begin());
         CHECK(controller.getState() == SafetyState::SafeDisabled);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
 
         controller.setTargetPercent(50);
         controller.update();
@@ -164,16 +220,19 @@ namespace
         controller.update();
         CHECK(controller.getState() == SafetyState::OutputArmed);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(controller.isMeasurementPathRelayEnabled());
 
         controller.setTargetPercent(50);
         CHECK(controller.enableOutput());
         controller.update();
         CHECK(controller.getState() == SafetyState::OutputEnabled);
         CHECK(controller.getLastAppliedTargetPercent() == 50);
+        CHECK(controller.isMeasurementPathRelayEnabled());
 
         controller.disableOutput();
         CHECK(controller.getState() == SafetyState::SafeDisabled);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
 
         CHECK(controller.prepareOutput());
         controller.setTargetPercent(60);
@@ -183,6 +242,7 @@ namespace
         controller.timeout();
         CHECK(controller.getState() == SafetyState::SafeDisabled);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
 
         CHECK(controller.prepareOutput());
         controller.setTargetPercent(70);
@@ -192,6 +252,7 @@ namespace
         controller.leaveMode();
         CHECK(controller.getState() == SafetyState::SafeDisabled);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
 
         CHECK(controller.prepareOutput());
         controller.setTargetPercent(80);
@@ -201,6 +262,7 @@ namespace
         controller.setFault("manual fault");
         CHECK(controller.getState() == SafetyState::Fault);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
         controller.setTargetPercent(50);
         controller.update();
         CHECK(controller.getTargetPercent() == 0);
@@ -232,12 +294,39 @@ namespace
         CHECK(controller.getState() == SafetyState::Fault);
         CHECK(!controller.isPhysicalOutputAllowed());
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
         CHECK(controller.getFaultReason() == "backend fault");
 
         controller.setTargetPercent(60);
         controller.update();
         CHECK(controller.getTargetPercent() == 0);
         CHECK(controller.getLastAppliedTargetPercent() == 0);
+    }
+
+    void testBackendControllerFaultAfterUpdate()
+    {
+        SafetyController safetyController;
+        UpdateFaultBackend backend;
+        BackendController controller(safetyController, backend);
+
+        CHECK(controller.begin());
+        CHECK(controller.prepareOutput());
+        CHECK(controller.isMeasurementPathRelayEnabled());
+        CHECK(!controller.isPhysicalOutputAllowed());
+
+        CHECK(controller.enableOutput());
+        CHECK(controller.isMeasurementPathRelayEnabled());
+
+        backend.triggerFaultOnUpdate();
+        controller.setTargetPercent(20);
+        controller.update();
+
+        CHECK(controller.getState() == SafetyState::Fault);
+        CHECK(!controller.isPhysicalOutputAllowed());
+        CHECK(controller.getTargetPercent() == 0);
+        CHECK(controller.getLastAppliedTargetPercent() == 0);
+        CHECK(!controller.isMeasurementPathRelayEnabled());
+        CHECK(controller.getFaultReason() == "update fault");
     }
 
     void testCsvHeaderAndRows()
@@ -486,6 +575,7 @@ int main()
     testSafetyController();
     testBackendControllerWithNoopBackend();
     testBackendControllerWithFaultBackend();
+    testBackendControllerFaultAfterUpdate();
     testCsvHeaderAndRows();
     testBrakeStopCsvState();
     testStopRowCsvState();

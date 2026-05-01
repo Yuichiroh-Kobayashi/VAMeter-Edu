@@ -369,8 +369,10 @@ void AppMotorObserveBringup::_render()
     canvas->setTextColor(TFT_YELLOW, TFT_BLACK);
     drawLine("BRING-UP ONLY / 授業用ではない");
     canvas->setTextColor(TFT_WHITE, TFT_BLACK);
-    drawLine("MAKER-DRIVE: NOT CONNECTED");
-    drawLine("Motor: NOT CONNECTED");
+    drawLine("MAKER-DRIVE: TEST PLAN ONLY");
+    drawLine("Motor: NO-LOAD ONLY");
+    drawLine("Low voltage only");
+    drawLine("Not for classroom use");
 
     std::snprintf(lineBuffer, sizeof(lineBuffer), "State: %s", _stateText());
     drawLine(lineBuffer);
@@ -378,11 +380,13 @@ void AppMotorObserveBringup::_render()
     drawLine(lineBuffer);
     std::snprintf(lineBuffer, sizeof(lineBuffer), "Output: %s", _outputText());
     drawLine(lineBuffer);
+    std::snprintf(lineBuffer, sizeof(lineBuffer), "RelayCmd: %s", _relayText());
+    drawLine(lineBuffer);
 
     drawLine("GPIO9: M1A candidate");
     drawLine("GPIO8: M1B candidate");
-    drawLine("GPIO10: NOT USED");
-    drawLine("Base relay: NOT USED");
+    drawLine("GPIO10: RELAY CTRL (NO PWM)");
+    drawLine("Base relay: MEASUREMENT PATH");
     std::snprintf(lineBuffer,
                   sizeof(lineBuffer),
                   "CSV: %s",
@@ -444,4 +448,12 @@ const char* AppMotorObserveBringup::_outputText() const
     if (_data.targetPercent > 0)
         return "PWM-Low";
     return "Low-PWM";
+}
+
+const char* AppMotorObserveBringup::_relayText() const
+{
+    if (!_data.backendReady || !_data.controller)
+        return "UNKNOWN";
+
+    return _data.controller->isMeasurementPathRelayEnabled() ? "ON" : "OFF";
 }

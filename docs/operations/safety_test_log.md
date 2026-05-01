@@ -264,6 +264,147 @@ rg -n "gpio_set_level|ledcWrite|analogWrite|CytronMD|SetBaseRelay|PWM_PWM" tests
 - test が firmware runtime や device build に混入する場合
 - Motor Observe safety/backend/test 内に GPIO/PWM/Cytron/Base relay 依存が入る場合
 
+## 2026-05-01 Motor Observe measurement path relay hardware check
+
+### Hardware setup
+
+- VAMeter-Edu
+- VAMeter Base
+- MAKER-DRIVE motor output connected to VAMeter input port
+- VAMeter output port: not connected
+- Motor load: no-load / or not used for current-path validation
+- Build: `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1`
+
+### Target behavior
+
+- Verify that `RelayCmd` matches actual GPIO10 / relay continuity.
+- Verify that `OutputArmed` closes the measurement path relay without PWM output.
+- Verify that `SafeDisabled` / brake stop opens the relay.
+
+### Result
+
+- `RelayCmd` and actual GPIO10 / continuity matched.
+- `OutputArmed`:
+  - relay: ON
+  - PWM output: none
+  - `physical_output_allowed=0`
+  - `applied_target_percent=0`
+  - `output_pattern=LOW_LOW`
+- `OutputEnabled target 0`:
+  - relay: ON
+  - PWM output: none
+  - `output_pattern=LOW_LOW`
+- target changes:
+  - target < 0: `GPIO9_LOW_GPIO8_PWM`
+  - target > 0: `GPIO9_PWM_GPIO8_LOW`
+- brake stop / SafeDisabled:
+  - relay: OFF
+  - `requested_target_percent=0`
+  - `applied_target_percent=0`
+  - `output_pattern=LOW_LOW`
+- `MO-005.xlsx`:
+  - schema `motor_observe_csv_v0.1`
+  - 24 columns
+  - 174 data rows
+  - `event=start` / `event=stop` present
+  - `abnormal_flag=0`
+  - forbidden output patterns absent
+
+### Measurement caveat
+
+This test is not a valid current measurement.
+
+- VAMeter input port was connected to MAKER-DRIVE motor output.
+- VAMeter output port was not connected.
+- Therefore the VAMeter In-Out current path was not established.
+- `measurement_path_code=unknown`.
+- V/I/P values must not be used for classroom or instructional judgment.
+
+### Judgment
+
+- PASS: relay command and actual GPIO10 / continuity matched.
+- PASS: OutputArmed relay ON with PWM disabled.
+- PASS: CSV state/output logging.
+- NoGO: treat V/I/P as motor current or driver input current.
+
+### Next action
+
+- Rewire for `driver_input_inline`:
+  - power + -> VAMeter IN -> VAMeter OUT -> MAKER-DRIVE VB+
+  - power - -> MAKER-DRIVE VB-
+- Repeat low-voltage no-load test.
+- Keep `measurement_path_code=unknown` until firmware explicitly records `driver_input_inline`.
+
+## 2026-05-01 Motor Observe measurement path relay control
+
+### Date
+
+2026-05-01
+
+### Branch / commit
+
+- branch: edu-dev
+- commit: 未確認
+
+### Firmware version
+
+- APP_VERSION: v1.1.0-18-ga52af72-dirty (build log)
+
+### Target behavior
+
+- Motor Observe bring-up の measurement path relay 制御を追加
+- `OutputArmed` / `OutputEnabled` で relay ON
+- `SafeDisabled` / `Fault` / timeout / leaveMode / QR / onDestroy で relay OFF
+- `physical_output_allowed` は PWM 出力許可の意味を維持
+- GPIO10 は relay 制御専用 (PWM/方向制御に使わない)
+
+### Hardware setup
+
+- 実機未使用
+- MAKER-DRIVE未接続
+- モータ未接続
+
+### Test procedure
+
+```bash
+cmake -S tests/motor_observe -B /tmp/vameter_motor_observe_test_build
+cmake --build /tmp/vameter_motor_observe_test_build
+/tmp/vameter_motor_observe_test_build/motor_observe_state_test
+ctest --test-dir /tmp/vameter_motor_observe_test_build --output-on-failure
+cmake -S . -B build
+cmake --build build -j8
+. $HOME/esp/esp-idf/export.sh && cd /home/yu-ichirou/Dev/VAMeter-Edu/platforms/vameter && idf.py build
+. $HOME/esp/esp-idf/export.sh && cd /home/yu-ichirou/Dev/VAMeter-Edu/platforms/vameter && idf.py -B build_motor_observe_bringup -DCMAKE_CXX_FLAGS="-DMOTOR_OBSERVE_BRINGUP_AUTOSTART=1" build
+```
+
+### Result
+
+- host-side test build: pass
+- host-side test direct execution: pass (no output)
+- CTest execution: pass, 1/1 tests passed
+- desktop build: pass
+- device build: pass
+- device bring-up build: pass
+- 実機の relay ON/OFF 波形: 未検証
+- GPIO10 極性の実測: 未検証
+
+### Judgment
+
+- pass: ソフトウェア状態遷移とビルド確認
+- 未検証: 実機、GPIO10波形、relay ON/OFF、MAKER-DRIVE接続、モータ接続
+
+### Next action
+
+- 実機で OutputArmed / OutputEnabled の relay ON を確認する
+- 実機で SafeDisabled / Fault / timeout / leaveMode / QR / onDestroy の relay OFF を確認する
+- GPIO10 の High/Low と relay動作の極性を測定して記録する
+
+### Rollback condition
+
+- OutputArmed でPWMが出る場合
+- SafeDisabled / Fault / timeout / leaveMode / QR / onDestroy で relay が OFF にならない場合
+- relay ON を `physical_output_allowed=1` と混同する設計になった場合
+
 ## 2026-04-29 Motor Observe minimal no-motor PWM backend
 
 ### Date

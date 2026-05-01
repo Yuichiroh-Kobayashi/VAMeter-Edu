@@ -15,6 +15,8 @@ namespace MOTOR_OBSERVE
     public:
         bool begin() override;
         void disarm() override;
+        void setMeasurementPathRelayEnabled(bool enabled) override;
+        bool isMeasurementPathRelayEnabled() const override;
         void setTargetPercent(int targetPercent) override;
         void update() override;
         bool hasFault() const override;
@@ -26,6 +28,7 @@ namespace MOTOR_OBSERVE
         bool _forwardChannelConfigured = false;
         bool _reverseChannelConfigured = false;
         bool _hasFault = false;
+        bool _measurementPathRelayEnabled = false;
         int _pendingTargetPercent = 0;
         int _lastAppliedTargetPercent = 0;
         std::string _faultReason;

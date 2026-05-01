@@ -16,6 +16,8 @@ namespace MOTOR_OBSERVE
 
         virtual bool begin() = 0;
         virtual void disarm() = 0;
+        virtual void setMeasurementPathRelayEnabled(bool enabled) = 0;
+        virtual bool isMeasurementPathRelayEnabled() const = 0;
         virtual void setTargetPercent(int targetPercent) = 0;
         virtual void update() = 0;
         virtual bool hasFault() const = 0;
@@ -28,6 +30,8 @@ namespace MOTOR_OBSERVE
     public:
         bool begin() override;
         void disarm() override;
+        void setMeasurementPathRelayEnabled(bool enabled) override;
+        bool isMeasurementPathRelayEnabled() const override;
         void setTargetPercent(int targetPercent) override;
         void update() override;
         bool hasFault() const override;
@@ -36,6 +40,7 @@ namespace MOTOR_OBSERVE
 
     private:
         int _lastAppliedTargetPercent = 0;
+        bool _measurementPathRelayEnabled = false;
         std::string _faultReason;
     };
 
@@ -59,6 +64,7 @@ namespace MOTOR_OBSERVE
         int getTargetPercent() const;
         int getLastAppliedTargetPercent() const;
         bool isPhysicalOutputAllowed() const;
+        bool isMeasurementPathRelayEnabled() const;
         bool hasFault() const;
         const std::string& getFaultReason() const;
 
@@ -67,5 +73,6 @@ namespace MOTOR_OBSERVE
         Backend& _backend;
 
         void _applyZeroTarget();
+        void _syncMeasurementPathRelay();
     };
 } // namespace MOTOR_OBSERVE

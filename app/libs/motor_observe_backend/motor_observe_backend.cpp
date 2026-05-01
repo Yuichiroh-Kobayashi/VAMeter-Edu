@@ -24,7 +24,12 @@ namespace MOTOR_OBSERVE
     {
         _lastAppliedTargetPercent = 0;
         _faultReason.clear();
+        _measurementPathRelayEnabled = false;
     }
+
+    void NoopBackend::setMeasurementPathRelayEnabled(bool enabled) { _measurementPathRelayEnabled = enabled; }
+
+    bool NoopBackend::isMeasurementPathRelayEnabled() const { return _measurementPathRelayEnabled; }
 
     void NoopBackend::setTargetPercent(int targetPercent)
     {
@@ -49,45 +54,58 @@ namespace MOTOR_OBSERVE
         const bool begun = _backend.begin();
         _safetyController.resetToSafeDisabled();
         _backend.disarm();
+        _syncMeasurementPathRelay();
         return begun;
     }
 
     bool BackendController::prepareOutput()
     {
         _applyZeroTarget();
-        return _safetyController.prepareOutput();
+        const bool prepared = _safetyController.prepareOutput();
+        _syncMeasurementPathRelay();
+        return prepared;
     }
 
-    bool BackendController::enableOutput() { return _safetyController.enableOutput(); }
+    bool BackendController::enableOutput()
+    {
+        const bool enabled = _safetyController.enableOutput();
+        _syncMeasurementPathRelay();
+        return enabled;
+    }
 
     void BackendController::disableOutput()
     {
         _safetyController.disableOutput();
         _backend.disarm();
+        _syncMeasurementPathRelay();
     }
 
     void BackendController::leaveMode()
     {
         _safetyController.leaveMode();
         _backend.disarm();
+        _syncMeasurementPathRelay();
     }
 
     void BackendController::timeout()
     {
         _safetyController.timeout();
         _backend.disarm();
+        _syncMeasurementPathRelay();
     }
 
     void BackendController::setFault(const std::string& reason)
     {
         _safetyController.setFault(reason);
         _backend.disarm();
+        _syncMeasurementPathRelay();
     }
 
     bool BackendController::clearFault()
     {
         const bool cleared = _safetyController.clearFault();
         _backend.disarm();
+        _syncMeasurementPathRelay();
         return cleared;
     }
 
@@ -101,15 +119,27 @@ namespace MOTOR_OBSERVE
             return;
         }
 
+        _syncMeasurementPathRelay();
+
         if (!_safetyController.isPhysicalOutputAllowed())
         {
             _applyZeroTarget();
             _backend.update();
+            if (_backend.hasFault())
+            {
+                setFault(_backend.getFaultReason());
+                return;
+            }
             return;
         }
 
         _backend.setTargetPercent(_safetyController.getTargetPercent());
         _backend.update();
+        if (_backend.hasFault())
+        {
+            setFault(_backend.getFaultReason());
+            return;
+        }
     }
 
     SafetyState BackendController::getState() const { return _safetyController.getState(); }
@@ -119,6 +149,8 @@ namespace MOTOR_OBSERVE
     int BackendController::getLastAppliedTargetPercent() const { return _backend.getLastAppliedTargetPercent(); }
 
     bool BackendController::isPhysicalOutputAllowed() const { return _safetyController.isPhysicalOutputAllowed(); }
+
+    bool BackendController::isMeasurementPathRelayEnabled() const { return _backend.isMeasurementPathRelayEnabled(); }
 
     bool BackendController::hasFault() const { return _safetyController.hasFault() || _backend.hasFault(); }
 
@@ -131,4 +163,11 @@ namespace MOTOR_OBSERVE
     }
 
     void BackendController::_applyZeroTarget() { _backend.setTargetPercent(0); }
+
+    void BackendController::_syncMeasurementPathRelay()
+    {
+        const SafetyState state = _safetyController.getState();
+        const bool enableRelay = (state == SafetyState::OutputArmed || state == SafetyState::OutputEnabled);
+        _backend.setMeasurementPathRelayEnabled(enableRelay);
+    }
 } // namespace MOTOR_OBSERVE

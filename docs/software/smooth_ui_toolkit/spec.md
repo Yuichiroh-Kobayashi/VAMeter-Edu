@@ -90,8 +90,8 @@ Rules:
   - output pattern
   - MAKER-DRIVE not connected
   - motor not connected
-  - GPIO10 not used
-  - Base relay not used
+  - GPIO10 is not used for PWM/output direction; GPIO10_REL may be used for measurement path relay
+  - Base relay is measurement path relay only (not safety)
 
 ## Unverified in VAMeter-Edu
 

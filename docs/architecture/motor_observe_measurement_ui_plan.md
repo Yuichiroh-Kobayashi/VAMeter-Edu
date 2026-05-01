@@ -34,8 +34,8 @@ Motor Observe bring-up UI、device側 `VAMeterMotorObservePwmBackend`、開発�
 | 既存 `REC-*.csv` 仕様変更 | しない |
 | GPIO9候補 | M1A / Port.A C9 White |
 | GPIO8候補 | M1B / Port.A C8 Yellow |
-| GPIO10 | 使わない |
-| Base relay | 安全遮断として使わない |
+| GPIO10 | measurement path relay制御専用 (PWMは使わない) |
+| Base relay | measurement path relayとして使う (安全遮断として使わない) |
 | High/High coast | 未実装 / 入れない |
 | PWM/High / High/PWM | 未実装 / 入れない |
 
@@ -51,6 +51,29 @@ PWM出力方針は維持する。
 | target 0 | Low-Low |
 | target > 0 | GPIO9候補 PWM / GPIO8候補 Low |
 | target < 0 | GPIO9候補 Low / GPIO8候補 PWM |
+
+measurement path relay は安全遮断ではない。Motor Observe bring-up では測定経路を閉じるために使う。
+
+- `OutputArmed` で relay ON。
+- `OutputEnabled` で relay ON。
+- `SafeDisabled` / `Fault` / timeout / leaveMode / QR download / onDestroy で relay OFF。
+- `physical_output_allowed` は PWM 出力許可の意味を維持する。
+
+relay 状態表:
+
+| State / Event           | relay                  | PWM output            | target | output_pattern      |
+| ----------------------- | ---------------------- | --------------------- | ------ | ------------------- |
+| startup before begin    | OFF                    | OFF                   | 0      | LOW_LOW             |
+| SafeDisabled            | OFF                    | OFF                   | 0      | LOW_LOW             |
+| OutputArmed             | ON                     | OFF                   | 0      | LOW_LOW             |
+| OutputEnabled target 0  | ON                     | OFF                   | 0      | LOW_LOW             |
+| OutputEnabled target >0 | ON                     | GPIO9 PWM / GPIO8 Low | >0     | GPIO9_PWM_GPIO8_LOW |
+| OutputEnabled target <0 | ON                     | GPIO9 Low / GPIO8 PWM | <0     | GPIO9_LOW_GPIO8_PWM |
+| brake stop              | OFF after SafeDisabled | OFF                   | 0      | LOW_LOW             |
+| Fault                   | OFF                    | OFF                   | 0      | LOW_LOW             |
+| timeout                 | OFF                    | OFF                   | 0      | LOW_LOW             |
+| QR download             | OFF                    | OFF                   | 0      | LOW_LOW             |
+| leaveMode / onDestroy   | OFF                    | OFF                   | 0      | LOW_LOW             |
 
 ## Purpose
 
@@ -117,6 +140,7 @@ Stage 1 の画面では、狭い画面でも安全状態、出力状態、測定
 | `Requested Target` | UI操作で要求された target [%] | 1 |
 | `Applied Target` | backendへ実際に適用された target [%] | 1 |
 | `Output Pattern` | `LOW_LOW` / `GPIO9_PWM_GPIO8_LOW` / `GPIO9_LOW_GPIO8_PWM` | 1 |
+| `Relay` | measurement path relay state | 1 |
 | `Measurement Path` | `driver_input_inline` など | 1 |
 | `CSV File` | 現在の `MO-*.csv` | 1 |
 | `CSV Status` | `READY` / `STORAGE LOW` / `OPEN FAIL` など | 1 |
@@ -179,6 +203,20 @@ Stage 1 で測定経路選択UIを入れる場合、target操作より前に測�
 | `motor_terminal_voltage` | 後回し |
 | `motor_side_inline` | 後回し |
 | `unknown` | 教材判断に使わない |
+
+### Observation-only path: motor_output_to_vameter_input_open_output
+
+A hardware check connected the MAKER-DRIVE motor output to the VAMeter input port while leaving the VAMeter output port unconnected.
+
+This is not a valid current measurement path.
+
+Use only as a relay / signal observation record. Do not use V/I/P values from this wiring for instructional judgment.
+
+If such wiring must be represented later, use an explicit code such as:
+
+- `observation_motor_output_input_only`
+
+and keep semantics as `unknown`.
 
 ### `driver_input_inline`
 
@@ -306,8 +344,8 @@ Stage 1 UI は既存 safety / backend 構造を迂回しない。
 - QR中は出力制御とCSV追記を止める。
 - QR後は新規CSVセッション。
 - `Fault` / timeout / leaveMode は Low-Low。
-- GPIO10は使わない。
-- Base relayは安全遮断として使わない。
+- GPIO10はPWM/方向制御に使わない。measurement path relay制御に限定する。
+- Base relayはmeasurement path relayとして使うが、安全遮断として使わない。
 - High/High coastは入れない。
 - PWM/High / High/PWMは入れない。
 - current limit をUIで示す場合、測定値ソース、threshold、hysteresis、停止挙動、復帰操作、検証ログが必要。
@@ -514,7 +552,7 @@ NoGO条件:
 
 - `SafeDisabled` / `OutputArmed` で出力が出る。
 - brake stop 後に `physical_output_allowed=1` が残る。
-- GPIO10またはBase relayに依存する。
+- GPIO10をPWM/方向制御に使う、またはBase relayを安全遮断に依存する。
 - High/High coast、PWM/High、High/PWM が必要になる。
 
 撤退条件:
@@ -574,8 +612,8 @@ NoGO条件:
 - 自動eraseしない。
 - `REC-*.csv` を自動削除しない。
 - 設定ファイルを削除しない。
-- GPIO10を使わない。
-- Base relayを使わない。
+- GPIO10をPWM/方向制御に使わない。
+- Base relayを安全遮断に使わない。
 - High/High coastを実装しない。
 - PWM/High / High/PWMを実装しない。
 - driver input current を motor winding current として扱わない。
@@ -650,5 +688,5 @@ NoGO条件:
 - 測定経路未確定の V/I/P を教材判断に使う前提にした。
 - 自動削除・自動formatを提案した。
 - `REC-*.csv` を勝手に削除する提案をした。
-- GPIO10 / Base relay / PWM backend 方針を変えた。
+- GPIO10をPWMに使う、またはBase relayを安全遮断として扱う提案をした。
 - High/High coast / PWM/High / High/PWMを入れた。

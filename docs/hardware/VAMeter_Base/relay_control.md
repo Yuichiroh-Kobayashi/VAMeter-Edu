@@ -32,10 +32,21 @@ Motor Observe must not use the Base relay as a safety disconnect.
 
 Rules:
 
-- Do not use `HAL::SetBaseRelay()` for Motor Observe safety.
+- Base relay is allowed only as a measurement path relay for Motor Observe bring-up.
+- Do not use `HAL::SetBaseRelay()` as a safety disconnect.
 - Do not assume GPIO10 disconnects GPIO8/GPIO9, USB-C, or all measurement paths.
 - GPIO10 / G10_REL / EXT_G10 must be treated as relay-related and excluded from Motor Observe PWM candidates.
-- If a future design requires relay interaction, create a separate design review before implementation.
+- GPIO10 must not be used for PWM or direction control.
+- If a future design requires relay interaction beyond measurement path use, create a separate design review before implementation.
+
+## Firmware polarity (未検証)
+
+Firmware implementation uses GPIO10 as the relay control pin.
+
+- `HAL::SetBaseRelay(true)` drives GPIO10 High to close the relay.
+- `HAL::SetBaseRelay(false)` drives GPIO10 Low to open the relay.
+
+Hardware polarity verification is 未検証. Record the actual measurement in `docs/operations/safety_test_log.md`.
 
 ## Future current-limit cutoff
 

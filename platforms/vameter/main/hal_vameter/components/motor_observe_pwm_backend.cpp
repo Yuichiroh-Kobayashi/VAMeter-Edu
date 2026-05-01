@@ -4,6 +4,7 @@
 #include "motor_observe_pwm_backend.h"
 
 #include "../hal_config.h"
+#include "hal/hal.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -44,9 +45,12 @@ namespace MOTOR_OBSERVE
         _forwardChannelConfigured = false;
         _reverseChannelConfigured = false;
         _hasFault = false;
+        _measurementPathRelayEnabled = false;
         _faultReason.clear();
         _pendingTargetPercent = 0;
         _lastAppliedTargetPercent = 0;
+
+        setMeasurementPathRelayEnabled(false);
 
         ledc_timer_config_t timerConfig = {};
         timerConfig.speed_mode = motorObservePwmSpeedMode;
@@ -106,8 +110,22 @@ namespace MOTOR_OBSERVE
     void VAMeterMotorObservePwmBackend::disarm()
     {
         _pendingTargetPercent = 0;
+        const bool zeroDutyOk = _tryApplyZeroDutyBestEffort();
         _lastAppliedTargetPercent = 0;
-        _tryApplyZeroDutyBestEffort();
+        setMeasurementPathRelayEnabled(false);
+        if (!zeroDutyOk)
+            _setFault("disarm zero duty", ESP_FAIL);
+    }
+
+    void VAMeterMotorObservePwmBackend::setMeasurementPathRelayEnabled(bool enabled)
+    {
+        _measurementPathRelayEnabled = enabled;
+        HAL::SetBaseRelay(enabled);
+    }
+
+    bool VAMeterMotorObservePwmBackend::isMeasurementPathRelayEnabled() const
+    {
+        return _measurementPathRelayEnabled;
     }
 
     void VAMeterMotorObservePwmBackend::setTargetPercent(int targetPercent)
@@ -225,6 +243,7 @@ namespace MOTOR_OBSERVE
         _pendingTargetPercent = 0;
         _lastAppliedTargetPercent = 0;
         _tryApplyZeroDutyBestEffort();
+        setMeasurementPathRelayEnabled(false);
         _hasFault = true;
         _faultReason = std::string("Motor Observe PWM backend failed: ") + operation + " error=" + std::to_string(errorCode);
     }

@@ -85,6 +85,23 @@ PWM瞬時波形の確認には、必要に応じてオシロスコープまた�
 
 現時点では、モータ端子側の電圧、電流、電力測定は未検証。
 
+## NoGO measurement path example
+
+### Motor output connected to VAMeter input only
+
+Wiring:
+
+- MAKER-DRIVE motor output -> VAMeter input
+- VAMeter output: not connected
+
+Judgment:
+
+- Not valid for current measurement.
+- VAMeter In-Out current path is open.
+- Do not interpret current as motor current.
+- Do not interpret power as motor power.
+- Use only as an observation-only check if explicitly recorded.
+
 ## Rules
 
 - Do not infer sensor path from UI color or app name.

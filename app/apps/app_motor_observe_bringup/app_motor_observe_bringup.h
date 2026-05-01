@@ -71,6 +71,7 @@ namespace MOONCAKE
             void _render();
             const char* _stateText() const;
             const char* _outputText() const;
+            const char* _relayText() const;
             const char* _csvStatusText() const;
 
         public:

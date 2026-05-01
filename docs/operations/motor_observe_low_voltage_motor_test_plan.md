@@ -18,8 +18,8 @@
 - MAKER-DRIVEは1chのみ使う。
 - High/High coastは使わない。
 - PWM/High、High/PWMは使わない。
-- Base relayを安全遮断として使わない。
-- GPIO10は使わない。
+- Base relayはmeasurement path relayとして使うが、安全遮断として使わない。
+- GPIO10はPWM/方向制御に使わない。
 - `MOTOR_OBSERVE_BRINGUP_AUTOSTART=1` は開発者向けbring-up buildだけで使う。
 
 ## 安全条件
@@ -53,8 +53,8 @@
 | MAKER-DRIVE発熱 | 異常発熱なし | pass / fail / 未検証 |
 | モータ発熱 | 異常発熱なし | pass / fail / 未検証 |
 | 電池発熱 | 異常発熱なし | pass / fail / 未検証 |
-| Base relay | 動作しないこと | pass / fail / 未確認 |
-| GPIO10 | 使っていないこと | pass / fail / 未確認 |
+| Base relay | OutputArmed / OutputEnabledでON、SafeDisabled / brake stopでOFF | pass / fail / 未検証 |
+| GPIO10 | PWM/方向制御に使っていないこと | pass / fail / 未確認 |
 
 ## 測定経路の記録
 
@@ -68,6 +68,24 @@
 測定配線を説明できない場合、VAMeter表示値は`未確認`として記録する。
 ハードウェア挙動を確認していない場合は`未検証`として記録する。
 Motor Observe開発用CSVで`measurement_path_code=unknown`が出ている場合、そのV/I/P値を教材用判断に使ってはいけない。
+
+### Invalid / observation-only wiring example
+
+The following wiring is not valid for current measurement:
+
+- MAKER-DRIVE motor output connected to VAMeter input port
+- VAMeter output port not connected
+
+This wiring may show some V/I/P values in the development CSV, but the VAMeter In-Out current path is not established.
+
+Do not interpret this as:
+
+- driver input current
+- motor winding current
+- motor terminal current
+- classroom-ready measurement
+
+Record this as observation-only / invalid for current measurement.
 
 ### Direct VAMeter connection note
 

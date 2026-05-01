@@ -11,6 +11,7 @@
 - モータはまだ接続しない。
 - Base relayを安全遮断として扱わない。
 - GPIO10はPWM候補にしない。
+- Base relayはmeasurement path relayとして限定的に扱う。
 - firmware runtimeは変更しない。
 
 ## Current implementation note
@@ -48,13 +49,13 @@ When changing existing Motor Observe PWM behavior, treat this document as active
 |---:|---|---|---|---|
 | GPIO8 | `HAL_PIN_BASE_GROVE_IOB` | Port.A C8(Yellow) candidate | M1B candidate | 条件付き候補 |
 | GPIO9 | `HAL_PIN_BASE_GROVE_IOA` | Port.A C9(White) candidate | M1A candidate | 条件付き候補 |
-| GPIO10 | `HAL_PIN_BASE_RELAY_CTRL` | Base relay / G10_REL / EXT_G10 risk | 使用しない | 除外 |
+| GPIO10 | `HAL_PIN_BASE_RELAY_CTRL` | Base relay / G10_REL / EXT_G10 risk | measurement path relay専用 (PWMは使わない) | PWM除外 |
 
 M1A / M1B の極性は、この文書では最終断定しない。
 
 将来のPWM backend実装前レビューでは、Port.A C9(White) / C8(Yellow) と MAKER-DRIVE M1A / M1B の入れ替え可能性を残す。モータ未接続の波形確認で、正方向・逆方向の定義、target符号、表示上の向きを分けて確認する。
 
-GPIO10は relay 系として扱い、Motor Observe PWM候補から除外する。Base relayを安全遮断として使う設計にしてはならない。
+GPIO10は relay 系として扱い、Motor Observe PWM候補から除外する。Base relayはmeasurement path relayとして限定的に使うが、安全遮断として使う設計にしてはならない。
 
 ## Backend architecture
 
@@ -72,6 +73,31 @@ Motor Observe の物理出力は、既存の no-output 構造を迂回しない�
 future PWM backend は、`SafetyController` と `BackendController` を迂回して出力してはならない。
 
 target変更だけでは物理出力許可状態を変えない。物理出力は、`OutputEnabled` かつ `isPhysicalOutputAllowed()` が true の状態で、backend update 相当の処理が実行された場合に限る。
+
+## Measurement path relay policy
+
+Base relay は safety relay ではない。Motor Observe bring-up では measurement path relay として限定的に扱う。
+
+- `OutputArmed` で relay を ON にする。
+- `OutputEnabled` で relay を ON にする。
+- `SafeDisabled` / `Fault` / timeout / leaveMode / QR download / onDestroy では relay を OFF にする。
+- `physical_output_allowed` は PWM 出力許可の意味を維持する。
+
+relay 状態表:
+
+| State / Event           | relay                  | PWM output            | target | output_pattern      |
+| ----------------------- | ---------------------- | --------------------- | ------ | ------------------- |
+| startup before begin    | OFF                    | OFF                   | 0      | LOW_LOW             |
+| SafeDisabled            | OFF                    | OFF                   | 0      | LOW_LOW             |
+| OutputArmed             | ON                     | OFF                   | 0      | LOW_LOW             |
+| OutputEnabled target 0  | ON                     | OFF                   | 0      | LOW_LOW             |
+| OutputEnabled target >0 | ON                     | GPIO9 PWM / GPIO8 Low | >0     | GPIO9_PWM_GPIO8_LOW |
+| OutputEnabled target <0 | ON                     | GPIO9 Low / GPIO8 PWM | <0     | GPIO9_LOW_GPIO8_PWM |
+| brake stop              | OFF after SafeDisabled | OFF                   | 0      | LOW_LOW             |
+| Fault                   | OFF                    | OFF                   | 0      | LOW_LOW             |
+| timeout                 | OFF                    | OFF                   | 0      | LOW_LOW             |
+| QR download             | OFF                    | OFF                   | 0      | LOW_LOW             |
+| leaveMode / onDestroy   | OFF                    | OFF                   | 0      | LOW_LOW             |
 
 ## Proposed future backend name and location
 
@@ -111,7 +137,7 @@ future PWM backend は、以下を満たすまでMotor Observeの物理出力候
 - mode select / app openだけでは出力しない。
 - target変更だけでは出力許可状態を変えない。
 - Base relayを安全遮断として使わない。
-- GPIO10を使わない。
+- GPIO10はPWMに使わない。measurement path relay専用とする。
 - Base TestとMotor Observeは排他にする。
 - firmware起動直後に、ロジックアナライザまたはオシロスコープでGPIO8/GPIO9がLowまたは安全状態であることを確認する。
 - backend初期化直後に、ロジックアナライザまたはオシロスコープでGPIO8/GPIO9がLowまたは安全状態であることを確認する。
@@ -145,7 +171,7 @@ Motor Observe PWM backend は、GPIO8 / GPIO9 を将来 output として使う�
 - ロジックアナライザまたはオシロスコープを使う。
 - GPIO10も観測できる場合は観測し、PWMが出ないことを確認する。
 - Base relayを安全遮断として扱わない。
-- Base relay操作を検証目的に含めない。
+- Base relay操作はmeasurement path relayとして扱い、PWM出力検証と混同しない。
 
 確認項目:
 
@@ -160,7 +186,7 @@ Motor Observe PWM backend は、GPIO8 / GPIO9 を将来 output として使う�
 9. leaveModeでPWM dutyが0になること。
 10. disableでPWM dutyが0になること。
 11. GPIO10にPWMが出ないこと。
-12. Base relayを操作しないこと。
+12. measurement path relayがSafeDisabled / Fault / timeout / leaveModeでOFFになること。
 13. M1A / M1B 候補の入れ替え可能性を記録すること。
 
 測定結果は、`docs/operations/safety_test_log.md` または専用ログに記録する。
