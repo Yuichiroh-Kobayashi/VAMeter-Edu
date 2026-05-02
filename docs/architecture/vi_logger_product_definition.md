@@ -390,6 +390,14 @@ Required safety behavior:
 - fault clear must require explicit operation and must not auto-restart
   output
 
+Active-output protection must not be firmware-only. Short-circuit,
+overcurrent, reverse connection, and battery reverse insertion protection
+must not depend only on MCU code running correctly. The hardware design
+must move to, or remain in, a safe state during MCU stop, reset, crash,
+watchdog reset, and boot. Firmware may monitor, log, notify the UI, and
+apply additional limits, but firmware must not be the only protection
+layer.
+
 Protection must be verified with hardware before the product is described
 as usable. If any protection behavior is unknown, mark it `未検証`.
 
