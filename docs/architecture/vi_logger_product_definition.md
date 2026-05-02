@@ -1,69 +1,53 @@
-# VI Logger Product Definition Draft
+# VI Logger 製品定義ドラフト
 
-Status: Draft / 未確定
+ステータス: ドラフト / 未確定
 
-This document defines the draft product direction for the next
-VAMeter-Edu generation. It is a planning document only. It does not
-implement firmware, CSV schema, UI, local download, CMake, `apps.h`, or
-internal power control.
+本文書は、次世代 VAMeter-Edu のドラフト製品方針を定義する。
+計画文書であり、ファームウェア、CSVスキーマ、UI、ローカルダウンロード、CMake、`apps.h`、内部電源制御の実装は含まない。
 
-## 1. Purpose
+## 1. 目的
 
-The next VAMeter-Edu should be defined as an educational internal-power
-V-I experimenter / VI logger / heat logger for junior high school Science
-and Technology lessons.
+次世代 VAMeter-Edu は、中学校の理科・技術科の授業向けの教育用内部電源付き V-I 実験器 / V-I ロガー / 発熱実験ロガーとして定義されるべきである。
+本製品は、電圧、電流、電力、抵抗的挙動、発熱を学習者が観察できるよう支援するものであり、VAMeter-Edu の教育的原則を維持する。
+すなわち、本デバイスは思考と確認を支援するツールであり、学習者の作業を単に代替するツールではない。
 
-The product should help learners observe voltage, current, power,
-resistance-like behavior, and heat generation while preserving the
-educational principle from VAMeter-Edu: the device is a support tool for
-thinking and checking, not a tool that simply replaces the learner's
-work.
+本ドラフトは、後続のハードウェア設計、ファームウェア設計、CSVスキーマ設計、UI設計、転送設計、保護回路設計の上位参照文書となる。
 
-This draft is the upper-level reference for later hardware design,
-firmware design, CSV schema design, UI design, transfer design, and
-protection circuit design.
+## 2. 背景
 
-## 2. Background
+現行の VAMeter-Edu は M5Stack VAMeter をベースとし、教室での運用に焦点を当てている:
 
-Current VAMeter-Edu is based on M5Stack VAMeter and focuses on classroom
-operation:
+- 簡素化された 電圧 / 電流 / USB-C / 設定メニュー
+- 正しい配線のためのガイド画面
+- 誤操作によるページ切り替えを防ぐ固定表示モード
+- 日本語教室UI
+- 通常の電圧・電流測定用の Normal Probe
+- アナログメーター練習用の Training Probe
+- 波形記録
+- デバイスAPとQRコードによるローカルCSVダウンロード
+- OTAアップグレードとファクトリーリセットの無効化
 
-- simplified Voltage / Current / USB-C / Settings menu
-- guide screens for correct wiring
-- fixed display modes to avoid accidental page switching
-- Japanese classroom UI
-- Normal Probe for normal voltage/current measurement
-- Training Probe for analog meter practice
-- waveform recording
-- local CSV download by device AP and QR code
-- disabled OTA Upgrade and Factory Reset
+修士論文「電流計・電圧計の指針読み取り技能向上を支援する補助教具の開発と授業実践」は、VAMeter-Edu を補助教具として位置づけている。
+正確な値を表示するからという理由だけで選定されたのではない。
+適切な測定範囲と精度を、オープンなファームウェアプラットフォーム、ディスプレイ、入力操作、学習UIのカスタマイズ機能と組み合わせているから選定された。
 
-The master's thesis, `電流計・電圧計の指針読み取り技能向上を支援する補助教具の開発と授業実践`,
-frames VAMeter-Edu as an auxiliary teaching tool. It was not selected only
-because it displays accurate values. It was selected because it combines
-adequate measurement range and accuracy with an open firmware platform,
-display, input controls, and the ability to customize the learning UI.
+次世代製品は、アナログメーター読み取り支援から V-I 実験、抵抗学習、豆電球の挙動観察、発熱ロギングへと教育的役割を拡張すべきである。
 
-The next product should extend that educational role from analog meter
-reading support into V-I experiments, resistance learning, miniature bulb
-behavior, and heat generation logging.
+## 3. ブランチと参照コンテキスト
 
-## 3. Branch and reference context
+作業ブランチ:
 
-Work branch:
+- 本ドラフトの現在のブランチ: `dev/vi-logger`
+- ブランチベース: `origin/main` / `v1.1.1`
+- ブランチの切り替え、マージ、チェリーピック、リベースは本タスクのスコープ外
 
-- current branch for this draft: `dev/vi-logger`
-- branch base: `origin/main` / `v1.1.1`
-- branch switch, merge, cherry-pick, and rebase are out of scope for this
-  task
-
-Current branch documents checked:
+確認済みの現在のブランチ文書:
 
 - `README.md`
 - `README_ja.md`
 - `CHANGELOG.md`
 
-Current branch documents not present:
+現在のブランチに存在しない文書:
 
 - `AGENTS.md`
 - `.github/copilot-instructions.md`
@@ -71,448 +55,388 @@ Current branch documents not present:
 - `docs/canon/minimum_constraints.md`
 - `docs/standards/*`
 
-Reference branch:
-
-- `origin/edu-dev` was read only through `git show` and `git ls-tree`
-- no file was copied from `edu-dev`
-- Motor Observe implementation, MAKER-DRIVE documents, motor backend, and
-  motor CSV are reference material only
-
-Important reference judgments from `edu-dev`:
-
-- the next plan is not Motor Observe
-- do not use VAMeter as a motor current meter
-- do not use `MO-*.csv` as the next CSV schema basis
-- Motor Observe / MAKER-DRIVE / motor backend are out of next mainline
-- CSV recording, QR/local transfer, chunked streaming, measurement
-  semantics, and AI governance are reusable after generalization
-- keep existing `REC-*.csv` compatibility
-- verify existing waveform `REC-*.csv` after any chunked streaming
-  migration
-- explicitly document the meaning of measured values
-- do not use `unknown` values for educational judgment
-
-## 4. Lessons from current VAMeter-Edu and Motor Observe
-
-Reusable lessons from current VAMeter-Edu:
-
-- classroom UI must be short, Japanese, and resistant to accidental
-  operation
-- guide screens matter because wiring is part of the learning task
-- Training Probe should support answer-check behavior without removing
-  pointer-reading practice
-- Normal Probe should remain available for direct measurement
-- local CSV download by QR is useful because it avoids cloud accounts,
-  school network dependence, and personal information handling
-- `REC-*.csv` workflows are existing classroom assets and must not be
-  broken
-
-Reusable lessons from Motor Observe:
-
-- active output must start disabled
-- selecting a mode must not energize output
-- output enable must require explicit operation
-- fault must force output off
-- fault clear must require explicit operation
-- QR transfer from an active-output mode should first force safe output
-  off, close the CSV, and only then show transfer UI
-- long CSV download should avoid whole-file allocation and should use
-  chunked streaming
-- a value is not educationally usable until the measurement path and
-  semantics are known
-
-Rejected Motor Observe lessons:
-
-- do not continue MAKER-DRIVE work in the next mainline
-- do not measure H-bridge motor terminal voltage with VAMeter
-- do not treat driver input current as motor winding current
-- do not treat motor PWM percent as force, torque, or student-facing
-  physical quantity
-- do not carry `MO-*.csv` columns or prefixes into the next schema as a
-  baseline
-
-## 5. Educational design principles from the thesis
-
-The thesis was text-extracted and reviewed for the product definition
-draft. The following principles must guide the next design.
-
-VAMeter selection:
-
-- VAMeter was adopted because it had suitable measurement range and
-  accuracy for the classroom goal, and because its open hardware/software
-  nature allowed firmware customization.
-- The device value is the integration of accurate measurement and a
-  customizable learner-facing UI.
-
-Pointer-reading support:
-
-- The original goal was not to replace analog meters with digital meters.
-  The goal was to let students read the analog pointer first and then
-  compare their reading with a digital value.
-- Digital feedback should help students notice and correct their own
-  mistakes.
-
-Answer-check UI:
-
-- Showing the answer all the time can remove the motivation to read the
-  pointer.
-- The answer-check concept should be preserved: hide or defer some
-  calculated answers until the learner performs an intentional check.
-- For the next product, Science mode should apply the same principle to
-  resistance and power: make students reason from V and I first when that
-  is the learning goal.
-
-Classroom tolerance:
-
-- The device must not make circuit work harder for beginners.
-- Wiring, visible connection complexity, and operation steps must be
-  minimized.
-- The enclosure is part of the educational design because it prevents
-  switch misoperation, cable pull-out, device damage, and student
-  confusion.
-
-Positioning:
+参照ブランチ:
 
-- VAMeter-Edu is an auxiliary teaching tool.
-- It should support skill acquisition and conceptual thinking, not bypass
-  them.
+- `origin/edu-dev` は `git show` と `git ls-tree` を通じてのみ参照
+- `edu-dev` からファイルのコピーは行っていない
+- Motor Observe 実装、MAKER-DRIVE 文書、モーターバックエンド、モーターCSV は参照資料のみ
 
-## 6. Product definition
+`edu-dev` からの重要な参照判断:
 
-The next VAMeter-Edu is a draft concept for an internal-power V-I
-experimenter with logging and transfer functions.
+- 次の計画は Motor Observe ではない
+- VAMeter をモーター電流計として使用しない
+- `MO-*.csv` を次のCSVスキーマの基盤として使用しない
+- Motor Observe / MAKER-DRIVE / モーターバックエンドは次のメインラインから除外
+- CSV記録、QR/ローカル転送、チャンク転送、測定セマンティクス、AIガバナンスは汎用化後に再利用可能
+- 既存の `REC-*.csv` 互換性を維持
+- チャンク転送移行後に既存波形 `REC-*.csv` を検証
+- 測定値の意味を明示的に文書化
+- 教育的判断に `unknown` 値を使用しない
 
-Core capabilities:
+## 4. 現行 VAMeter-Edu と Motor Observe からの教訓
 
-- apply a low-voltage internal excitation source to classroom loads
-- measure voltage and current in the defined measurement path
-- calculate power from measured V and I
-- calculate apparent resistance when the measurement meaning is valid
-- log time-series V/I/P and related values to CSV
-- transfer CSV locally by QR without cloud or school network dependency
-- support Science, Technology, and Heat logger modes
-- optionally log temperature through Grove-style or equivalent extension
+現行 VAMeter-Edu からの再利用可能な教訓:
 
-The device is still:
+- 教室UIは簡潔で、日本語で、誤操作に強いものでなければならない
+- ガイド画面は重要。配線は学習課題の一部であるため
+- Training Probe は指針読み取り練習を削除せずに答え合わせ動作をサポートすべき
+- Normal Probe は直接測定用に引き続き利用可能であるべき
+- QRによるローカルCSVダウンロードは有用。クラウドアカウント、校内ネットワーク依存、個人情報の取り扱いを回避できるため
+- `REC-*.csv` ワークフローは既存の教室資産であり、壊してはならない
 
-- an educational instrument
-- not a certified laboratory instrument
-- not a safety-certified protection device
-- not a motor controller
+Motor Observe からの再利用可能な教訓:
 
-The design is not yet approved for hardware implementation. All internal
-power behavior is `未検証` until protection circuits, firmware state
-behavior, and classroom handling are verified.
+- アクティブ出力は無効状態で開始しなければならない
+- モード選択で出力が通電されてはならない
+- 出力有効化には明示的な操作が必要
+- 障害発生時は出力をOFFにしなければならない
+- 障害クリアには明示的な操作が必要
+- アクティブ出力モードからのQR転送は、まず安全に出力をOFFにし、CSVを閉じ、その後に転送UIを表示すべき
+- 長いCSVダウンロードではファイル全体のメモリ確保を避け、チャンク転送を使用すべき
+- 測定パスとセマンティクスが既知になるまで、値は教育的に利用可能とはみなせない
 
-## 7. Target classroom use cases
+Motor Observe の却下された教訓:
 
-Science:
+- 次のメインラインで MAKER-DRIVE の作業を継続しない
+- VAMeter で H-bridge モーター端子電圧を測定しない
+- ドライバ入力電流をモーター巻線電流として扱わない
+- モーター PWM パーセントを力、トルク、生徒向けの物理量として扱わない
+- `MO-*.csv` のカラムやプレフィックスを次のスキーマのベースラインとして持ち込まない
 
-- observe voltage and current in simple circuits
-- infer resistance from V and I
-- compare fixed resistor and miniature bulb behavior
-- reason from measurement before seeing calculated answers
-- observe relationship between power, time, energy, and temperature
+## 5. 論文からの教育設計原則
 
-Technology:
+論文はテキスト抽出され、製品定義ドラフトのためにレビューされた。
+以下の原則が次の設計を導かなければならない。
 
-- check resistor value and tolerance in practical circuits
-- check load current and power consumption
-- compare fixed resistor, miniature bulb, and heating element behavior
-- use calculated R and P as direct design feedback
+VAMeter の選定:
 
-Heat experiments:
+- VAMeter は、教室の目標に適した測定範囲と精度を持ち、オープンソースの性質によりファームウェアのカスタマイズが可能であったため採用された。
+- デバイスの価値は、正確な測定とカスタマイズ可能な学習者向けUIの統合にある。
 
-- log electrical power over time
-- estimate electrical energy
-- compare energy input with temperature change when a temperature sensor is
-  available
-- export CSV for spreadsheet analysis on student devices
+指針読み取り支援:
 
-## 8. Non-goals
+- 元の目標は、アナログメーターをデジタルメーターに置き換えることではない。
+  生徒がまずアナログの指針を読み、その後デジタル値と比較できるようにすることが目標であった。
+- デジタルフィードバックは、生徒が自分の誤りに気づき修正するのを助けるべきである。
 
-- Do not continue Motor Observe as the next mainline.
-- Do not use MAKER-DRIVE.
-- Do not make VAMeter-Edu a motor current meter.
-- Do not use `MO-*.csv`.
-- Do not treat a miniature bulb as a fixed resistor.
-- Do not postpone protection circuit planning.
-- Do not require school network access.
-- Do not require cloud services.
-- Do not handle student personal information.
-- Do not finalize CSV schema in this product definition draft.
-- Do not finalize the standard battery configuration in this draft.
+答え合わせUI:
 
-## 9. Science mode
+- 常に答えを表示すると、指針を読む動機を奪う可能性がある。
+- 答え合わせの概念を維持すべき: 学習者が意図的にチェックを行うまで、一部の計算結果を非表示または遅延表示にする。
+- 次世代製品では、理科モードは抵抗と電力に同じ原則を適用すべき:
+  学習目標がそうであるとき、まずVとIから推論させる。
 
-Purpose:
+教室での耐性:
 
-- let students think from V and I
-- avoid showing calculated R continuously at the start of learning
-- allow answer-check display of R, P, or other calculated values when the
-  lesson design requires it
-- support post-experiment analysis with logged V/I/P/time data
+- デバイスが初学者にとって回路作業をより困難にしてはならない。
+- 配線、目に見える接続の複雑さ、操作手順を最小化しなければならない。
+- 筐体は教育設計の一部である。スイッチの誤操作、ケーブルの抜け、デバイスの損傷、生徒の混乱を防止するため。
 
-Draft behavior:
+ポジショニング:
 
-- primary display: voltage and current
-- calculated R: hidden, delayed, or answer-check depending on lesson
-  setting
-- calculated P and energy: available for analysis, not necessarily always
-  visible
-- temperature: optional and shown only when the sensor path is configured
-  and verified
+- VAMeter-Edu は補助教具である。
+- 技能習得と概念的思考を支援すべきであり、それらをバイパスすべきではない。
 
-Science mode must not convert the device into an automatic answer display
-that bypasses student reasoning.
+## 6. 製品定義
 
-## 10. Technology mode
+次世代 VAMeter-Edu は、ロギングおよび転送機能を備えた内部電源 V-I実験器のドラフトコンセプトである。
 
-Purpose:
+コア機能:
 
-- directly confirm R, P, and power consumption
-- support component and circuit design checks
-- compare fixed resistors, miniature bulbs, and heating elements
+- 教室負荷に低電圧の内部励起源を供給
+- 定義された測定パスにおける電圧と電流の測定
+- 測定された V と I からの電力計算
+- 測定の意味が有効な場合の見かけの抵抗の計算
+- 時系列 V/I/P および関連値のCSVログ記録
+- クラウドや校内ネットワーク依存なしのQRによるローカルCSV転送
+- 理科、技術科、発熱実験ロガーモードのサポート
+- Grove 型または同等の拡張による温度のオプションログ記録
 
-Draft behavior:
+本デバイスは依然として:
 
-- primary display may include R and P when the measurement path is valid
-- fixed resistor R may be treated as a component value check
-- miniature bulb `R = V / I` must be labeled as apparent resistance under
-  the current operating condition
-- power and current limits should be visible enough to prevent overload
+- 教育用計測器である
+- 認定試験所用計測器ではない
+- 安全認証済みの保護装置ではない
+- モーターコントローラではない
 
-Technology mode can show calculated values more directly than Science
-mode, but it still must identify value meaning and units.
+本設計はハードウェア実装の承認を受けていない。
+すべての内部電源動作は、保護回路、ファームウェアの状態動作、教室での取り扱いが検証されるまで `未検証` である。
 
-## 11. Heat logger mode
+## 7. 対象教室ユースケース
 
-Purpose:
+理科:
 
-- log electrical power over time
-- calculate or estimate electrical energy
-- support heat generation experiments
-- optionally record temperature and temperature change
+- 簡単な回路における電圧と電流の観察
+- V と I からの抵抗の推論
+- 固定抵抗と豆電球の挙動比較
+- 計算結果を見る前に測定から推論する
+- 電力、時間、エネルギー、温度の関係の観察
 
-Draft behavior:
+技術科:
 
-- record time, voltage, current, power, and energy candidate values
-- record temperature only when the sensor type, location, and calibration
-  status are known
-- allow local CSV transfer after output is safely off and the CSV is
-  closed
-- include maximum time and maximum energy limits before classroom use
+- 実用回路における抵抗値と許容誤差の確認
+- 負荷電流と消費電力の確認
+- 固定抵抗、豆電球、発熱体の挙動比較
+- 設計フィードバックとしての計算された R と P の直接使用
 
-Heat logger mode is not Go until thermal limits, heating element ratings,
-temperature sensor handling, and enclosure heat behavior are verified.
+発熱実験:
 
-## 12. Measurement and output domains
+- 時間経過に伴う電力のログ記録
+- 電気エネルギーの推定
+- 温度センサーが利用可能な場合のエネルギー入力と温度変化の比較
+- 生徒のデバイスでの表計算分析用CSVエクスポート
 
-Separate domains:
+## 8. 非目標
 
-- SYS: ESP32-S3, display, buttons/encoder, UI state, Wi-Fi AP, settings,
-  and app flow
-- MEAS: voltage/current acquisition, range selection, raw values,
-  filtering, calibration, displayed values, and recorded values
-- EXC: internal excitation output, output enable, target setting, output
-  cutoff, and output state
-- TEMP: temperature sensor interface, Grove-style extension, sensor
-  placement, calibration status, and sampled temperature values
-- STORAGE / TRANSFER: CSV creation, file close, QR display, local HTTP
-  download, and long-file streaming
-- PROTECTION: short circuit, overcurrent, reverse connection, external
-  voltage application, overheat, low voltage, battery reverse insertion,
-  timeout, and fault clear
+- Motor Observe を次のメインラインとして継続しない
+- MAKER-DRIVE を使用しない
+- VAMeter-Edu をモーター電流計にしない
+- `MO-*.csv` を使用しない
+- 豆電球を固定抵抗として扱わない
+- 保護回路の計画を先送りしない
+- 校内ネットワークアクセスを必須としない
+- クラウドサービスを必須としない
+- 生徒の個人情報を取り扱わない
+- 本製品定義ドラフトでCSVスキーマを確定しない
+- 本ドラフトで標準電池構成を確定しない
 
-Rules:
+## 9. 理科モード
 
-- UI drawing must not define measurement meaning.
-- Display formatting must not be the source of CSV values.
-- CSV values must not silently change when display formatting changes.
-- Any calculated value must identify its source values and unit.
-- `unknown` source or semantics values must not be used for student-facing
-  judgment.
+目的:
 
-## 13. Internal battery / power candidates
+- 生徒に V と I から考えさせる
+- 学習開始時に計算された R を継続的に表示しない
+- 授業設計が必要とする場合に、R、P、その他の計算値の答え合わせ表示を可能にする
+- ログ記録された V/I/P/時間データによる実験後分析をサポート
 
-The standard internal power source is not decided in this draft.
+ドラフト動作:
 
-Candidate configurations:
+- 主表示: 電圧と電流
+- 計算された R: 授業設定に応じて非表示、遅延、または答え合わせ
+- 計算された P とエネルギー: 分析用に利用可能、必ずしも常時表示ではない
+- 温度: センサーパスが設定・検証済みの場合のみ表示
 
-| Candidate | Nominal voltage | Notes and risks |
+理科モードは、生徒の推論をバイパスする自動答え表示装置にデバイスを変えてはならない。
+
+## 10. 技術科モード
+
+目的:
+
+- R、P、消費電力を直接確認
+- 部品・回路設計の確認をサポート
+- 固定抵抗、豆電球、発熱体の比較
+
+ドラフト動作:
+
+- 測定パスが有効な場合、主表示に R と P を含めてよい
+- 固定抵抗の R は部品値チェックとして扱ってよい
+- 豆電球の `R = V / I` は、現在の動作条件における見かけの抵抗としてラベル付けしなければならない
+- 過負荷を防ぐため、電力と電流の制限値が十分に見えるべき
+
+技術科モードは理科モードよりも計算値を直接的に表示できるが、値の意味と単位を識別しなければならない。
+
+## 11. 発熱実験ロガーモード
+
+目的:
+
+- 時間経過に伴う電力のログ記録
+- 電気エネルギーの計算または推定
+- 発熱実験のサポート
+- オプションでの温度・温度変化の記録
+
+ドラフト動作:
+
+- 時間、電圧、電流、電力、エネルギー候補値の記録
+- センサーの種類、設置場所、校正状況が既知の場合のみ温度を記録
+- 出力が安全にOFFになりCSVが閉じられた後にローカルCSV転送を許可
+- 教室使用前に最大時間・最大エネルギー制限を含める
+
+発熱実験ロガーモードは、熱的制限、発熱体定格、温度センサーの取り扱い、筐体の発熱挙動が検証されるまで Go ではない。
+
+## 12. 測定・出力ドメイン
+
+分離されたドメイン:
+
+- SYS: ESP32-S3、ディスプレイ、ボタン/エンコーダー、UI状態、Wi-Fi AP、設定、アプリフロー
+- MEAS: 電圧/電流取得、レンジ選択、生値、フィルタリング、校正、表示値、記録値
+- EXC: 内部励起出力、出力有効化、目標設定、出力遮断、出力状態
+- TEMP: 温度センサーインターフェース、Grove 型拡張、センサー配置、校正状況、サンプリング温度値
+- STORAGE / TRANSFER: CSV作成、ファイルクローズ、QR表示、ローカルHTTPダウンロード、長ファイルストリーミング
+- PROTECTION: 短絡、過電流、逆接続、外部電圧印加、過熱、低電圧、電池逆挿入、タイムアウト、障害クリア
+
+ルール:
+
+- UI描画が測定の意味を定義してはならない
+- 表示フォーマットがCSV値のソースであってはならない
+- 表示フォーマットの変更でCSV値が暗黙的に変わってはならない
+- 計算値はそのソース値と単位を識別しなければならない
+- `unknown` のソースまたはセマンティクスの値を生徒向けの判断に使用してはならない
+
+## 13. 内部電池 / 電源候補
+
+標準内部電源は本ドラフトでは未決定である。
+
+候補構成:
+
+| 候補 | 公称電圧 | 備考とリスク |
 |---|---:|---|
-| 3 x NiMH | 3.6 V | Lower voltage, rechargeable, lower short-circuit voltage than 4 cells, but full-charge voltage and low-voltage behavior need verification. |
-| 3 x alkaline / manganese | 4.5 V | Common school battery count, but fresh-cell voltage can be higher than nominal. Manganese cells have higher internal resistance and different load behavior. |
-| 4 x NiMH | 4.8 V | Strong candidate for standard operation, but not yet decided. Full-charge voltage, current capability, and heat experiment risk need verification. |
-| 4 x alkaline / manganese | 6.0 V | Higher available voltage and higher misuse risk. Fresh alkaline cells can exceed nominal total voltage. Must be checked against bulb and heating element ratings. |
+| NiMH 3本 | 3.6 V | 低い電圧、充電可能、4本より低い短絡電圧だが、満充電電圧と低電圧動作の検証が必要。 |
+| アルカリ / マンガン 3本 | 4.5 V | 学校で一般的な電池本数だが、新品電池の電圧は公称値より高くなりうる。マンガン電池は内部抵抗が高く、負荷特性が異なる。 |
+| NiMH 4本 | 4.8 V | 標準運用の有力候補だが、未決定。満充電電圧、電流能力、発熱実験リスクの検証が必要。 |
+| アルカリ / マンガン 4本 | 6.0 V | より高い利用可能電圧と、より高い誤使用リスク。新品アルカリ電池は公称合計電圧を超えうる。豆電球・発熱体の定格との照合が必要。 |
 
-Battery-related design considerations:
+電池関連の設計上の考慮事項:
 
-- new alkaline cells and fully charged NiMH cells may exceed nominal
-  voltage
-- internal resistance differs by chemistry, age, temperature, and cell
-  condition
-- short-circuit current can be high enough to damage wiring, cells,
-  contacts, loads, or enclosure
-- miniature bulb rated voltage/current must be checked before use
-- heating elements can create burn and enclosure heat risks
-- mixed old/new cells or mixed chemistries must be treated as misuse
-- reverse insertion must not create unsafe output
-- low battery must fail safe and should be logged
-- battery voltage should be recorded in VI / heat CSV when implemented
+- 新品アルカリ電池と満充電 NiMH 電池は公称電圧を超える可能性がある
+- 内部抵抗は化学種、劣化度、温度、電池状態により異なる
+- 短絡電流は配線、電池、接点、負荷、筐体を損傷するのに十分な大きさになりうる
+- 豆電球の定格電圧/電流は使用前に確認しなければならない
+- 発熱体は火傷や筐体の発熱リスクを生じうる
+- 新旧混在や異種化学種の混在は誤使用として扱わなければならない
+- 逆挿入で安全でない出力が生じてはならない
+- 低電圧はフェイルセーフで、ログ記録されるべき
+- 電池電圧は VI / 発熱CSV に実装時に記録されるべき
 
-No battery candidate is approved for standard classroom operation in this
-draft.
+本ドラフトでは、標準教室運用向けの電池候補は承認されていない。
 
-## 14. Protection requirements
+## 14. 保護要件
 
-Internal power makes the device an active-output teaching apparatus.
-Protection is a first-class requirement, not a later add-on.
+内部電源により、本デバイスはアクティブ出力の教育装置となる。保護は最重要要件であり、後から追加するものではない。
 
-Required safety behavior:
+必須の安全動作:
 
-- output OFF by default at power-on
-- output ON only by explicit user operation
-- short-circuit protection
-- overcurrent protection
-- reverse connection protection
-- external voltage application detection
-- battery reverse insertion protection
-- low-voltage protection
-- overheat protection
-- timeout to output OFF
-- maximum voltage limit
-- maximum current limit
-- maximum output time limit
-- maximum energy limit
-- firmware stop, reset, crash, or watchdog event must move hardware toward
-  the safe side
-- fault clear must require explicit operation and must not auto-restart
-  output
+- 電源投入時はデフォルトで出力OFF
+- 明示的なユーザー操作でのみ出力ON
+- 短絡保護
+- 過電流保護
+- 逆接続保護
+- 外部電圧印加の検出
+- 電池逆挿入保護
+- 低電圧保護
+- 過熱保護
+- 出力OFFへのタイムアウト
+- 最大電圧制限
+- 最大電流制限
+- 最大出力時間制限
+- 最大エネルギー制限
+- ファームウェアの停止、リセット、クラッシュ、ウォッチドッグイベントでハードウェアを安全側に移行させなければならない
+- 障害クリアには明示的な操作が必要であり、出力を自動再開してはならない
 
-Active-output protection must not be firmware-only. Short-circuit,
-overcurrent, reverse connection, and battery reverse insertion protection
-must not depend only on MCU code running correctly. The hardware design
-must move to, or remain in, a safe state during MCU stop, reset, crash,
-watchdog reset, and boot. Firmware may monitor, log, notify the UI, and
-apply additional limits, but firmware must not be the only protection
-layer.
+アクティブ出力の保護はファームウェアのみであってはならない。
+短絡、過電流、逆接続、電池逆挿入の保護は MCU コードの正常動作にのみ依存してはならない。
+ハードウェア設計は、MCU の停止、リセット、クラッシュ、ウォッチドッグリセット、起動中に安全状態に移行する、または安全状態を維持しなければならない。
+ファームウェアは監視、ログ記録、UI通知、追加制限の適用を行ってよいが、ファームウェアが唯一の保護層であってはならない。
 
-Protection must be verified with hardware before the product is described
-as usable. If any protection behavior is unknown, mark it `未検証`.
+保護は製品が使用可能と記述される前にハードウェアで検証されなければならない。
+保護動作が不明な場合は `未検証` とマークする。
 
-## 15. CSV and transfer requirements
+## 15. CSV・転送要件
 
-CSV and transfer are required product capabilities.
+CSVと転送は必須の製品機能である。
 
-Requirements:
+要件:
 
-- CSV recording must remain available
-- QR / local transfer must remain available
-- cloud service must not be required
-- school network access must not be required
-- personal information must not be required
-- long CSV transfer should use chunked streaming
-- existing waveform `REC-*.csv` compatibility must not be broken
-- future prefixes such as `VI-*.csv` and `HEAT-*.csv` are candidates, not
-  decisions
-- `MO-*.csv` must not be used as the next schema basis
-- raw, filtered, calibration-adjusted, displayed, recorded, and calculated
-  values must be distinguished
-- `unknown` values must not be used for educational judgment
-- CSV headers must include units or reference a documented schema
+- CSV記録は引き続き利用可能でなければならない
+- QR / ローカル転送は引き続き利用可能でなければならない
+- クラウドサービスを必須としてはならない
+- 校内ネットワークアクセスを必須としてはならない
+- 個人情報を必須としてはならない
+- 長いCSV転送にはチャンク転送を使用すべき
+- 既存の波形 `REC-*.csv` 互換性を壊してはならない
+- `VI-*.csv` や `HEAT-*.csv` などの将来のプレフィックスは候補であり、決定ではない
+- `MO-*.csv` を次のスキーマの基盤として使用してはならない
+- 生値、フィルタ値、校正調整値、表示値、記録値、計算値を区別しなければならない
+- `unknown` 値を教育的判断に使用してはならない
+- CSVヘッダーには単位を含めるか、文書化されたスキーマを参照しなければならない
 
-Before QR / local transfer from an active-output mode:
+アクティブ出力モードからの QR / ローカル転送の前に:
 
-1. force output OFF
-2. force output target to zero
-3. write the final CSV state if applicable
-4. close the CSV file
-5. verify the file is not empty and is readable
-6. show QR / local transfer UI
+1. 出力をOFFに強制
+2. 出力目標をゼロに強制
+3. 該当する場合、最終CSV状態を書き込み
+4. CSVファイルを閉じる
+5. ファイルが空でなく読み取り可能であることを確認
+6. QR / ローカル転送UIを表示
 
-REC compatibility gate:
+REC 互換性ゲート:
 
-- existing waveform `REC-*.csv` can be generated
-- QR / local download works
-- header and data rows are not corrupted
-- the file opens in Excel or equivalent student-device software
-- existing UI paths to recording and download are not broken
+- 既存の波形 `REC-*.csv` が生成可能
+- QR / ローカルダウンロードが動作する
+- ヘッダーとデータ行が破損していない
+- ファイルが Excel または同等の生徒デバイスソフトウェアで開ける
+- 記録・ダウンロードへの既存UIパスが壊れていない
 
-## 16. Temperature extension
+## 16. 温度拡張
 
-Temperature measurement is a planned extension, not a confirmed feature.
+温度測定は計画中の拡張であり、確定機能ではない。
 
-Candidate direction:
+候補方針:
 
-- Grove-style sensor connection or equivalent classroom-safe connector
-- temperature logging for heat generation experiments
-- CSV fields for sensor status, temperature, and temperature change after
-  schema design
+- Grove 型センサー接続または同等の教室安全コネクター
+- 発熱実験用の温度ロギング
+- スキーマ設計後のセンサー状態、温度、温度変化のCSVフィールド
 
-Open requirements:
+未解決要件:
 
-- sensor type
-- measurement range
-- response time
-- waterproof or insulation needs
-- placement relative to heating element and water/container
-- calibration or comparison method
-- connector polarity and misconnection tolerance
-- whether TEMP is powered from SYS, EXC, or another protected rail
+- センサーの種類
+- 測定範囲
+- 応答時間
+- 防水または絶縁の必要性
+- 発熱体および水/容器に対するセンサーの配置
+- 校正または比較方法
+- コネクターの極性と誤接続耐性
+- TEMP が SYS、EXC、その他の保護レールから給電されるか
 
-Do not present temperature logging as implemented until verified.
+温度ロギングは検証されるまで実装済みとして提示しないこと。
 
-## 17. Open questions
+## 17. 未解決事項
 
-- school-owned miniature bulb rated voltage and current
-- resistor values and allowable power
-- heating wire resistance and rating
-- temperature sensor candidate
-- Grove connection method
-- standard internal battery configuration
-- terminal shape
-- enclosure design
-- protection circuit topology
-- actual maximum current and energy limits
-- how Science mode answer-check should be operated
-- how Technology mode should expose direct R/P values without confusing
-  Science mode
-- whether `VI-*.csv`, `HEAT-*.csv`, or another prefix policy should be
-  used
-- REC CSV hardware recheck after chunked streaming
-- how much of the existing VAMeter hardware can be reused
-- scope of any new PCB
-- calibration workflow for the next device
-- how to document apparent bulb resistance in student-facing wording
+- 学校所有の豆電球の定格電圧・電流
+- 抵抗値と許容電力
+- 発熱線の抵抗と定格
+- 温度センサー候補
+- Grove 接続方法
+- 標準内部電池構成
+- 端子形状
+- 筐体設計
+- 保護回路トポロジー
+- 実際の最大電流・エネルギー制限
+- 理科モードの答え合わせの操作方法
+- 技術科モードが理科モードと混同せずに R/P 値を直接表示する方法
+- `VI-*.csv`、`HEAT-*.csv`、その他のプレフィックスポリシーの採否
+- チャンク転送後の REC CSV ハードウェア再確認
+- 既存 VAMeter ハードウェアの再利用可能範囲
+- 新規 PCB のスコープ
+- 次世代デバイスの校正ワークフロー
+- 見かけの豆電球抵抗の生徒向け表現の文書化方法
 
 ## 18. Go / NoGO
 
-Go for this draft:
+本ドラフトの Go:
 
-- docs-only product definition draft
-- work remains on `dev/vi-logger`
-- `edu-dev` is used as reference only
-- Motor Observe is excluded from the next mainline
-- Science / Technology / Heat logger modes are separated
-- protection requirements are explicit
-- CSV / transfer requirements are explicit
-- open questions remain open
-- no design is finalized beyond draft status
+- ドキュメントのみの製品定義ドラフト
+- 作業は `dev/vi-logger` 上で継続
+- `edu-dev` は参照のみとして使用
+- Motor Observe は次のメインラインから除外
+- 理科 / 技術科 / 発熱実験ロガーモードは分離
+- 保護要件は明示的
+- CSV / 転送要件は明示的
+- 未解決事項は未解決のまま
+- ドラフトステータスを超えて確定される設計はない
 
-NoGO for implementation:
+実装の NoGO:
 
-- active output without verified protection
-- internal battery standard selection without hardware risk review
-- miniature bulb use without rated voltage/current check
-- heat logger classroom use without thermal limits
-- `MO-*.csv` as next CSV schema
-- chunked streaming migration without REC CSV verification
-- product definition treated as final without further review
+- 検証済み保護なしのアクティブ出力
+- ハードウェアリスクレビューなしの内部電池標準選定
+- 定格電圧/電流確認なしの豆電球使用
+- 熱的制限なしの発熱実験ロガー教室使用
+- 次のCSVスキーマとしての `MO-*.csv`
+- REC CSV 検証なしのチャンク転送移行
+- さらなるレビューなしに最終版として扱われる製品定義
 
-## 19. Next documents to create
+## 19. 次に作成すべき文書
 
-Recommended next documents:
+推奨される次の文書:
 
 - `docs/standards/measurement_semantics_policy.md`
 - `docs/standards/csv_logging_policy.md`
@@ -522,11 +446,9 @@ Recommended next documents:
 - `docs/operations/r_bulb_measurement_test_plan.md`
 - `docs/operations/heat_generation_experiment_test_plan.md`
 
-Optional reference documents:
+オプションの参照文書:
 
 - `docs/references/motor_observe_lessons.md`
 - `docs/references/vameter_measurement_path_notes.md`
 
-Reference documents should summarize lessons only. They should not
-reintroduce Motor Observe or MAKER-DRIVE as active next-mainline
-specifications.
+参照文書は教訓のみをまとめるべきである。Motor Observe や MAKER-DRIVE をアクティブな次のメインライン仕様として再導入すべきではない。
