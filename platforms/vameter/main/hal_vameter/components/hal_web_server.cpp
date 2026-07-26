@@ -7,6 +7,7 @@
 #include "../hal_config.h"
 #include "../../../app/assets/assets.h"
 #include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/local_csv_download/local_csv_download_selection.h"
 #include "libs/local_csv_download/local_csv_stream.h"
 #include <mooncake.h>
 #include <Arduino.h>
@@ -354,8 +355,7 @@ std::string HAL_VAMeter::getSystemConfigUrl()
 /* -------------------------------------------------------------------------- */
 /*                            Local Download Server                           */
 /* -------------------------------------------------------------------------- */
-static std::string _download_file_path;
-static std::string _download_file_name;
+static LOCAL_CSV_DOWNLOAD::DownloadSelection _download_selection;
 static PsychicHttpServer* _download_server = nullptr;
 
 namespace
@@ -440,9 +440,8 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
     // Start AP mode
     _start_ap_mode();
 
-    // Store file path and name
-    _download_file_path = _fs_get_rec_file_path(recordName);
-    _download_file_name = recordName;
+    // Store the path and name as one synchronized selection.
+    _download_selection.set(recordName, _fs_get_rec_file_path(recordName));
 
     // Start server if not running
     if (_download_server == nullptr)
@@ -456,8 +455,10 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
 
-                                 const std::string fileName = _download_file_name;
-                                 const std::string filePath = _download_file_path;
+                                 const LOCAL_CSV_DOWNLOAD::DownloadSelectionSnapshot selection =
+                                     _download_selection.snapshot();
+                                 const std::string& fileName = selection.name;
+                                 const std::string& filePath = selection.path;
                                  const std::string requestPath = request->path().c_str();
                                  static const std::string downloadPrefix = "/download/";
 
@@ -471,7 +472,8 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                                  const std::string encodedName = requestPath.substr(downloadPrefix.size());
                                  if (!LOCAL_CSV_DOWNLOAD::DecodeUrlComponentOnce(encodedName, requestedName) ||
                                      !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(requestedName) ||
-                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(fileName) || requestedName != fileName)
+                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(fileName) || filePath.empty() ||
+                                     requestedName != fileName)
                                  {
                                      spdlog::warn("download rejected path/name mismatch: {}", requestPath);
                                      return request->reply(404, "text/plain", "File not found");
@@ -539,6 +541,8 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
 void HAL_VAMeter::stopDownloadServer()
 {
     spdlog::info("stop download server");
+
+    _download_selection.clear();
 
     // Stop AP mode
     _stop_ap_mode();

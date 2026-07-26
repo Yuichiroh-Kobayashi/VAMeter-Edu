@@ -6,6 +6,7 @@ enable_testing()
 add_executable(local_csv_download_test
     local_csv_download_test.cpp
     ../../app/libs/local_csv_download/local_csv_download_name.cpp
+    ../../app/libs/local_csv_download/local_csv_download_selection.cpp
     ../../app/libs/local_csv_download/local_csv_stream.cpp
 )
 

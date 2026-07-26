@@ -25,6 +25,12 @@ including NUL and DEL, `/`, `\`, `..`, non-ASCII digits, unexpected extensions,
 and unexpected prefixes. Only a validated basename is joined to the fixed
 record directory; callers cannot select an arbitrary directory.
 
+The selected record name and path are stored as one mutex-protected value.
+Starting the server replaces both fields together, each request takes one
+consistent snapshot, and stopping the server clears both fields together. The
+mutex is released before validation, file access, and HTTP streaming, so an
+in-flight request continues with its initial snapshot if the selection changes.
+
 ## Chunked streaming
 
 The HTTP handler opens the selected file in binary mode and transfers it with a

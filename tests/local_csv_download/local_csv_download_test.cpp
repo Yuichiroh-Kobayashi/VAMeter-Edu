@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "local_csv_download_name.h"
+#include "local_csv_download_selection.h"
 #include "local_csv_stream.h"
 
 #include <algorithm>
@@ -100,6 +101,7 @@ namespace
 
     void TestRecordNames()
     {
+        CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-0.csv"));
         CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-000.csv"));
         CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-1000.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(""));
@@ -107,6 +109,8 @@ namespace
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-/000.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-\\000.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-000.txt"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-001.CSV"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-001.csv/"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("OTHER-000.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-00\n0.csv"));
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName("REC-00?0.csv"));
@@ -265,6 +269,69 @@ namespace
         CHECK(stats.chunksSent == 1);
         CHECK(sender.data.size() == 8);
     }
+
+    void TestFirstChunkSendFailure()
+    {
+        Reader reader = MakeReader(30);
+        Sender sender = MakeSender();
+        sender.failAtChunk = 0;
+        LOCAL_CSV_DOWNLOAD::StreamStats stats;
+
+        CHECK(RunStream(reader, sender, 8, stats) == LOCAL_CSV_DOWNLOAD::StreamResult::SendFailed);
+        CHECK(stats.bytesRead == 8);
+        CHECK(stats.bytesSent == 0);
+        CHECK(stats.chunksSent == 0);
+        CHECK(sender.data.empty());
+    }
+
+    void TestInvalidStreamArguments()
+    {
+        Reader reader = MakeReader(8);
+        Sender sender = MakeSender();
+        std::uint8_t buffer[8];
+
+        CHECK(LOCAL_CSV_DOWNLOAD::StreamChunks(
+                  nullptr, &reader, SendChunk, &sender, buffer, sizeof(buffer), nullptr) ==
+              LOCAL_CSV_DOWNLOAD::StreamResult::InvalidArgument);
+        CHECK(LOCAL_CSV_DOWNLOAD::StreamChunks(
+                  ReadChunk, &reader, nullptr, &sender, buffer, sizeof(buffer), nullptr) ==
+              LOCAL_CSV_DOWNLOAD::StreamResult::InvalidArgument);
+        CHECK(LOCAL_CSV_DOWNLOAD::StreamChunks(
+                  ReadChunk, &reader, SendChunk, &sender, nullptr, sizeof(buffer), nullptr) ==
+              LOCAL_CSV_DOWNLOAD::StreamResult::InvalidArgument);
+        CHECK(LOCAL_CSV_DOWNLOAD::StreamChunks(
+                  ReadChunk, &reader, SendChunk, &sender, buffer, 0, nullptr) ==
+              LOCAL_CSV_DOWNLOAD::StreamResult::InvalidArgument);
+        CHECK(LOCAL_CSV_DOWNLOAD::FinishChunks(nullptr, nullptr) ==
+              LOCAL_CSV_DOWNLOAD::StreamResult::InvalidArgument);
+    }
+
+    void TestDownloadSelection()
+    {
+        LOCAL_CSV_DOWNLOAD::DownloadSelection selection;
+
+        LOCAL_CSV_DOWNLOAD::DownloadSelectionSnapshot current = selection.snapshot();
+        CHECK(current.name.empty());
+        CHECK(current.path.empty());
+
+        selection.set("REC-1.csv", "/data/REC-1.csv");
+        current = selection.snapshot();
+        CHECK(current.name == "REC-1.csv");
+        CHECK(current.path == "/data/REC-1.csv");
+
+        selection.set("REC-2.csv", "/data/REC-2.csv");
+        CHECK(current.name == "REC-1.csv");
+        CHECK(current.path == "/data/REC-1.csv");
+
+        current = selection.snapshot();
+        CHECK(current.name == "REC-2.csv");
+        CHECK(current.path == "/data/REC-2.csv");
+
+        selection.clear();
+        current = selection.snapshot();
+        CHECK(current.name.empty());
+        CHECK(current.path.empty());
+    }
 }
 
 int main()
@@ -277,7 +344,10 @@ int main()
     TestReadFailure();
     TestZeroByteReadFailure();
     TestSendFailure();
+    TestFirstChunkSendFailure();
     TestFinishFailure();
+    TestInvalidStreamArguments();
+    TestDownloadSelection();
 
     if (failures != 0)
     {
