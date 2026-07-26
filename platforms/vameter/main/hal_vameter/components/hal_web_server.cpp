@@ -6,11 +6,14 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include "../../../app/assets/assets.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/local_csv_download/local_csv_stream.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
 #include <FS.h>
 #include <vfs_api.h>
+#include <cstdlib>
 
 // class VFS_t : public FS
 // {
@@ -355,8 +358,83 @@ static std::string _download_file_path;
 static std::string _download_file_name;
 static PsychicHttpServer* _download_server = nullptr;
 
+namespace
+{
+    class ScopedFile
+    {
+    public:
+        explicit ScopedFile(FILE* file) : _file(file) {}
+        ~ScopedFile() { close(); }
+
+        FILE* get() const { return _file; }
+
+        int close()
+        {
+            if (_file == nullptr)
+                return 0;
+
+            FILE* file = _file;
+            _file = nullptr;
+            return fclose(file);
+        }
+
+    private:
+        FILE* _file;
+        ScopedFile(const ScopedFile&);
+        ScopedFile& operator=(const ScopedFile&);
+    };
+
+    struct ScopedBuffer
+    {
+        explicit ScopedBuffer(std::uint8_t* buffer) : value(buffer) {}
+        ~ScopedBuffer() { free(value); }
+
+        std::uint8_t* value;
+
+    private:
+        ScopedBuffer(const ScopedBuffer&);
+        ScopedBuffer& operator=(const ScopedBuffer&);
+    };
+
+    std::size_t ReadFileChunk(void* context, std::uint8_t* buffer, std::size_t bufferSize, bool* readFailed)
+    {
+        FILE* file = static_cast<FILE*>(context);
+        const std::size_t readSize = fread(buffer, 1, bufferSize, file);
+        *readFailed = ferror(file) != 0;
+        return readSize;
+    }
+
+    struct HttpChunkSender
+    {
+        PsychicResponse* response;
+        esp_err_t result;
+    };
+
+    bool SendHttpChunk(void* context, const std::uint8_t* data, std::size_t dataSize)
+    {
+        HttpChunkSender* sender = static_cast<HttpChunkSender*>(context);
+        sender->result = sender->response->sendChunk(const_cast<std::uint8_t*>(data), dataSize);
+        if (sender->result == ESP_OK)
+            taskYIELD();
+        return sender->result == ESP_OK;
+    }
+
+    bool FinishHttpChunks(void* context)
+    {
+        HttpChunkSender* sender = static_cast<HttpChunkSender*>(context);
+        sender->result = sender->response->finishChunking();
+        return sender->result == ESP_OK;
+    }
+} // namespace
+
 void HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
+    if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
+    {
+        spdlog::warn("reject local download for invalid record name: {}", recordName);
+        return;
+    }
+
     spdlog::info("start download server for: {}", recordName);
 
     // Start AP mode
@@ -378,45 +456,80 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
 
-                                 // Open file
-                                 FILE* f = fopen(_download_file_path.c_str(), "r");
-                                 if (f == nullptr)
+                                 const std::string fileName = _download_file_name;
+                                 const std::string filePath = _download_file_path;
+                                 const std::string requestPath = request->path().c_str();
+                                 static const std::string downloadPrefix = "/download/";
+
+                                 if (requestPath.compare(0, downloadPrefix.size(), downloadPrefix) != 0)
                                  {
-                                     spdlog::error("file not found: {}", _download_file_path);
+                                     spdlog::warn("download rejected unexpected path: {}", requestPath);
                                      return request->reply(404, "text/plain", "File not found");
                                  }
 
-                                 // Get file size
-                                 fseek(f, 0, SEEK_END);
-                                 size_t file_size = ftell(f);
-                                 fseek(f, 0, SEEK_SET);
-                                 spdlog::info("file size: {} bytes", file_size);
-
-                                 // Read file content
-                                 char* buffer = (char*)malloc(file_size + 1);
-                                 if (buffer == nullptr)
+                                 std::string requestedName;
+                                 const std::string encodedName = requestPath.substr(downloadPrefix.size());
+                                 if (!LOCAL_CSV_DOWNLOAD::DecodeUrlComponentOnce(encodedName, requestedName) ||
+                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(requestedName) ||
+                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(fileName) || requestedName != fileName)
                                  {
-                                     fclose(f);
+                                     spdlog::warn("download rejected path/name mismatch: {}", requestPath);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+
+                                 ScopedFile file(fopen(filePath.c_str(), "rb"));
+                                 if (file.get() == nullptr)
+                                 {
+                                     spdlog::error("download fopen failed: {}", filePath);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+
+                                 const std::size_t bufferSize = LOCAL_CSV_DOWNLOAD::kStreamBufferSize;
+                                 ScopedBuffer buffer(static_cast<std::uint8_t*>(malloc(bufferSize)));
+                                 if (buffer.value == nullptr)
+                                 {
+                                     spdlog::error("download chunk buffer allocation failed");
                                      return request->reply(500, "text/plain", "Memory allocation failed");
                                  }
 
-                                 size_t read_size = fread(buffer, 1, file_size, f);
-                                 buffer[read_size] = '\0';
-                                 fclose(f);
-
                                  // Set Content-Disposition header for download
-                                 std::string header = "attachment; filename=\"" + _download_file_name + "\"";
+                                 const std::string header = "attachment; filename=\"" + fileName + "\"";
 
-                                 // Send response
                                  PsychicResponse response(request);
                                  response.setContentType("text/csv");
                                  response.addHeader("Content-Disposition", header.c_str());
-                                 response.setContent((uint8_t*)buffer, read_size);
-                                 esp_err_t result = response.send();
+                                 response.sendHeaders();
 
-                                 free(buffer);
-                                 spdlog::info("download response sent, result: {}", result);
-                                 return result;
+                                 HttpChunkSender sender = {&response, ESP_OK};
+                                 LOCAL_CSV_DOWNLOAD::StreamStats stats = {0, 0, 0};
+                                 const LOCAL_CSV_DOWNLOAD::StreamResult streamResult =
+                                     LOCAL_CSV_DOWNLOAD::StreamChunks(ReadFileChunk,
+                                                                      file.get(),
+                                                                      SendHttpChunk,
+                                                                      &sender,
+                                                                      buffer.value,
+                                                                      bufferSize,
+                                                                      &stats);
+
+                                 const int closeResult = file.close();
+                                 if (streamResult != LOCAL_CSV_DOWNLOAD::StreamResult::Complete || closeResult != 0)
+                                 {
+                                     spdlog::error("download stream failed, stream result: {}, send result: {}, close result: {}, bytes read: {}, bytes sent: {}",
+                                                   static_cast<int>(streamResult),
+                                                   sender.result,
+                                                   closeResult,
+                                                   stats.bytesRead,
+                                                   stats.bytesSent);
+                                     return streamResult == LOCAL_CSV_DOWNLOAD::StreamResult::SendFailed ? sender.result : ESP_FAIL;
+                                 }
+
+                                 const LOCAL_CSV_DOWNLOAD::StreamResult finishResult =
+                                     LOCAL_CSV_DOWNLOAD::FinishChunks(FinishHttpChunks, &sender);
+                                 spdlog::info("download response finished, result: {}, bytes: {}, chunks: {}",
+                                              sender.result,
+                                              stats.bytesSent,
+                                              stats.chunksSent);
+                                 return finishResult == LOCAL_CSV_DOWNLOAD::StreamResult::Complete ? ESP_OK : sender.result;
                              });
 
         spdlog::info("download server started");
