@@ -71,7 +71,7 @@ Hackster.io プロジェクトページから以下の情報を参照できま�
 
 #### 前提条件
 
-[ESP-IDF v5.1.3](https://docs.espressif.com/projects/esp-idf/en/v5.1.3/esp32s3/index.html)
+[ESP-IDF v5.1.6](https://docs.espressif.com/projects/esp-idf/en/v5.1.6/esp32s3/index.html)
 
 #### 依存関係の取得
 

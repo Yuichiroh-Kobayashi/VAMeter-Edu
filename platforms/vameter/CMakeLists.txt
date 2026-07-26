@@ -8,7 +8,6 @@ add_compile_options(-Wno-format-truncation)
 
 set(EXTRA_COMPONENT_DIRS
   ../../dependencies
-  ${CMAKE_SOURCE_DIR}/../../components
   ${CMAKE_SOURCE_DIR}/../../app/libs/measurement_pipeline
 )
 

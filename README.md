@@ -103,7 +103,7 @@ cd desktop && ./app_desktop_build
 
 #### Tool Chains
 
-[ESP-IDF v5.1.3](https://docs.espressif.com/projects/esp-idf/en/v5.1.3/esp32s3/index.html)
+[ESP-IDF v5.1.6](https://docs.espressif.com/projects/esp-idf/en/v5.1.6/esp32s3/index.html)
 
 #### Build
 
