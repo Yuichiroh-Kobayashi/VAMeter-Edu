@@ -26,10 +26,12 @@ and unexpected prefixes. Only a validated basename is joined to the fixed
 record directory; callers cannot select an arbitrary directory.
 
 The selected record name and path are stored as one mutex-protected value.
-Starting the server replaces both fields together, each request takes one
-consistent snapshot, and stopping the server clears both fields together. The
-mutex is released before validation, file access, and HTTP streaming, so an
-in-flight request continues with its initial snapshot if the selection changes.
+Starting the server replaces both fields together before starting the AP, so
+the complete selection is published before the download endpoint becomes
+reachable. Each request takes one consistent snapshot, and stopping the server
+clears both fields before stopping the AP. The mutex is released before
+validation, file access, and HTTP streaming, so an in-flight request continues
+with its initial snapshot if the selection changes.
 
 ## Chunked streaming
 

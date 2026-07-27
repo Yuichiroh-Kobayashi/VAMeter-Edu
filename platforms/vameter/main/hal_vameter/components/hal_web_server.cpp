@@ -437,11 +437,11 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
 
     spdlog::info("start download server for: {}", recordName);
 
-    // Start AP mode
-    _start_ap_mode();
+    const std::string recordPath = _fs_get_rec_file_path(recordName);
+    _download_selection.set(recordName, recordPath);
 
-    // Store the path and name as one synchronized selection.
-    _download_selection.set(recordName, _fs_get_rec_file_path(recordName));
+    // Publish the complete selection before making the AP reachable.
+    _start_ap_mode();
 
     // Start server if not running
     if (_download_server == nullptr)
