@@ -10,6 +10,33 @@ The feature keeps the existing waveform record selection, QR screen, local AP,
 AP suffix, and `/download/<record-name>` workflow. It needs neither an internet
 connection nor a cloud account.
 
+Record files are also reachable from `Settings → Files → Record files`. If
+storage is running low, users can open an unneeded recording there and delete
+that recording individually.
+
+The complete deletion path is `Settings → Files → Record files →
+<record> → Delete`. Deletion requires confirmation; the firmware neither deletes
+old recordings automatically nor formats storage when it becomes full.
+
+The educational waveform recorder uses manual trigger only and a fixed 10-second
+recording. Pressing the encoder starts recording. A short side-button click does
+nothing (it is reserved for a future HelpEvent), while a long hold exits the
+waveform screen. Before starting, the recorder requires at least 64 KiB free.
+This is conservative headroom for temporary chunks and the final CSV to coexist,
+including FAT allocation and directory metadata; it is not the measured size of
+one 10-second CSV. If storage information cannot be read or the threshold is not
+met, recording is rejected with a warning and the device does not reboot.
+
+Current V-I records must match `REC-[0-9]+.csv` using ASCII digits. Legacy
+`MO-[0-9]+.csv` files remain visible only as individual cleanup targets: they do
+not affect REC numbering, latest-record selection, preview, or QR download.
+Numbering uses one more than the maximum valid REC id and does not reuse gaps.
+
+In MSC mode VAMeter appears as USB storage and the serial monitor disconnects as
+expected. After file operations, safely eject the drive in the OS, end MSC mode
+on VAMeter, and reconnect the monitor if needed. Firmware-side filesystem writes
+must not run concurrently with MSC access.
+
 Motor Observe, its `MO-*.csv` files, and all motor control or measurement paths
 are outside this implementation.
 

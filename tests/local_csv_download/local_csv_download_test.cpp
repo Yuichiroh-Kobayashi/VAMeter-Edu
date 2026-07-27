@@ -133,6 +133,30 @@ namespace
         CHECK(LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(nameAtLimit));
         CHECK(nameOverLimit.size() == LOCAL_CSV_DOWNLOAD::kMaxRecordNameLength + 1);
         CHECK(!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(nameOverLimit));
+
+        std::uint32_t id = 0;
+        CHECK(LOCAL_CSV_DOWNLOAD::ParseRecordId("REC-000.csv", id) && id == 0);
+        CHECK(LOCAL_CSV_DOWNLOAD::ParseRecordId("REC-999.csv", id) && id == 999);
+        CHECK(!LOCAL_CSV_DOWNLOAD::ParseRecordId("REC-4294967296.csv", id));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsCurrentRecordName("REC-4294967296.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::ParseRecordId("MO-000.csv", id));
+        CHECK(LOCAL_CSV_DOWNLOAD::IsLegacyRecordName("MO-000.csv"));
+        CHECK(LOCAL_CSV_DOWNLOAD::IsLegacyRecordName("MO-017.csv"));
+        CHECK(!LOCAL_CSV_DOWNLOAD::IsLegacyRecordName("MO-x.csv"));
+
+        std::uint32_t next = 99;
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({}, next) && next == 0);
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({"REC-000.csv"}, next) && next == 1);
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({"REC-000.csv", "REC-007.csv"}, next) && next == 8);
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({"MO-017.csv"}, next) && next == 0);
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({"MO-017.csv", "REC-002.csv"}, next) && next == 3);
+        CHECK(LOCAL_CSV_DOWNLOAD::NextRecordId({"REC-x.csv", "REC-001.csv.bak"}, next) && next == 0);
+
+        const std::uint64_t required = 64U * 1024U;
+        CHECK(!LOCAL_CSV_DOWNLOAD::HasEnoughRecordingSpace(true, required - 1, required));
+        CHECK(LOCAL_CSV_DOWNLOAD::HasEnoughRecordingSpace(true, required, required));
+        CHECK(LOCAL_CSV_DOWNLOAD::HasEnoughRecordingSpace(true, required + 1, required));
+        CHECK(!LOCAL_CSV_DOWNLOAD::HasEnoughRecordingSpace(false, required + 1, required));
     }
 
     void TestUrlDecodeOnce()

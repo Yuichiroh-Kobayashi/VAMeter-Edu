@@ -487,6 +487,9 @@ public:
     static bool DestroyVaRecorder() { return Get()->destroyVaRecorder(); }
     virtual bool destroyVaRecorder() { return false; }
 
+    static VA_RECORDER::Error_t GetVaRecorderError() { return Get()->getVaRecorderError(); }
+    virtual VA_RECORDER::Error_t getVaRecorderError() { return VA_RECORDER::error_none; }
+
     /* -------------------------------------------------------------------------- */
     /*                                  VA Record                                 */
     /* -------------------------------------------------------------------------- */

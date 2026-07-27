@@ -43,6 +43,8 @@ struct TextPool_en_t
     char AppFiles_Option_Open[5] = "Open";
     char AppFiles_Option_Upload[14] = "Download (QR)";
     char AppFiles_Option_Delete[7] = "Delete";
+    char AppFiles_Confirm_Delete[8] = "Delete?";
+    char AppFiles_Error_Delete[24] = "Could not delete record";
     char AppPowerMonitor_PageSingle_InputVolt[12] = "Input Volt.";
     char AppPowerMonitor_PageSingle_InputPower[10] = "Input Pow";
     char AppPowerMonitor_PageSingle_OutputCurrent[12] = "Output Cur.";
@@ -62,6 +64,8 @@ struct TextPool_en_t
     char AppPowerMonitor_PageMoreDetail_Energy[7] = "Energy";
     char AppWaveform_Waitting[8] = "WAITING";
     char AppWaveform_Saving[7] = "SAVING";
+    char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
+    char AppWaveform_Error_Recording[62] = "Recording failed\nCheck or delete records in Settings > Files";
     char AppWaveform_Config_TriggerMode[12] = "TriggerMode";
     char AppWaveform_Config_Threshold[10] = "Threshold";
     char AppWaveform_Config_RecTime[12] = "Record Time";
@@ -138,6 +142,8 @@ struct TextPool_en_t
         map.AppFiles_Option_Open = AppFiles_Option_Open;
         map.AppFiles_Option_Upload = AppFiles_Option_Upload;
         map.AppFiles_Option_Delete = AppFiles_Option_Delete;
+        map.AppFiles_Confirm_Delete = AppFiles_Confirm_Delete;
+        map.AppFiles_Error_Delete = AppFiles_Error_Delete;
         map.AppPowerMonitor_PageSingle_InputVolt = AppPowerMonitor_PageSingle_InputVolt;
         map.AppPowerMonitor_PageSingle_InputPower = AppPowerMonitor_PageSingle_InputPower;
         map.AppPowerMonitor_PageSingle_OutputCurrent = AppPowerMonitor_PageSingle_OutputCurrent;
@@ -157,6 +163,8 @@ struct TextPool_en_t
         map.AppPowerMonitor_PageMoreDetail_Energy = AppPowerMonitor_PageMoreDetail_Energy;
         map.AppWaveform_Waitting = AppWaveform_Waitting;
         map.AppWaveform_Saving = AppWaveform_Saving;
+        map.AppWaveform_Error_NoSpace = AppWaveform_Error_NoSpace;
+        map.AppWaveform_Error_Recording = AppWaveform_Error_Recording;
         map.AppWaveform_Config_TriggerMode = AppWaveform_Config_TriggerMode;
         map.AppWaveform_Config_Threshold = AppWaveform_Config_Threshold;
         map.AppWaveform_Config_RecTime = AppWaveform_Config_RecTime;

@@ -27,6 +27,7 @@ private:
 
 public:
     std::string type() override { return "Desktop"; }
+    VA_RECORDER::Error_t getVaRecorderError() override { return VA_RECORDER::error_none; }
 
     HAL_Desktop(int screenWidth = 240, int screenHeight = 240)
     {

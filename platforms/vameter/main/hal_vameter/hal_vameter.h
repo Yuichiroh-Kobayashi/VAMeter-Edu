@@ -27,7 +27,7 @@ private:
     std::string _create_config_json();
     void _backup_config_file();
     void _log_out_system_config();
-    void _fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize);
+    bool _fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize);
     std::string _fs_get_rec_file_path(const std::string& recordName);
 
     void _nvs_init();
@@ -96,6 +96,7 @@ public:
     bool isVaRecorderRecording() override;
     bool isVaRecorderSaving() override;
     bool destroyVaRecorder() override;
+    VA_RECORDER::Error_t getVaRecorderError() override;
 
     std::vector<std::string> getVaRecordNameList() override;
     std::string getLatestVaRecordName() override;

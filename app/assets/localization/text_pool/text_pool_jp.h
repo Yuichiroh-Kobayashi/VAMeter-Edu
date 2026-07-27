@@ -43,6 +43,8 @@ struct TextPool_jp_t
     char AppFiles_Option_Open[7] = "開く";
     char AppFiles_Option_Upload[25] = "ダウンロード (QR)";
     char AppFiles_Option_Delete[7] = "削除";
+    char AppFiles_Confirm_Delete[19] = "削除しますか";
+    char AppFiles_Error_Delete[40] = "記録を削除できませんでした";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "入力電圧";
     char AppPowerMonitor_PageSingle_InputPower[16] = "入力パワー";
     char AppPowerMonitor_PageSingle_OutputCurrent[13] = "出力電流";
@@ -62,6 +64,8 @@ struct TextPool_jp_t
     char AppPowerMonitor_PageMoreDetail_Energy[16] = "エネルギー";
     char AppWaveform_Waitting[10] = "待機中";
     char AppWaveform_Saving[13] = "セーブ中";
+    char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
+    char AppWaveform_Error_Recording[99] = "記録に失敗しました\n設定→ファイルから記録を確認・削除してください";
     char AppWaveform_Config_TriggerMode[22] = "トリガーモード";
     char AppWaveform_Config_Threshold[7] = "閾値";
     char AppWaveform_Config_RecTime[22] = "レコードタイム";
@@ -139,6 +143,8 @@ struct TextPool_jp_t
         map.AppFiles_Option_Open = AppFiles_Option_Open;
         map.AppFiles_Option_Upload = AppFiles_Option_Upload;
         map.AppFiles_Option_Delete = AppFiles_Option_Delete;
+        map.AppFiles_Confirm_Delete = AppFiles_Confirm_Delete;
+        map.AppFiles_Error_Delete = AppFiles_Error_Delete;
         map.AppPowerMonitor_PageSingle_InputVolt = AppPowerMonitor_PageSingle_InputVolt;
         map.AppPowerMonitor_PageSingle_InputPower = AppPowerMonitor_PageSingle_InputPower;
         map.AppPowerMonitor_PageSingle_OutputCurrent = AppPowerMonitor_PageSingle_OutputCurrent;
@@ -158,6 +164,8 @@ struct TextPool_jp_t
         map.AppPowerMonitor_PageMoreDetail_Energy = AppPowerMonitor_PageMoreDetail_Energy;
         map.AppWaveform_Waitting = AppWaveform_Waitting;
         map.AppWaveform_Saving = AppWaveform_Saving;
+        map.AppWaveform_Error_NoSpace = AppWaveform_Error_NoSpace;
+        map.AppWaveform_Error_Recording = AppWaveform_Error_Recording;
         map.AppWaveform_Config_TriggerMode = AppWaveform_Config_TriggerMode;
         map.AppWaveform_Config_Threshold = AppWaveform_Config_Threshold;
         map.AppWaveform_Config_RecTime = AppWaveform_Config_RecTime;

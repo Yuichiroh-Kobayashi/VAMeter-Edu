@@ -161,7 +161,8 @@ namespace VIEWS
         void _render_threshold_line();
         void _render_rec_state_label();
 
-        void _handle_start_recording();
+        bool _handle_start_recording();
+        void _handle_recorder_error();
 
     public:
         WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}

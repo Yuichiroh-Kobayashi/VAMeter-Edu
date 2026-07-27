@@ -133,6 +133,21 @@ namespace CONFIG
 /* -------------------------------------------------------------------------- */
 namespace VA_RECORDER
 {
+    enum Error_t
+    {
+        error_none = 0,
+        error_storage_info_failed,
+        error_insufficient_space,
+        error_temp_prepare_failed,
+        error_open_chunk_failed,
+        error_write_chunk_failed,
+        error_open_final_failed,
+        error_write_final_failed,
+        error_close_failed,
+        error_allocation_failed,
+        error_task_create_failed,
+    };
+
     struct RecordData_t
     {
         float voltage = 0.0f;
