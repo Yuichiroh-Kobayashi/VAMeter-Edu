@@ -131,9 +131,31 @@ namespace
         CHECK(FormatVoltagePerDiv(0.1f) == "0.1V/div");
         CHECK(FormatVoltagePerDiv(1.0f) == "1V/div");
         CHECK(FormatCurrentPerDiv(0.0001f) == "100uA/div");
+        CHECK(FormatCurrentPerDiv(0.0002f) == "200uA/div");
         CHECK(FormatCurrentPerDiv(0.001f) == "1mA/div");
         CHECK(FormatCurrentPerDiv(0.1f) == "100mA/div");
         CHECK(FormatCurrentPerDiv(1.0f) == "1A/div");
+        CHECK(FormatVoltageLabel(true, 1.0f) == "V AUTO 1V/div");
+        CHECK(FormatVoltageLabel(false, 1.0f) == "V 1V/div");
+        CHECK(FormatCurrentLabel(true, 0.0001f) == "I AUTO 100uA/div");
+        CHECK(FormatCurrentLabel(false, 0.0002f) == "I 200uA/div");
+        const std::string currentLabels =
+            FormatCurrentLabel(true, 0.0001f) + FormatCurrentLabel(false, 0.0002f);
+        CHECK(currentLabels.find("μ") == std::string::npos);
+        CHECK(currentLabels.find("µ") == std::string::npos);
+
+        CHECK(IsTargetSelected(settings, target_current));
+        CHECK(!IsTargetSelected(settings, target_time));
+        const BadgeGeometry badge = MakeRightAlignedBadgeGeometry(237, 180, 120, 5, 19, 2);
+        CHECK(badge.x == 108);
+        CHECK(badge.y == 180);
+        CHECK(badge.width == 130);
+        CHECK(badge.height == 19);
+        CHECK(badge.textRight == 232);
+        CHECK(badge.textTop == 182);
+        const BadgeGeometry clippedBadge = MakeRightAlignedBadgeGeometry(237, 180, 500, 5, 19, 2);
+        CHECK(clippedBadge.x == 0);
+        CHECK(clippedBadge.width == 238);
 
         settings = Settings();
         CycleTarget(settings, mode_both);

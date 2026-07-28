@@ -55,6 +55,7 @@ namespace WAVEFORM_SCALE
     float CurrentValuePerDiv(std::size_t index) { return kCurrentScales[std::min(index, CurrentScaleCount() - 1)]; }
     bool IsVoltageAuto(const Settings& settings) { return settings.voltageScaleIndex == 0; }
     bool IsCurrentAuto(const Settings& settings) { return settings.currentScaleIndex == 0; }
+    bool IsTargetSelected(const Settings& settings, ControlTarget target) { return settings.target == target; }
 
     void CycleTarget(Settings& settings, DisplayMode mode)
     {
@@ -145,5 +146,24 @@ namespace WAVEFORM_SCALE
     std::string FormatCurrentLabel(bool isAuto, float valuePerDiv)
     {
         return isAuto ? "I AUTO " + FormatCurrentPerDiv(valuePerDiv) : "I " + FormatCurrentPerDiv(valuePerDiv);
+    }
+
+    BadgeGeometry MakeRightAlignedBadgeGeometry(int right,
+                                                int top,
+                                                int textWidth,
+                                                int horizontalPadding,
+                                                int height,
+                                                int textTopPadding)
+    {
+        BadgeGeometry geometry;
+        geometry.y = std::max(0, top);
+        geometry.height = std::max(0, height);
+        const int safeRight = std::max(0, right);
+        const int desiredWidth = std::max(0, textWidth) + 2 * std::max(0, horizontalPadding);
+        geometry.width = std::min(safeRight + 1, desiredWidth);
+        geometry.x = safeRight + 1 - geometry.width;
+        geometry.textRight = safeRight - std::max(0, horizontalPadding);
+        geometry.textTop = geometry.y + std::max(0, textTopPadding);
+        return geometry;
     }
 } // namespace WAVEFORM_SCALE

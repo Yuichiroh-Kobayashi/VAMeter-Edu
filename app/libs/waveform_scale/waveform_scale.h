@@ -38,6 +38,16 @@ namespace WAVEFORM_SCALE
         float top = 0.0f;
     };
 
+    struct BadgeGeometry
+    {
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+        int textRight = 0;
+        int textTop = 0;
+    };
+
     float VisibleDivisions();
     std::size_t VoltageScaleCount();
     std::size_t CurrentScaleCount();
@@ -45,6 +55,7 @@ namespace WAVEFORM_SCALE
     float CurrentValuePerDiv(std::size_t index);
     bool IsVoltageAuto(const Settings& settings);
     bool IsCurrentAuto(const Settings& settings);
+    bool IsTargetSelected(const Settings& settings, ControlTarget target);
     void CycleTarget(Settings& settings, DisplayMode mode);
     void AdjustSelectedScale(Settings& settings, int direction);
     float FullRangeFromPerDiv(float valuePerDiv);
@@ -58,4 +69,10 @@ namespace WAVEFORM_SCALE
     std::string FormatCurrentPerDiv(float valuePerDiv);
     std::string FormatVoltageLabel(bool isAuto, float valuePerDiv);
     std::string FormatCurrentLabel(bool isAuto, float valuePerDiv);
+    BadgeGeometry MakeRightAlignedBadgeGeometry(int right,
+                                                int top,
+                                                int textWidth,
+                                                int horizontalPadding,
+                                                int height,
+                                                int textTopPadding);
 } // namespace WAVEFORM_SCALE

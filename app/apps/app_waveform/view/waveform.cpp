@@ -366,7 +366,6 @@ void Waveform::_render_background()
     }
 
     _render_y_scales();
-    _render_scale_readouts();
     _on_render_background_finish();
 }
 
@@ -423,7 +422,7 @@ void Waveform::_render_y_scales()
             if (std::abs(i) < 1)
             {
                 i *= 1000;
-                unit = "μA";
+                unit = "uA";
             }
             else if (std::abs(i) < 1000)
                 unit = "mA";
@@ -446,17 +445,11 @@ void Waveform::_render_y_scales()
 
 void Waveform::_render_scale_readouts()
 {
-    static constexpr int kRight = 237;
     static constexpr int kFirstLineY = 142;
     static constexpr int kLineHeight = 19;
-    static constexpr uint32_t kSelectedColor = 0xFFFFFF;
-    static constexpr uint32_t kIdleColor = 0x777777;
 
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-    HAL::GetCanvas()->setTextDatum(top_right);
-    HAL::GetCanvas()->setTextColor(
-        _scale_settings->target == WAVEFORM_SCALE::target_time ? kSelectedColor : kIdleColor);
-    HAL::GetCanvas()->drawString("TIME", kRight, kFirstLineY);
+    _render_scale_readout("TIME", WAVEFORM_SCALE::target_time, kFirstLineY);
 
     int lineY = kFirstLineY + kLineHeight;
     if (_mode != 2)
@@ -467,9 +460,7 @@ void Waveform::_render_scale_readouts()
                                             _chart_props.current_v_y_range_top - _chart_props.current_v_y_range_bottom)
                                       : WAVEFORM_SCALE::VoltageValuePerDiv(_scale_settings->voltageScaleIndex);
         _chart_props.string_buffer = WAVEFORM_SCALE::FormatVoltageLabel(isAuto, valuePerDiv);
-        HAL::GetCanvas()->setTextColor(
-            _scale_settings->target == WAVEFORM_SCALE::target_voltage ? kSelectedColor : kIdleColor);
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), kRight, lineY);
+        _render_scale_readout(_chart_props.string_buffer, WAVEFORM_SCALE::target_voltage, lineY);
         lineY += kLineHeight;
     }
     if (_mode != 1)
@@ -480,10 +471,43 @@ void Waveform::_render_scale_readouts()
         const float valuePerDiv = isAuto ? WAVEFORM_SCALE::AutoPerDivFromFullRange(fullRangeA)
                                          : WAVEFORM_SCALE::CurrentValuePerDiv(_scale_settings->currentScaleIndex);
         _chart_props.string_buffer = WAVEFORM_SCALE::FormatCurrentLabel(isAuto, valuePerDiv);
-        HAL::GetCanvas()->setTextColor(
-            _scale_settings->target == WAVEFORM_SCALE::target_current ? kSelectedColor : kIdleColor);
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), kRight, lineY);
+        _render_scale_readout(_chart_props.string_buffer, WAVEFORM_SCALE::target_current, lineY);
     }
+}
+
+void Waveform::_render_scale_readout(const std::string& label, WAVEFORM_SCALE::ControlTarget target, int top)
+{
+    static constexpr int kRight = 237;
+    static constexpr int kHorizontalPadding = 5;
+    static constexpr int kBadgeHeight = 19;
+    static constexpr int kTextTopPadding = 2;
+    static constexpr int kBadgeRadius = 5;
+    static constexpr uint32_t kIdleColor = 0x555555;
+
+    const bool selected = WAVEFORM_SCALE::IsTargetSelected(*_scale_settings, target);
+    const WAVEFORM_SCALE::BadgeGeometry geometry = WAVEFORM_SCALE::MakeRightAlignedBadgeGeometry(
+        kRight,
+        top,
+        HAL::GetCanvas()->textWidth(label.c_str()),
+        kHorizontalPadding,
+        kBadgeHeight,
+        kTextTopPadding);
+
+    if (selected)
+    {
+        HAL::GetCanvas()->fillSmoothRoundRect(geometry.x,
+                                              geometry.y,
+                                              geometry.width,
+                                              geometry.height,
+                                              kBadgeRadius,
+                                              AssetPool::GetColor().AppWaveform.primary);
+        HAL::GetCanvas()->setTextColor(TFT_WHITE);
+    }
+    else
+        HAL::GetCanvas()->setTextColor(kIdleColor);
+
+    HAL::GetCanvas()->setTextDatum(top_right);
+    HAL::GetCanvas()->drawString(label.c_str(), geometry.textRight, geometry.textTop);
 }
 
 static const uint32_t _color_panel_x_scale_notice = 0x9B9B9B;
@@ -716,6 +740,8 @@ void Waveform::_update_render(bool pushBuffer, bool renderPanel, bool renderXSca
 
     if (renderPanel)
         _render_panels();
+
+    _render_scale_readouts();
 
     if (renderXScaleNotice)
         _render_x_scales_notice();

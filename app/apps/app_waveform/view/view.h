@@ -106,6 +106,7 @@ namespace VIEWS
 
         void _render_background();
         void _render_y_scales();
+        void _render_scale_readout(const std::string& label, WAVEFORM_SCALE::ControlTarget target, int top);
         void _render_scale_readouts();
         void _render_x_scales_notice();
         virtual void _on_render_background_finish() {}

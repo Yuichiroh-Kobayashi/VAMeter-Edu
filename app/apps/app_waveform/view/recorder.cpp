@@ -231,11 +231,10 @@ void WaveFormRecorder::_handle_render()
     // Render waveform
     if (!_data.config_panel->isPoppedOut())
     {
-        Waveform::_update_render(false, true, false);
+        Waveform::_update_render(false, true, true);
         _render_mode_icon();
         _render_threshold_line();
         _render_rec_state_label();
-        Waveform::_render_x_scales_notice();
     }
 
     // Render config panel

@@ -92,6 +92,10 @@ horizontal zoom while TIME is selected and changes only the selected vertical
 scale otherwise. Encoder click starts recording only while idle; input is
 ignored by the saving screen. Scale settings remain in the app instance when
 the waveform view is recreated after a recording, but are not stored in NVS.
+The selected target is rendered as white text on a small AppWaveform-primary
+badge; inactive targets use dark text on the white chart background. Readouts
+are rendered after the waveform and value panels, while the temporary x-scale
+notice and recorder status overlays remain in front.
 
 Voltage choices are AUTO, 0.1, 0.2, 0.5, 1, 2, and 5 V/div. Current choices,
 stored internally in amperes, are AUTO, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50,
@@ -147,12 +151,22 @@ Executed locally:
 - Host tests: passed. These cover valid and invalid names, decoded URL input,
   length boundaries, zero-byte input, multiple chunks, a short final chunk,
   read failure, send failure, and final-chunk failure.
-- Desktop build: passed with two build jobs. The build emitted pre-existing
-  deprecated enum-formatting warnings in the Waveform recorder; the changed
-  files emitted no warning.
-- ESP-IDF v5.1.6 clean firmware build: passed with two CPUs available to the
-  build process. The changed files emitted no new diagnostic. Existing project
-  and dependency warnings remain.
+- Desktop build and all seven host tests: passed with two build jobs. The tests
+  include local CSV download, timestamped CSV parsing, trigger ownership,
+  scale-label ASCII formatting, target selection, and badge geometry. The
+  changed files emitted no warning.
+- The latest follow-up source based on `748a1a7` passed a clean ThinkPad
+  ESP-IDF v5.1.6 firmware build with two build jobs. The follow-up worktree used
+  build-only local symlinks to dependency and `platforms/vameter/components`
+  directories already prepared in the original worktree. The links were never
+  tracked and the component link was removed after the build. ArduinoJson
+  resolved from the configured v7.0.4 checkout. No tracked
+  `CMakeLists.txt`, `sdkconfig`, or `dependencies.lock` change was used or
+  produced. Existing project and third-party dependency warnings remain; the
+  changed files emitted no new diagnostic.
+- The follow-up desktop executable regenerated `AssetPool-VAMeter.bin` after
+  the previous file was removed. Static asset and font source files loaded and
+  the pool was dumped successfully. The generated binary remains untracked.
 
 Executed on physical hardware:
 
