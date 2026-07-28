@@ -60,6 +60,16 @@ void WaveFormRecorder::update()
     Button::Update();
     Encoder::Update();
 
+    const bool sideClicked = Button::Side()->wasClicked();
+    if (sideClicked && _data.state != state_saving)
+    {
+        WAVEFORM_SCALE::CycleTarget(
+            *_scale_settings,
+            _mode == 1 ? WAVEFORM_SCALE::mode_voltage
+                       : (_mode == 2 ? WAVEFORM_SCALE::mode_current : WAVEFORM_SCALE::mode_both));
+        Encoder::Reset();
+    }
+
     switch (_data.state)
     {
     case state_idle:
@@ -84,7 +94,8 @@ void WaveFormRecorder::update()
     }
 
     // Check quit
-    if (Button::Side()->wasHold())
+    const bool sideHeld = Button::Side()->wasHold();
+    if (_data.state != state_saving && sideHeld)
         _data.want_to_quit = true;
 }
 
@@ -92,7 +103,7 @@ void WaveFormRecorder::update()
 void WaveFormRecorder::_update_input()
 {
     Waveform::_update_pm_data();
-    Waveform::_update_chart_x_zoom();
+    Waveform::_update_scale_control();
 
     // Get a scaled buffer to avoid redundant float operation
     if (IsTriggerModeHasThreshold(getConfig().trigger_mode) && !IsTriggerModeChannelV(getConfig().trigger_mode))
@@ -126,8 +137,6 @@ void WaveFormRecorder::_update_state_idle()
         _update_chart();
     }
 
-    // Side short-click is intentionally reserved for a future HelpEvent.
-    Button::Side()->wasClicked();
     _data.config_panel->update(HAL::Millis());
 
     // Start recording

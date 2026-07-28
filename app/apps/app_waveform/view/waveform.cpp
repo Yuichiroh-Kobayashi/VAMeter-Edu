@@ -39,6 +39,8 @@ static constexpr uint32_t _pm_data_a_scale = 1000;
 // Chart
 static constexpr int _guide_line_num = 12;
 static constexpr int _guide_line_padding = 240 / _guide_line_num;
+static_assert(_guide_line_padding == WAVEFORM_SCALE::kHorizontalGuideSpacingPixels,
+              "waveform division must match the rendered guide spacing");
 // static constexpr uint32_t _guide_line_color = 0xD4D4D4;
 // static constexpr uint32_t _line_v_color = 0x3D7AF5;
 // static constexpr uint32_t _line_a_color = 0xF83434;
@@ -56,8 +58,12 @@ static constexpr float _chart_a_min_y_range_small = 0.001 * _pm_data_a_scale;
 /* -------------------------------------------------------------------------- */
 /*                                    Setup                                   */
 /* -------------------------------------------------------------------------- */
-Waveform::Waveform(uint32_t themeColor, int mode) : _mode(mode)
+Waveform::Waveform(uint32_t themeColor, int mode, WAVEFORM_SCALE::Settings* scaleSettings) : _mode(mode)
 {
+    _scale_settings = scaleSettings == nullptr ? &_local_scale_settings : scaleSettings;
+    if ((_mode == 1 && _scale_settings->target == WAVEFORM_SCALE::target_current) ||
+        (_mode == 2 && _scale_settings->target == WAVEFORM_SCALE::target_voltage))
+        _scale_settings->target = WAVEFORM_SCALE::target_time;
     // Background
     _bg_color.jumpTo(Hex2Rgb(themeColor));
     _bg_color.moveTo(255, 255, 255);
@@ -72,8 +78,8 @@ Waveform::Waveform(uint32_t themeColor, int mode) : _mode(mode)
     // Chart
     _chart_props.chart_v.setOrigin(0, 35);
     _chart_props.chart_a.setOrigin(0, 35);
-    _chart_props.chart_v.setSize(240, 170);
-    _chart_props.chart_a.setSize(240, 170);
+    _chart_props.chart_v.setSize(240, WAVEFORM_SCALE::kChartHeightPixels);
+    _chart_props.chart_a.setSize(240, WAVEFORM_SCALE::kChartHeightPixels);
 
     _chart_props.chart_v.getZoomTransition().getXTransition().setTransitionPath(EasingPath::easeOutBack);
     _chart_props.chart_v.getZoomTransition().getXTransition().setDuration(400);
@@ -152,6 +158,31 @@ void Waveform::enableChartXUpdate(bool enable)
         Encoder::Reset();
 }
 
+void Waveform::_update_scale_control()
+{
+    if (_scale_settings->target == WAVEFORM_SCALE::target_time)
+    {
+        _update_chart_x_zoom();
+        return;
+    }
+    if (!Encoder::WasMoved())
+        return;
+
+    const std::size_t oldVoltageIndex = _scale_settings->voltageScaleIndex;
+    const std::size_t oldCurrentIndex = _scale_settings->currentScaleIndex;
+    WAVEFORM_SCALE::AdjustSelectedScale(*_scale_settings, Encoder::GetDirection());
+    if (oldVoltageIndex != _scale_settings->voltageScaleIndex)
+    {
+        _input_props.last_min_v = 114514;
+        _input_props.last_max_v = -114514;
+    }
+    if (oldCurrentIndex != _scale_settings->currentScaleIndex)
+    {
+        _input_props.last_min_a = 114514;
+        _input_props.last_max_a = -114514;
+    }
+}
+
 void Waveform::_update_chart_x_zoom()
 {
     if (!_input_props.update_chart_x)
@@ -180,78 +211,77 @@ void Waveform::_update_chart_x_zoom()
     }
 }
 
-static uint8_t _first_few_update_count = 0;
-
 void Waveform::_update_chart_y_zoom(bool applyChartZoom)
 {
-    // If first time
-    if (_input_props.min_v == 114514 || _input_props.min_a == 114514)
+    if (_mode != 2 && !WAVEFORM_SCALE::IsVoltageAuto(*_scale_settings))
     {
-        return;
+        const float observedMinimum = _input_props.min_v == 114514 ? 0.0f : _input_props.min_v;
+        WAVEFORM_SCALE::Range autoRange;
+        autoRange.bottom = _chart_props.current_v_y_range_bottom;
+        autoRange.top = _chart_props.current_v_y_range_top;
+        const WAVEFORM_SCALE::Range range =
+            WAVEFORM_SCALE::ResolveVoltageRange(*_scale_settings, autoRange, observedMinimum);
+        if (range.bottom != _chart_props.current_v_y_range_bottom || range.top != _chart_props.current_v_y_range_top)
+        {
+            _chart_props.current_v_y_range_bottom = range.bottom;
+            _chart_props.current_v_y_range_top = range.top;
+            if (applyChartZoom)
+                _chart_props.chart_v.moveYIntoRange(range.bottom, range.top);
+        }
     }
-
-    // V chart y range
-    if (_input_props.min_v != _input_props.last_min_v || _input_props.max_v != _input_props.last_max_v)
+    else if (_mode != 2 && _input_props.min_v != 114514 &&
+             (_input_props.min_v != _input_props.last_min_v || _input_props.max_v != _input_props.last_max_v))
     {
-        // Top
         _chart_props.current_v_y_range_top = _input_props.max_v;
-
-        // Bottom
         _chart_props.current_v_y_range_bottom = _input_props.min_v;
-
-        // Min range limit
         if (_chart_props.current_v_y_range_top - _chart_props.current_v_y_range_bottom < _chart_v_min_y_range)
         {
-            auto mid_point = (_input_props.max_v - _input_props.min_v) / 2 + _input_props.min_v;
-            _chart_props.current_v_y_range_top = mid_point + _chart_v_min_y_range / 2;
+            const float midPoint = (_input_props.max_v - _input_props.min_v) / 2 + _input_props.min_v;
+            _chart_props.current_v_y_range_top = midPoint + _chart_v_min_y_range / 2;
             _chart_props.current_v_y_range_bottom = _chart_props.current_v_y_range_top - _chart_v_min_y_range;
         }
-
-        // Update range
-        // spdlog::info("v [{:.2f} {:.2f}] [{:.2f} {:.2f}]",
-        //              _input_props.min_v,
-        //              _input_props.max_v,
-        //              _chart_props.current_v_y_range_bottom,
-        //              _chart_props.current_v_y_range_top);
         if (applyChartZoom)
             _chart_props.chart_v.moveYIntoRange(_chart_props.current_v_y_range_bottom, _chart_props.current_v_y_range_top);
-
         _input_props.last_min_v = _input_props.min_v;
         _input_props.last_max_v = _input_props.max_v;
     }
 
-    // A chart y range
-    if (_input_props.min_a != _input_props.last_min_a || _input_props.max_a != _input_props.last_max_a)
+    if (_mode != 1 && !WAVEFORM_SCALE::IsCurrentAuto(*_scale_settings))
     {
-        // Top
-        _chart_props.current_a_y_range_top = _input_props.max_a;
-
-        // Bottom
-        _chart_props.current_a_y_range_bottom = _input_props.min_a;
-
-        // Min range limit
-        if (_chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom < _chart_a_min_y_range_small)
+        WAVEFORM_SCALE::Range autoRange;
+        autoRange.bottom = _chart_props.current_a_y_range_bottom / _pm_data_a_scale;
+        autoRange.top = _chart_props.current_a_y_range_top / _pm_data_a_scale;
+        WAVEFORM_SCALE::Range range = WAVEFORM_SCALE::ResolveCurrentRange(*_scale_settings, autoRange);
+        range.bottom *= _pm_data_a_scale;
+        range.top *= _pm_data_a_scale;
+        if (range.bottom != _chart_props.current_a_y_range_bottom || range.top != _chart_props.current_a_y_range_top)
         {
-            auto mid_point = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
-            _chart_props.current_a_y_range_top = mid_point + _chart_a_min_y_range_small / 2;
+            _chart_props.current_a_y_range_bottom = range.bottom;
+            _chart_props.current_a_y_range_top = range.top;
+            if (applyChartZoom)
+                _chart_props.chart_a.moveYIntoRange(range.bottom, range.top);
+        }
+    }
+    else if (_mode != 1 && _input_props.min_a != 114514 &&
+             (_input_props.min_a != _input_props.last_min_a || _input_props.max_a != _input_props.last_max_a))
+    {
+        _chart_props.current_a_y_range_top = _input_props.max_a;
+        _chart_props.current_a_y_range_bottom = _input_props.min_a;
+        const float span = _chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom;
+        if (span < _chart_a_min_y_range_small)
+        {
+            const float midPoint = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
+            _chart_props.current_a_y_range_top = midPoint + _chart_a_min_y_range_small / 2;
             _chart_props.current_a_y_range_bottom = _chart_props.current_a_y_range_top - _chart_a_min_y_range_small;
         }
-        else if (_chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom < _chart_a_min_y_range_big)
+        else if (span < _chart_a_min_y_range_big)
         {
-            auto mid_point = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
-            _chart_props.current_a_y_range_top = mid_point + _chart_a_min_y_range_big / 2;
+            const float midPoint = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
+            _chart_props.current_a_y_range_top = midPoint + _chart_a_min_y_range_big / 2;
             _chart_props.current_a_y_range_bottom = _chart_props.current_a_y_range_top - _chart_a_min_y_range_big;
         }
-
-        // // Update range
-        // spdlog::info("a [{:.2f} {:.2f}] [{:.2f} {:.2f}]",
-        //              _input_props.min_a,
-        //              _input_props.max_a,
-        //              _chart_props.current_a_y_range_bottom,
-        //              _chart_props.current_a_y_range_top);
         if (applyChartZoom)
             _chart_props.chart_a.moveYIntoRange(_chart_props.current_a_y_range_bottom, _chart_props.current_a_y_range_top);
-
         _input_props.last_min_a = _input_props.min_a;
         _input_props.last_max_a = _input_props.max_a;
     }
@@ -285,7 +315,7 @@ void Waveform::_update_chart_y_zoom_with_third_value(const float& thirdV, const 
 void Waveform::_update_input()
 {
     _update_pm_data();
-    _update_chart_x_zoom();
+    _update_scale_control();
     _update_chart_y_zoom();
 }
 
@@ -336,6 +366,7 @@ void Waveform::_render_background()
     }
 
     _render_y_scales();
+    _render_scale_readouts();
     _on_render_background_finish();
 }
 
@@ -413,6 +444,48 @@ void Waveform::_render_y_scales()
     }
 }
 
+void Waveform::_render_scale_readouts()
+{
+    static constexpr int kRight = 237;
+    static constexpr int kFirstLineY = 142;
+    static constexpr int kLineHeight = 19;
+    static constexpr uint32_t kSelectedColor = 0xFFFFFF;
+    static constexpr uint32_t kIdleColor = 0x777777;
+
+    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
+    HAL::GetCanvas()->setTextDatum(top_right);
+    HAL::GetCanvas()->setTextColor(
+        _scale_settings->target == WAVEFORM_SCALE::target_time ? kSelectedColor : kIdleColor);
+    HAL::GetCanvas()->drawString("TIME", kRight, kFirstLineY);
+
+    int lineY = kFirstLineY + kLineHeight;
+    if (_mode != 2)
+    {
+        const bool isAuto = WAVEFORM_SCALE::IsVoltageAuto(*_scale_settings);
+        const float valuePerDiv = isAuto
+                                      ? WAVEFORM_SCALE::AutoPerDivFromFullRange(
+                                            _chart_props.current_v_y_range_top - _chart_props.current_v_y_range_bottom)
+                                      : WAVEFORM_SCALE::VoltageValuePerDiv(_scale_settings->voltageScaleIndex);
+        _chart_props.string_buffer = WAVEFORM_SCALE::FormatVoltageLabel(isAuto, valuePerDiv);
+        HAL::GetCanvas()->setTextColor(
+            _scale_settings->target == WAVEFORM_SCALE::target_voltage ? kSelectedColor : kIdleColor);
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), kRight, lineY);
+        lineY += kLineHeight;
+    }
+    if (_mode != 1)
+    {
+        const bool isAuto = WAVEFORM_SCALE::IsCurrentAuto(*_scale_settings);
+        const float fullRangeA =
+            (_chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom) / _pm_data_a_scale;
+        const float valuePerDiv = isAuto ? WAVEFORM_SCALE::AutoPerDivFromFullRange(fullRangeA)
+                                         : WAVEFORM_SCALE::CurrentValuePerDiv(_scale_settings->currentScaleIndex);
+        _chart_props.string_buffer = WAVEFORM_SCALE::FormatCurrentLabel(isAuto, valuePerDiv);
+        HAL::GetCanvas()->setTextColor(
+            _scale_settings->target == WAVEFORM_SCALE::target_current ? kSelectedColor : kIdleColor);
+        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), kRight, lineY);
+    }
+}
+
 static const uint32_t _color_panel_x_scale_notice = 0x9B9B9B;
 static const uint32_t _color_panel_x_scale_notice_text = 0xFFFFFF;
 static constexpr int _panel_x_scale_notice_width = 240;
@@ -462,6 +535,11 @@ void Waveform::_render_wave()
         _input_props.max_v = 0;
         _input_props.min_v = 114514;
         _input_props.pm_data_buffer_v.peekAll([&](const float& value) {
+            if (value > _input_props.max_v)
+                _input_props.max_v = value;
+            if (value < _input_props.min_v)
+                _input_props.min_v = value;
+
             // Pass if out of range
             if (_chart_props.stop_render)
                 return;
@@ -472,7 +550,11 @@ void Waveform::_render_wave()
             }
 
             // Get chart point
-            _chart_props.new_p = _chart_props.chart_v.getChartPoint(static_cast<float>(_chart_props.p_x), value);
+            WAVEFORM_SCALE::Range visibleRange;
+            visibleRange.bottom = _chart_props.current_v_y_range_bottom;
+            visibleRange.top = _chart_props.current_v_y_range_top;
+            const float visibleValue = WAVEFORM_SCALE::ClampToRange(value, visibleRange);
+            _chart_props.new_p = _chart_props.chart_v.getChartPoint(static_cast<float>(_chart_props.p_x), visibleValue);
             _chart_props.new_p.x -= _chart_props.temp_buffer;
 
             // Offset to avoid overlap with a wave
@@ -500,11 +582,6 @@ void Waveform::_render_wave()
             _chart_props.p_x++;
             // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
 
-            // Update max and min from the buffer
-            if (value > _input_props.max_v)
-                _input_props.max_v = value;
-            else if (value < _input_props.min_v)
-                _input_props.min_v = value;
         });
     }
 
@@ -517,6 +594,11 @@ void Waveform::_render_wave()
         _input_props.max_a = -114514;
         _input_props.min_a = 114514;
         _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
+            if (value > _input_props.max_a)
+                _input_props.max_a = value;
+            if (value < _input_props.min_a)
+                _input_props.min_a = value;
+
             // Pass if out of range
             if (_chart_props.stop_render)
                 return;
@@ -527,7 +609,11 @@ void Waveform::_render_wave()
             }
 
             // Get chart point
-            _chart_props.new_p = _chart_props.chart_a.getChartPoint(static_cast<float>(_chart_props.p_x), value);
+            WAVEFORM_SCALE::Range visibleRange;
+            visibleRange.bottom = _chart_props.current_a_y_range_bottom;
+            visibleRange.top = _chart_props.current_a_y_range_top;
+            const float visibleValue = WAVEFORM_SCALE::ClampToRange(value, visibleRange);
+            _chart_props.new_p = _chart_props.chart_a.getChartPoint(static_cast<float>(_chart_props.p_x), visibleValue);
             _chart_props.new_p.x -= _chart_props.temp_buffer;
 
             // Render
@@ -552,11 +638,6 @@ void Waveform::_render_wave()
             _chart_props.p_x++;
             // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
 
-            // Update max and min from the buffer
-            if (value > _input_props.max_a)
-                _input_props.max_a = value;
-            else if (value < _input_props.min_a)
-                _input_props.min_a = value;
         });
     }
 }

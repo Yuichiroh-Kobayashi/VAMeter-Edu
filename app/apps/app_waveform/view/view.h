@@ -6,6 +6,7 @@
 #pragma once
 #include "../../../hal/hal.h"
 #include "config_panel/config_panel.h"
+#include "libs/waveform_scale/waveform_scale.h"
 #include <smooth_ui_toolkit.h>
 #include <cstdint>
 #include <string>
@@ -90,10 +91,13 @@ namespace VIEWS
         InputProps_t _input_props;
 
         int _mode = 0; // 0: Both, 1: Volt, 2: Current
+        WAVEFORM_SCALE::Settings _local_scale_settings;
+        WAVEFORM_SCALE::Settings* _scale_settings = nullptr;
 
     protected:
         void _update_pm_data();
         const uint32_t& _get_pm_data_a_scale();
+        void _update_scale_control();
         void _update_chart_x_zoom();
         void _update_chart_y_zoom(bool applyChartZoom = true);
         void _update_chart_y_zoom_with_third_value(const float& thirdV, const float& thirdA);
@@ -102,6 +106,7 @@ namespace VIEWS
 
         void _render_background();
         void _render_y_scales();
+        void _render_scale_readouts();
         void _render_x_scales_notice();
         virtual void _on_render_background_finish() {}
         void _render_wave();
@@ -110,7 +115,7 @@ namespace VIEWS
         void _update_render(bool pushBuffer = false, bool renderPanel = true, bool renderXScaleNotice = true);
 
     public:
-        Waveform(uint32_t themeColor, int mode = 0);
+        Waveform(uint32_t themeColor, int mode = 0, WAVEFORM_SCALE::Settings* scaleSettings = nullptr);
         virtual ~Waveform();
         virtual void update();
         inline void setPause(bool pause) { _input_props.is_paused = pause; }
@@ -165,7 +170,12 @@ namespace VIEWS
         void _handle_recorder_error();
 
     public:
-        WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}
+        WaveFormRecorder(uint32_t themeColor,
+                         int mode = 0,
+                         WAVEFORM_SCALE::Settings* scaleSettings = nullptr)
+            : Waveform(themeColor, mode, scaleSettings)
+        {
+        }
         ~WaveFormRecorder();
 
         void init();

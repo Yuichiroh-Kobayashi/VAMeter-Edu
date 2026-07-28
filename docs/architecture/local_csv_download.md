@@ -3,8 +3,8 @@
 ## Scope
 
 The local download path currently supports only record files matching
-`^REC-[0-9]+\.csv$`. The digits are ASCII only. No additional CSV prefix or
-schema is introduced by this implementation.
+`^REC-[0-9]+\.csv$`. The digits are ASCII only. The recorder writes the
+timestamped schema described below; the HTTP response remains byte-transparent.
 
 The feature keeps the existing waveform record selection, QR screen, local AP,
 AP suffix, and `/download/<record-name>` workflow. It needs neither an internet
@@ -19,9 +19,10 @@ The complete deletion path is `Settings → Files → Record files →
 old recordings automatically nor formats storage when it becomes full.
 
 The educational waveform recorder uses manual trigger only and a fixed 10-second
-recording. Pressing the encoder starts recording. A short side-button click does
-nothing (it is reserved for a future HelpEvent), while a long hold exits the
-waveform screen. Before starting, the recorder requires at least 64 KiB free.
+recording. Pressing the encoder starts recording. A short side-button click
+cycles the TIME/V-SCALE/I-SCALE control target available for the active channel
+mode, while a long hold exits the waveform screen. Before starting, the recorder
+requires at least 64 KiB free.
 This is conservative headroom for temporary chunks and the final CSV to coexist,
 including FAT allocation and directory metadata; it is not the measured size of
 one 10-second CSV. If storage information cannot be read or the threshold is not
@@ -39,6 +40,73 @@ must not run concurrently with MSC access.
 
 Motor Observe, its `MO-*.csv` files, and all motor control or measurement paths
 are outside this implementation.
+
+## Timestamped record schema
+
+New records use this header:
+
+```csv
+voltage,current,elapsed_ms,capacity,energy
+```
+
+The next row is the summary row:
+
+```csv
+,,<recording_duration_ms>,<capacity>,<energy>
+```
+
+Each sample is written as five CSV columns, leaving the summary-only fields
+empty:
+
+```csv
+<voltage>,<current>,<elapsed_ms>,,
+```
+
+`elapsed_ms` is captured from `esp_timer_get_time()` relative to the instant
+immediately before the recording loop. It records scheduler delay and jitter;
+it is not synthesized from the sample index. `recording_duration_ms` is fixed
+when the recording loop ends, before chunk close, merge, and final-file save, so
+wrap-up time is excluded. Voltage and current precision and the existing
+capacity and energy summary values are unchanged.
+
+Preview reads one logical line at a time and uses only the first two sample
+columns. It accepts the legacy `voltage,current,time,capacity,energy` header,
+legacy two-column samples, and new three- or five-column samples. Empty,
+malformed, and overlong rows are skipped without leaving the file position in
+the middle of a row. The existing maximum preview row count remains in force.
+
+## Recorder trigger lifetime
+
+After successful creation, the HAL recorder status owns the trigger. Failed
+preparation and failed task creation release it immediately. A stop timeout does
+not delete the status or trigger and prevents another recorder from being
+created. The task marks its resource finished only at its final cleanup point;
+a later or repeated destroy call then releases the trigger exactly once.
+
+## Educational waveform scale controls
+
+The initial vertical scale is AUTO. In voltage-only mode, a short side click
+toggles TIME and V-SCALE. In current-only mode it toggles TIME and I-SCALE. In
+both mode it cycles TIME → V-SCALE → I-SCALE → TIME. Encoder rotation changes
+horizontal zoom while TIME is selected and changes only the selected vertical
+scale otherwise. Encoder click starts recording only while idle; input is
+ignored by the saving screen. Scale settings remain in the app instance when
+the waveform view is recreated after a recording, but are not stored in NVS.
+
+Voltage choices are AUTO, 0.1, 0.2, 0.5, 1, 2, and 5 V/div. Current choices,
+stored internally in amperes, are AUTO, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50,
+100, 200, and 500 mA/div, plus 1 and 2 A/div. The 2 A/div upper choice covers
+the existing INA226 high-current physical limit without changing calibration.
+
+The chart keeps its 35 px origin, 170 px height, and 20 px horizontal-guide
+spacing. Therefore one division is exactly 20 px and the visible chart spans
+8.5 divisions. Manual full range is `value_per_div × 8.5`. Positive voltage is
+shown from 0 V upward; a negative observation switches voltage safely to a
+zero-centered range. Current is always zero-centered. Out-of-range samples are
+clamped only for chart coordinate calculation, leaving measured and CSV values
+unchanged. AUTO preserves the existing min/max following and minimum spans;
+its displayed per-division value is the actual current full range divided by
+8.5. Scale labels use ASCII units including `uA`.
 
 ## Filename and path handling
 
@@ -86,25 +154,49 @@ Executed locally:
   build process. The changed files emitted no new diagnostic. Existing project
   and dependency warnings remain.
 
-Not executed:
+Executed on physical hardware:
 
-- All physical-device regression checks below.
+- Normal boot and ordinary screen rendering.
+- Voltage and current measurement screens.
+- Manual-triggered 10-second recording, REC file generation, and REC numbering.
+- Settings → Files, individual REC deletion, and individual legacy MO deletion.
+- Recording refusal below the 64 KiB margin without a reboot.
+- QR/AP download of a small CSV and opening that CSV in Excel.
+- Corrected storage warning and delete-confirm displays.
+
+Not yet executed on physical hardware:
+
+- Transfer of a long CSV larger than 8 KiB across multiple chunks.
+- Client disconnect during transfer.
+- Reconnection and repeated download of the same file.
+- AP suffix verification.
+- Intentional mid-stream I/O failure injection.
+- Recorder stop-timeout injection.
+- Timestamped CSV and vertical-scale controls introduced by this follow-up.
 
 ## Physical-device regression checklist
 
 Do not mark an item PASS without performing it on hardware.
 
-- [ ] Boot the device and confirm normal startup.
-- [ ] Open Voltage Meter and confirm measurement continues normally.
-- [ ] Open Current Meter and confirm measurement continues normally.
-- [ ] Open Waveform and record data.
-- [ ] Confirm a `REC-*.csv` file is generated and selectable.
-- [ ] Open the existing QR download screen.
-- [ ] Download the CSV from an iPad or PC connected to the device AP.
-- [ ] Download a small CSV.
+- [x] Boot the device and confirm normal startup.
+- [x] Open Voltage Meter and confirm measurement continues normally.
+- [x] Open Current Meter and confirm measurement continues normally.
+- [x] Open Waveform and record data.
+- [x] Confirm a `REC-*.csv` file is generated and selectable.
+- [x] Open the existing QR download screen.
+- [x] Download the CSV from a client connected to the device AP.
+- [x] Download a small CSV.
 - [ ] Download a long CSV spanning many chunks.
 - [ ] Disconnect the client during a long download.
 - [ ] Reconnect and download the same file again.
-- [ ] Open the downloaded file in Excel or Google Sheets.
+- [x] Open the downloaded file in Excel.
 - [ ] Configure an AP suffix and confirm the advertised SSID still uses it.
-- [ ] Confirm the existing UI is unchanged while HelpEvent remains unimplemented.
+- [ ] Verify `elapsed_ms` begins near zero, increases monotonically with real jitter,
+      and ends near 10000 ms; verify the summary duration excludes saving time.
+- [ ] Verify TIME/V-SCALE/I-SCALE cycling in voltage, current, and both modes.
+- [ ] With a 0–5.13 V signal, select 1 V/div and confirm a 0 V baseline and clear trace.
+- [ ] With a 0.4275–0.5700 mA signal, select 0.1 then 0.2 mA/div and confirm safe clipping
+      followed by an in-range trace.
+- [ ] Exercise a motor peak, widen current scale, and confirm the firmware remains stable.
+- [ ] Confirm AUTO recovery and persistence after the post-recording view is recreated.
+- [ ] Inject a stop timeout and confirm a second recorder is rejected until task exit.
