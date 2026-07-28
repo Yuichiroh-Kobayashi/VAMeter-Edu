@@ -14,6 +14,7 @@
 #include <limits>
 #include <sys/stat.h>
 #include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/record_csv/record_csv.h"
 extern "C"
 {
 #include "../utils/wear_levelling/wear_levelling.h"
@@ -479,24 +480,21 @@ VA_RECORDER::Record HAL_VAMeter::getVaRecord(const std::string& recordName)
         return result;
     }
 
-    // Skip first two line
-    fscanf(record_file, "%*[^\n]\n");
-    fscanf(record_file, "%*[^\n]\n");
-
-    // Read line by line
     uint16_t line_count = 0;
-    while (1)
+    char line[RECORD_CSV::kMaxLineBytes] = {0};
+    bool too_long = false;
+    while (line_count < _max_reading_line && RECORD_CSV::ReadLine(record_file, line, sizeof(line), too_long))
     {
-        result.push_back(VA_RECORDER::RecordData_t());
-
-        if (fscanf(record_file, "%f,%f\n", &result[line_count].voltage, &result[line_count].current) != 2)
-            break;
-
-        // spdlog::info("get {} {}", result[line_count].voltage, result[line_count].current);
-
-        line_count++;
-        if (line_count > _max_reading_line)
-            break;
+        if (too_long)
+        {
+            spdlog::warn("skip overlong CSV row in {}", recordName);
+            continue;
+        }
+        RECORD_CSV::ParsedLine parsed;
+        if (RECORD_CSV::ParseLine(line, parsed) != RECORD_CSV::line_sample)
+            continue;
+        result.push_back(VA_RECORDER::RecordData_t(parsed.voltage, parsed.current));
+        ++line_count;
     }
 
     fclose(record_file);

@@ -44,7 +44,7 @@ struct TextPool_cn_t
     char AppFiles_Option_Upload[12] = "下载 (QR)";
     char AppFiles_Option_Delete[7] = "删除";
     char AppFiles_Confirm_Delete[19] = "删除此记录？";
-    char AppFiles_Error_Delete[19] = "无法删除记录";
+    char AppFiles_Error_Delete[15] = "Delete\nfailed";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "输入电压";
     char AppPowerMonitor_PageSingle_InputPower[13] = "输入功率";
     char AppPowerMonitor_PageSingle_OutputCurrent[13] = "输出电流";
@@ -65,7 +65,7 @@ struct TextPool_cn_t
     char AppWaveform_Waitting[13] = "等待触发";
     char AppWaveform_Saving[10] = "保存中";
     char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
-    char AppWaveform_Error_Recording[60] = "录制失败\n请在设置 > 文件中检查或删除记录";
+    char AppWaveform_Error_Recording[21] = "Rec error\nSee Files";
     char AppWaveform_Config_TriggerMode[13] = "触发模式";
     char AppWaveform_Config_Threshold[7] = "阈值";
     char AppWaveform_Config_RecTime[13] = "录制时间";
@@ -136,6 +136,7 @@ struct TextPool_cn_t
         map.AppSettings_Option_Japanese = AppSettings_Option_Japanese;
         map.AppSettings_Option_StartupImage = AppSettings_Option_StartupImage;
         map.AppSettings_Option_Default = AppSettings_Option_Default;
+        map.AppSettings_Option_Probe = AppSettings_Option_Probe;
         map.AppFiles_Option_RecordFiles = AppFiles_Option_RecordFiles;
         map.AppFiles_Option_MscMode = AppFiles_Option_MscMode;
         map.AppFiles_Option_Open = AppFiles_Option_Open;

@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 #include <new>
+#include <memory>
+#include <utility>
 
 using namespace SmoothUIToolKit;
 using namespace VIEWS;
@@ -26,12 +28,11 @@ using namespace SYSTEM::UI;
 
 WaveFormRecorder::~WaveFormRecorder()
 {
-    // The HAL daemon only borrows the trigger, so stop it before releasing the trigger.
+    // HAL owns the trigger after successful creation. A timeout intentionally
+    // leaves both recorder state and trigger alive until the task finishes.
     HAL::DestroyVaRecorder();
     if (_data.config_panel != nullptr)
         delete _data.config_panel;
-    if (_data.trigger != nullptr)
-        delete _data.trigger;
 }
 
 void WaveFormRecorder::init()
@@ -386,29 +387,37 @@ bool WaveFormRecorder::_handle_start_recording()
 {
     static constexpr uint32_t kEducationalRecordTimeMs = 10000;
 
-    HAL::DestroyVaRecorder();
-    if (_data.trigger != nullptr)
+    if (!HAL::DestroyVaRecorder())
     {
-        delete _data.trigger;
-        _data.trigger = nullptr;
+        _data.destroy_already_timed_out = true;
+        return false;
     }
 
     spdlog::info("create educational manual trigger");
-    _data.trigger = new (std::nothrow) Trigger_Manual;
-    if (_data.trigger == nullptr)
+    std::unique_ptr<VA_RECORDER::TriggerBase> trigger(new (std::nothrow) Trigger_Manual);
+    if (!trigger)
         return false;
-    _data.trigger->setRecordTime(kEducationalRecordTimeMs);
+    trigger->setRecordTime(kEducationalRecordTimeMs);
 
-    return HAL::CreatVaRecorder(_data.trigger);
+    return HAL::CreatVaRecorder(std::move(trigger));
 }
 
 void WaveFormRecorder::_handle_recorder_error()
 {
     const VA_RECORDER::Error_t error = HAL::GetVaRecorderError();
-    HAL::DestroyVaRecorder();
+    if (!_data.destroy_already_timed_out)
+        HAL::DestroyVaRecorder();
+    _data.destroy_already_timed_out = false;
     _data.state = state_idle;
     if (error == VA_RECORDER::error_insufficient_space || error == VA_RECORDER::error_storage_info_failed)
         HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_NoSpace);
     else
         HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_Recording);
+
+    Button::Update();
+    Button::Encoder()->wasClicked();
+    Button::Encoder()->wasHold();
+    Button::Side()->wasClicked();
+    Button::Side()->wasHold();
+    Encoder::Reset();
 }

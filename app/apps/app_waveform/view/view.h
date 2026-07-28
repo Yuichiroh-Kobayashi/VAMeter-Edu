@@ -139,7 +139,7 @@ namespace VIEWS
             bool want_to_quit = false;
 
             ConfigPanel* config_panel = nullptr;
-            VA_RECORDER::TriggerBase* trigger = nullptr;
+            bool destroy_already_timed_out = false;
 
             float threshold_a_scaled_buffer = 0.0f;
             uint32_t recording_start_time_count = 0;

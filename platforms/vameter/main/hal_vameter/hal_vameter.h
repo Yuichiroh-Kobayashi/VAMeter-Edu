@@ -91,7 +91,7 @@ public:
     void stopMscMode() override;
     void factoryReset(OnLogPageRenderCallback_t onLogPageRender) override;
 
-    bool creatVaRecorder(VA_RECORDER::TriggerBase* trigger) override;
+    bool creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger) override;
     bool isVaRecorderExist() override;
     bool isVaRecorderRecording() override;
     bool isVaRecorderSaving() override;

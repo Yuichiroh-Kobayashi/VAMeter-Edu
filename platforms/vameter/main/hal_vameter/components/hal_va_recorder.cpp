@@ -5,6 +5,7 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/recorder_lifecycle/owned_task_resource.h"
 #include <mooncake.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -16,6 +17,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <new>
+#include <memory>
 #include <sys/stat.h>
 
 POWER_MONITOR::PMData_t* _borrow_pm_data_daemon();
@@ -47,11 +49,10 @@ struct RecorderDaemonStatus_t
         char savePath[64] = {0};
         RunningState_t currentState = daemon_state_preparing;
         VA_RECORDER::Error_t error = VA_RECORDER::error_none;
-        VA_RECORDER::TriggerBase* trigger = nullptr; // Owned by WaveFormRecorder.
-        bool stopRequested = false;
     };
 
     Data_t data;
+    RECORDER_LIFECYCLE::OwnedTaskResource<VA_RECORDER::TriggerBase> triggerOwner;
     SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
     ~RecorderDaemonStatus_t() { if (mutex != nullptr) vSemaphoreDelete(mutex); }
 
@@ -68,12 +69,59 @@ struct RecorderDaemonStatus_t
         data.currentState = state;
         xSemaphoreGive(mutex);
     }
-    void fail(VA_RECORDER::Error_t value)
+    bool acquireTrigger(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool acquired = triggerOwner.acquire(std::move(trigger));
+        xSemaphoreGive(mutex);
+        return acquired;
+    }
+    VA_RECORDER::TriggerBase* trigger()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        VA_RECORDER::TriggerBase* value = triggerOwner.get();
+        xSemaphoreGive(mutex);
+        return value;
+    }
+    void taskStarted()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.taskStarted();
+        xSemaphoreGive(mutex);
+    }
+    void taskCreateFailed()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.taskCreateFailed();
+        xSemaphoreGive(mutex);
+    }
+    void requestStop()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.requestStop();
+        xSemaphoreGive(mutex);
+    }
+    bool stopRequested()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool value = triggerOwner.stopRequested();
+        xSemaphoreGive(mutex);
+        return value;
+    }
+    void finish(VA_RECORDER::Error_t value)
     {
         xSemaphoreTake(mutex, portMAX_DELAY);
         data.error = value;
-        data.currentState = daemon_state_error;
+        data.currentState = value == VA_RECORDER::error_none ? daemon_state_finished : daemon_state_error;
+        triggerOwner.taskFinished();
         xSemaphoreGive(mutex);
+    }
+    bool releaseFinishedTrigger()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool released = triggerOwner.releaseFinished();
+        xSemaphoreGive(mutex);
+        return released;
     }
 };
 
@@ -130,8 +178,9 @@ void recorderTask(void* parameter)
 {
     esp_task_wdt_add(nullptr);
     RecorderDaemonStatus_t* status = static_cast<RecorderDaemonStatus_t*>(parameter);
+    status->taskStarted();
     const RecorderDaemonStatus_t::Data_t initial = status->snapshot();
-    VA_RECORDER::TriggerBase* trigger = initial.trigger;
+    VA_RECORDER::TriggerBase* trigger = status->trigger();
     VA_RECORDER::PreTriggerBuffer* pretrigger = nullptr;
     FILE* chunk = nullptr;
     FILE* finalFile = nullptr;
@@ -141,6 +190,7 @@ void recorderTask(void* parameter)
     bool finalCreated = false;
     bool completed = false;
     VA_RECORDER::Error_t error = VA_RECORDER::error_none;
+    uint32_t recordingDurationMs = 0;
 
     if (trigger->preTriggerBufferSize() != 0)
     {
@@ -163,7 +213,7 @@ void recorderTask(void* parameter)
             pretrigger->put(VA_RECORDER::RecordData_t(data->busVoltage, data->shuntCurrent));
             _return_pm_data_daemon();
         }
-        if (status->snapshot().stopRequested) goto cleanup;
+        if (status->stopRequested()) goto cleanup;
         esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
     }
@@ -171,17 +221,19 @@ void recorderTask(void* parameter)
     status->setState(daemon_state_recording);
     HAL::ResetPowerMonitorData();
     {
-        const uint32_t started = esp_timer_get_time() / 1000;
-        uint32_t chunkStarted = started;
+        const int64_t startedUs = esp_timer_get_time();
+        uint32_t chunkStartedMs = 0;
         while (true)
         {
             POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
-            const int result = fprintf(chunk, "%.4f,%.7f\n", data->busVoltage, data->shuntCurrent);
+            const uint32_t elapsedMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
+            const int result = fprintf(chunk, "%.4f,%.7f,%lu,,\n", data->busVoltage, data->shuntCurrent,
+                                       static_cast<unsigned long>(elapsedMs));
             _return_pm_data_daemon();
             if (result < 0) { logErrno("fprintf", chunkPath); error = VA_RECORDER::error_write_chunk_failed; goto cleanup; }
-            const uint32_t now = esp_timer_get_time() / 1000;
-            if (now - started >= trigger->getRecordTime()) break;
-            if (now - chunkStarted >= kChunkSaveIntervalMs)
+            recordingDurationMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
+            if (recordingDurationMs >= trigger->getRecordTime()) break;
+            if (recordingDurationMs - chunkStartedMs >= kChunkSaveIntervalMs)
             {
                 if (fclose(chunk) != 0) { chunk = nullptr; logErrno("fclose", chunkPath); error = VA_RECORDER::error_close_failed; goto cleanup; }
                 chunk = nullptr;
@@ -189,9 +241,9 @@ void recorderTask(void* parameter)
                 snprintf(chunkPath, sizeof(chunkPath), "%s/%u.csv", kTempPath, chunkCount);
                 chunk = fopen(chunkPath, "w");
                 if (chunk == nullptr) { logErrno("fopen", chunkPath); error = VA_RECORDER::error_open_chunk_failed; goto cleanup; }
-                chunkStarted = now;
+                chunkStartedMs = recordingDurationMs;
             }
-            if (status->snapshot().stopRequested) goto cleanup;
+            if (status->stopRequested()) goto cleanup;
             esp_task_wdt_reset();
             vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
         }
@@ -203,11 +255,12 @@ void recorderTask(void* parameter)
     finalFile = fopen(initial.savePath, "w");
     if (finalFile == nullptr) { logErrno("fopen", initial.savePath); error = VA_RECORDER::error_open_final_failed; goto cleanup; }
     finalCreated = true;
-    if (fprintf(finalFile, "voltage,current,time,capacity,energy\n") < 0)
+    if (fprintf(finalFile, "voltage,current,elapsed_ms,capacity,energy\n") < 0)
     { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
     {
         POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
-        const int result = fprintf(finalFile, ",,%lu,%.7f,%.7f\n", static_cast<unsigned long>(data->time), data->capacity, data->energy);
+        const int result = fprintf(finalFile, ",,%lu,%.7f,%.7f\n", static_cast<unsigned long>(recordingDurationMs),
+                                   data->capacity, data->energy);
         _return_pm_data_daemon();
         if (result < 0) { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
     }
@@ -215,7 +268,7 @@ void recorderTask(void* parameter)
     {
         bool writeOk = true;
         pretrigger->peekAll([&](const VA_RECORDER::RecordData_t& data) {
-            if (writeOk && fprintf(finalFile, "%.4f,%.7f\n", data.voltage, data.current) < 0) writeOk = false;
+            if (writeOk && fprintf(finalFile, "%.4f,%.7f,0,,\n", data.voltage, data.current) < 0) writeOk = false;
         });
         if (!writeOk) { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
         delete pretrigger;
@@ -262,18 +315,18 @@ cleanup:
     if (error != VA_RECORDER::error_none)
     {
         if (finalCreated && remove(initial.savePath) != 0 && errno != ENOENT) logErrno("remove", initial.savePath);
-        status->fail(error);
+        status->finish(error);
     }
-    else status->setState(daemon_state_finished);
+    else status->finish(VA_RECORDER::error_none);
     esp_task_wdt_delete(nullptr);
     vTaskDelete(nullptr);
 }
 } // namespace
 
-bool HAL_VAMeter::creatVaRecorder(VA_RECORDER::TriggerBase* trigger)
+bool HAL_VAMeter::creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
 {
     g_last_create_error = VA_RECORDER::error_none;
-    if (trigger == nullptr || g_recorder != nullptr)
+    if (!trigger || g_recorder != nullptr)
     {
         spdlog::error("recorder already exists or trigger is null");
         return false;
@@ -316,10 +369,18 @@ bool HAL_VAMeter::creatVaRecorder(VA_RECORDER::TriggerBase* trigger)
         g_last_create_error = VA_RECORDER::error_temp_prepare_failed;
         return false;
     }
-    g_recorder->data.trigger = trigger;
+    if (!g_recorder->acquireTrigger(std::move(trigger)))
+    {
+        delete g_recorder;
+        g_recorder = nullptr;
+        removeTempDirectory();
+        g_last_create_error = VA_RECORDER::error_allocation_failed;
+        return false;
+    }
     if (xTaskCreate(recorderTask, "rec", 4000, g_recorder, 15, nullptr) != pdPASS)
     {
         spdlog::error("xTaskCreate recorder failed");
+        g_recorder->taskCreateFailed();
         delete g_recorder;
         g_recorder = nullptr;
         removeTempDirectory();
@@ -356,9 +417,7 @@ bool HAL_VAMeter::destroyVaRecorder()
     if (g_recorder == nullptr) return true;
     if (isVaRecorderExist())
     {
-        xSemaphoreTake(g_recorder->mutex, portMAX_DELAY);
-        g_recorder->data.stopRequested = true;
-        xSemaphoreGive(g_recorder->mutex);
+        g_recorder->requestStop();
         const uint32_t started = esp_timer_get_time() / 1000;
         while (isVaRecorderExist() && (esp_timer_get_time() / 1000) - started < 5000U)
         {
@@ -372,6 +431,11 @@ bool HAL_VAMeter::destroyVaRecorder()
         }
     }
     g_last_create_error = g_recorder->snapshot().error;
+    if (!g_recorder->releaseFinishedTrigger())
+    {
+        spdlog::error("recorder trigger release rejected before task finish");
+        return false;
+    }
     delete g_recorder;
     g_recorder = nullptr;
     spdlog::info("recorder destroyed");

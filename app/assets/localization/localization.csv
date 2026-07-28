@@ -40,7 +40,7 @@ AppFiles_Option_Open,Open,打开,開く
 AppFiles_Option_Upload,Download (QR),下载 (QR),ダウンロード (QR)
 AppFiles_Option_Delete,Delete,删除,削除
 AppFiles_Confirm_Delete,Delete?,删除此记录？,削除しますか
-AppFiles_Error_Delete,Could not delete record,无法删除记录,記録を削除できませんでした
+AppFiles_Error_Delete,Delete\nfailed,Delete\nfailed,削除できません
 AppPowerMonitor_PageSingle_InputVolt,Input Volt.,输入电压,入力電圧
 AppPowerMonitor_PageSingle_InputPower,Input Pow,输入功率,入力パワー
 AppPowerMonitor_PageSingle_OutputCurrent,Output Cur.,输出电流,出力電流
@@ -61,7 +61,7 @@ AppPowerMonitor_PageMoreDetail_Energy,Energy,能量,エネルギー
 AppWaveform_Waitting,WAITING,等待触发,待機中
 AppWaveform_Saving,SAVING,保存中,セーブ中
 AppWaveform_Error_NoSpace,No space\nDelete\nin Files,No space\nDelete\nin Files,No space\nDelete\nin Files
-AppWaveform_Error_Recording,Recording failed\nCheck or delete records in Settings > Files,录制失败\n请在设置 > 文件中检查或删除记录,記録に失敗しました\n設定→ファイルから記録を確認・削除してください
+AppWaveform_Error_Recording,Rec error\nSee Files,Rec error\nSee Files,Rec error\nSee Files
 AppWaveform_Config_TriggerMode,TriggerMode,触发模式,トリガーモード
 AppWaveform_Config_Threshold,Threshold,阈值,閾値
 AppWaveform_Config_RecTime,Record Time,录制时间,レコードタイム

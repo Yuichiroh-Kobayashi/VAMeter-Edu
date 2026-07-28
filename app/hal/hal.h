@@ -4,7 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 #pragma once
+#include <cstdio>
 #include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 #ifndef ESP_PLATFORM
 #define LGFX_USE_V1
@@ -472,8 +475,11 @@ public:
     /*                                 VA Recoder                                 */
     /* -------------------------------------------------------------------------- */
 public:
-    static bool CreatVaRecorder(VA_RECORDER::TriggerBase* trigger) { return Get()->creatVaRecorder(trigger); }
-    virtual bool creatVaRecorder(VA_RECORDER::TriggerBase* trigger) { return false; }
+    static bool CreatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
+    {
+        return Get()->creatVaRecorder(std::move(trigger));
+    }
+    virtual bool creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger) { return false; }
 
     static bool IsVaRecorderExist() { return Get()->isVaRecorderExist(); }
     virtual bool isVaRecorderExist() { return false; }
