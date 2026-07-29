@@ -43,6 +43,8 @@ struct TextPool_en_t
     char AppFiles_Option_Open[5] = "Open";
     char AppFiles_Option_Upload[14] = "Download (QR)";
     char AppFiles_Option_Delete[7] = "Delete";
+    char AppFiles_Confirm_Delete[8] = "Delete?";
+    char AppFiles_Error_Delete[15] = "Delete\nfailed";
     char AppPowerMonitor_PageSingle_InputVolt[12] = "Input Volt.";
     char AppPowerMonitor_PageSingle_InputPower[10] = "Input Pow";
     char AppPowerMonitor_PageSingle_OutputCurrent[12] = "Output Cur.";
@@ -62,6 +64,8 @@ struct TextPool_en_t
     char AppPowerMonitor_PageMoreDetail_Energy[7] = "Energy";
     char AppWaveform_Waitting[8] = "WAITING";
     char AppWaveform_Saving[7] = "SAVING";
+    char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
+    char AppWaveform_Error_Recording[21] = "Rec error\nSee Files";
     char AppWaveform_Config_TriggerMode[12] = "TriggerMode";
     char AppWaveform_Config_Threshold[10] = "Threshold";
     char AppWaveform_Config_RecTime[12] = "Record Time";
@@ -92,8 +96,7 @@ struct TextPool_en_t
     char Misc_Text_NoRecordFiles[16] = "No record files";
     char Misc_Text_UploadDone[13] = "Upload done!";
     char Misc_Text_UpgradeDone[14] = "Upgrade done!";
-    char Misc_Text_UsbFlashingNotice[122] = " > USB flashing is required\n > Please upgrade\n    using [M5Burner]\n > And "
-                                            "backup your record\n    files before upgrade";
+    char Misc_Text_UsbFlashingNotice[122] = " > USB flashing is required\n > Please upgrade\n    using [M5Burner]\n > And backup your record\n    files before upgrade";
     char Misc_Text_ConnectAp[11] = "Connect AP";
     char Misc_Text_OpenLink[14] = "Open the link";
 
@@ -133,11 +136,14 @@ struct TextPool_en_t
         map.AppSettings_Option_Japanese = AppSettings_Option_Japanese;
         map.AppSettings_Option_StartupImage = AppSettings_Option_StartupImage;
         map.AppSettings_Option_Default = AppSettings_Option_Default;
+        map.AppSettings_Option_Probe = AppSettings_Option_Probe;
         map.AppFiles_Option_RecordFiles = AppFiles_Option_RecordFiles;
         map.AppFiles_Option_MscMode = AppFiles_Option_MscMode;
         map.AppFiles_Option_Open = AppFiles_Option_Open;
         map.AppFiles_Option_Upload = AppFiles_Option_Upload;
         map.AppFiles_Option_Delete = AppFiles_Option_Delete;
+        map.AppFiles_Confirm_Delete = AppFiles_Confirm_Delete;
+        map.AppFiles_Error_Delete = AppFiles_Error_Delete;
         map.AppPowerMonitor_PageSingle_InputVolt = AppPowerMonitor_PageSingle_InputVolt;
         map.AppPowerMonitor_PageSingle_InputPower = AppPowerMonitor_PageSingle_InputPower;
         map.AppPowerMonitor_PageSingle_OutputCurrent = AppPowerMonitor_PageSingle_OutputCurrent;
@@ -157,6 +163,8 @@ struct TextPool_en_t
         map.AppPowerMonitor_PageMoreDetail_Energy = AppPowerMonitor_PageMoreDetail_Energy;
         map.AppWaveform_Waitting = AppWaveform_Waitting;
         map.AppWaveform_Saving = AppWaveform_Saving;
+        map.AppWaveform_Error_NoSpace = AppWaveform_Error_NoSpace;
+        map.AppWaveform_Error_Recording = AppWaveform_Error_Recording;
         map.AppWaveform_Config_TriggerMode = AppWaveform_Config_TriggerMode;
         map.AppWaveform_Config_Threshold = AppWaveform_Config_Threshold;
         map.AppWaveform_Config_RecTime = AppWaveform_Config_RecTime;

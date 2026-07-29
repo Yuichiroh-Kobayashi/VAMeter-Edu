@@ -42,6 +42,8 @@ struct LocalTextPoolMap_t
     char* AppFiles_Option_Open = nullptr;
     char* AppFiles_Option_Upload = nullptr;
     char* AppFiles_Option_Delete = nullptr;
+    char* AppFiles_Confirm_Delete = nullptr;
+    char* AppFiles_Error_Delete = nullptr;
     char* AppPowerMonitor_PageSingle_InputVolt = nullptr;
     char* AppPowerMonitor_PageSingle_InputPower = nullptr;
     char* AppPowerMonitor_PageSingle_OutputCurrent = nullptr;
@@ -61,6 +63,8 @@ struct LocalTextPoolMap_t
     char* AppPowerMonitor_PageMoreDetail_Energy = nullptr;
     char* AppWaveform_Waitting = nullptr;
     char* AppWaveform_Saving = nullptr;
+    char* AppWaveform_Error_NoSpace = nullptr;
+    char* AppWaveform_Error_Recording = nullptr;
     char* AppWaveform_Config_TriggerMode = nullptr;
     char* AppWaveform_Config_Threshold = nullptr;
     char* AppWaveform_Config_RecTime = nullptr;

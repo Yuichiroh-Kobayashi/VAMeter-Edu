@@ -37,12 +37,14 @@ struct TextPool_jp_t
     char AppSettings_Option_Japanese[10] = "日本語";
     char AppSettings_Option_StartupImage[13] = "起動ロゴ";
     char AppSettings_Option_Default[16] = "デフォルト";
-    char AppSettings_Option_Probe[25] = "練習用プローブ";
+    char AppSettings_Option_Probe[22] = "練習用プローブ";
     char AppFiles_Option_RecordFiles[25] = "レコードファイル";
     char AppFiles_Option_MscMode[13] = "MSCモード";
     char AppFiles_Option_Open[7] = "開く";
-    char AppFiles_Option_Upload[25] = "ダウンロード (QR)";
+    char AppFiles_Option_Upload[24] = "ダウンロード (QR)";
     char AppFiles_Option_Delete[7] = "削除";
+    char AppFiles_Confirm_Delete[19] = "削除しますか";
+    char AppFiles_Error_Delete[22] = "削除できません";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "入力電圧";
     char AppPowerMonitor_PageSingle_InputPower[16] = "入力パワー";
     char AppPowerMonitor_PageSingle_OutputCurrent[13] = "出力電流";
@@ -62,6 +64,8 @@ struct TextPool_jp_t
     char AppPowerMonitor_PageMoreDetail_Energy[16] = "エネルギー";
     char AppWaveform_Waitting[10] = "待機中";
     char AppWaveform_Saving[13] = "セーブ中";
+    char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
+    char AppWaveform_Error_Recording[21] = "Rec error\nSee Files";
     char AppWaveform_Config_TriggerMode[22] = "トリガーモード";
     char AppWaveform_Config_Threshold[7] = "閾値";
     char AppWaveform_Config_RecTime[22] = "レコードタイム";
@@ -92,9 +96,7 @@ struct TextPool_jp_t
     char Misc_Text_NoRecordFiles[37] = "記録ファイルがありません";
     char Misc_Text_UploadDone[26] = "アップロード完了!";
     char Misc_Text_UpgradeDone[29] = "アップグレード完了!";
-    char Misc_Text_UsbFlashingNotice[198] =
-        " > USB フラッシングが必要です\n > [M5Burner] を使用して、\n   アップグレードしてください\n > あなたの記録ファイルを\n "
-        "  バックアップしてください";
+    char Misc_Text_UsbFlashingNotice[198] = " > USB フラッシングが必要です\n > [M5Burner] を使用して、\n   アップグレードしてください\n > あなたの記録ファイルを\n   バックアップしてください";
     char Misc_Text_ConnectAp[10] = "接続 AP";
     char Misc_Text_OpenLink[19] = "リンクを開く";
 
@@ -134,11 +136,14 @@ struct TextPool_jp_t
         map.AppSettings_Option_Japanese = AppSettings_Option_Japanese;
         map.AppSettings_Option_StartupImage = AppSettings_Option_StartupImage;
         map.AppSettings_Option_Default = AppSettings_Option_Default;
+        map.AppSettings_Option_Probe = AppSettings_Option_Probe;
         map.AppFiles_Option_RecordFiles = AppFiles_Option_RecordFiles;
         map.AppFiles_Option_MscMode = AppFiles_Option_MscMode;
         map.AppFiles_Option_Open = AppFiles_Option_Open;
         map.AppFiles_Option_Upload = AppFiles_Option_Upload;
         map.AppFiles_Option_Delete = AppFiles_Option_Delete;
+        map.AppFiles_Confirm_Delete = AppFiles_Confirm_Delete;
+        map.AppFiles_Error_Delete = AppFiles_Error_Delete;
         map.AppPowerMonitor_PageSingle_InputVolt = AppPowerMonitor_PageSingle_InputVolt;
         map.AppPowerMonitor_PageSingle_InputPower = AppPowerMonitor_PageSingle_InputPower;
         map.AppPowerMonitor_PageSingle_OutputCurrent = AppPowerMonitor_PageSingle_OutputCurrent;
@@ -158,6 +163,8 @@ struct TextPool_jp_t
         map.AppPowerMonitor_PageMoreDetail_Energy = AppPowerMonitor_PageMoreDetail_Energy;
         map.AppWaveform_Waitting = AppWaveform_Waitting;
         map.AppWaveform_Saving = AppWaveform_Saving;
+        map.AppWaveform_Error_NoSpace = AppWaveform_Error_NoSpace;
+        map.AppWaveform_Error_Recording = AppWaveform_Error_Recording;
         map.AppWaveform_Config_TriggerMode = AppWaveform_Config_TriggerMode;
         map.AppWaveform_Config_Threshold = AppWaveform_Config_Threshold;
         map.AppWaveform_Config_RecTime = AppWaveform_Config_RecTime;

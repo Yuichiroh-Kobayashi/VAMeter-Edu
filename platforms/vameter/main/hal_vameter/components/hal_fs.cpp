@@ -9,6 +9,12 @@
 #include <string>
 #include <ArduinoJson.h>
 #include <dirent.h>
+#include <cerrno>
+#include <cstring>
+#include <limits>
+#include <sys/stat.h>
+#include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/record_csv/record_csv.h"
 extern "C"
 {
 #include "../utils/wear_levelling/wear_levelling.h"
@@ -320,7 +326,7 @@ const char* _rec_folder_path = "/spiflash/rec";
 const char* _rec_file_name_prefix = "REC-";
 const char* _rec_file_name_suffix = ".csv";
 
-void HAL_VAMeter::_fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize)
+bool HAL_VAMeter::_fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize)
 {
     auto folder = opendir(_rec_folder_path);
 
@@ -331,17 +337,20 @@ void HAL_VAMeter::_fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize
         spdlog::info("no floder {}, creating", _rec_folder_path);
         if (mkdir(_rec_folder_path, S_IRWXU) != 0)
         {
-            popFatalError("Create rec\nFolder failed");
+            spdlog::error("mkdir {} failed: errno={} ({})", _rec_folder_path, errno, strerror(errno));
+            return false;
         }
 
         // Default file name
         snprintf(recFilePath, bufferSize, "%s/%s%03d%s", _rec_folder_path, _rec_file_name_prefix, 0, _rec_file_name_suffix);
         spdlog::info("get new rec file path: {}", recFilePath);
-        return;
+        return snprintf(recFilePath, bufferSize, "%s/%s%03d%s", _rec_folder_path, _rec_file_name_prefix, 0,
+                        _rec_file_name_suffix) > 0;
     }
 
     // Iterate all rec files
-    int rec_file_max_id = -1;
+    uint32_t rec_file_max_id = 0;
+    bool has_record = false;
     struct dirent* entry;
     while ((entry = readdir(folder)) != NULL)
     {
@@ -349,30 +358,39 @@ void HAL_VAMeter::_fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        // Get file id
-        int file_id = atoi(entry->d_name + 4);
-
-        // Update
-        if (file_id > rec_file_max_id)
+        std::string path = _fs_get_rec_file_path(entry->d_name);
+        struct stat info = {};
+        uint32_t file_id = 0;
+        if (stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) ||
+            !LOCAL_CSV_DOWNLOAD::ParseRecordId(entry->d_name, file_id))
+            continue;
+        if (!has_record || file_id > rec_file_max_id)
+        {
             rec_file_max_id = file_id;
+            has_record = true;
+        }
     }
 
     // Close folder
     closedir(folder);
 
-    if (rec_file_max_id < 0)
-        rec_file_max_id = 0;
+    if (has_record && rec_file_max_id == std::numeric_limits<uint32_t>::max())
+    {
+        spdlog::error("record file id exhausted");
+        return false;
+    }
 
     // Get file path on top of max id
     snprintf(recFilePath,
              bufferSize,
-             "%s/%s%03d%s",
+             "%s/%s%03lu%s",
              _rec_folder_path,
              _rec_file_name_prefix,
-             rec_file_max_id + 1,
+             static_cast<unsigned long>(has_record ? rec_file_max_id + 1U : 0U),
              _rec_file_name_suffix);
 
     spdlog::info("get new rec file path: {}", recFilePath);
+    return true;
 }
 
 std::string HAL_VAMeter::_fs_get_rec_file_path(const std::string& recordName)
@@ -383,7 +401,19 @@ std::string HAL_VAMeter::_fs_get_rec_file_path(const std::string& recordName)
     return path;
 }
 
-std::vector<std::string> HAL_VAMeter::getVaRecordNameList() { return _ls(_rec_folder_path); }
+std::vector<std::string> HAL_VAMeter::getVaRecordNameList()
+{
+    std::vector<std::string> result;
+    for (const auto& name : _ls(_rec_folder_path))
+    {
+        const std::string path = _fs_get_rec_file_path(name);
+        struct stat info = {};
+        if (stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) &&
+            (LOCAL_CSV_DOWNLOAD::IsCurrentRecordName(name) || LOCAL_CSV_DOWNLOAD::IsLegacyRecordName(name)))
+            result.push_back(name);
+    }
+    return result;
+}
 
 std::string HAL_VAMeter::getLatestVaRecordName()
 {
@@ -399,7 +429,8 @@ std::string HAL_VAMeter::getLatestVaRecordName()
     }
 
     // Iterate all rec files
-    int rec_file_max_id = -1;
+    uint32_t rec_file_max_id = 0;
+    bool has_record = false;
     struct dirent* entry;
     while ((entry = readdir(folder)) != NULL)
     {
@@ -407,14 +438,17 @@ std::string HAL_VAMeter::getLatestVaRecordName()
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        // Get file id
-        int file_id = atoi(entry->d_name + 4);
-
-        // Update
-        if (file_id > rec_file_max_id)
+        const std::string path = _fs_get_rec_file_path(entry->d_name);
+        struct stat info = {};
+        uint32_t file_id = 0;
+        if (stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) ||
+            !LOCAL_CSV_DOWNLOAD::ParseRecordId(entry->d_name, file_id))
+            continue;
+        if (!has_record || file_id > rec_file_max_id)
         {
             rec_file_max_id = file_id;
             result = entry->d_name;
+            has_record = true;
         }
     }
 
@@ -446,24 +480,21 @@ VA_RECORDER::Record HAL_VAMeter::getVaRecord(const std::string& recordName)
         return result;
     }
 
-    // Skip first two line
-    fscanf(record_file, "%*[^\n]\n");
-    fscanf(record_file, "%*[^\n]\n");
-
-    // Read line by line
     uint16_t line_count = 0;
-    while (1)
+    char line[RECORD_CSV::kMaxLineBytes] = {0};
+    bool too_long = false;
+    while (line_count < _max_reading_line && RECORD_CSV::ReadLine(record_file, line, sizeof(line), too_long))
     {
-        result.push_back(VA_RECORDER::RecordData_t());
-
-        if (fscanf(record_file, "%f,%f\n", &result[line_count].voltage, &result[line_count].current) != 2)
-            break;
-
-        // spdlog::info("get {} {}", result[line_count].voltage, result[line_count].current);
-
-        line_count++;
-        if (line_count > _max_reading_line)
-            break;
+        if (too_long)
+        {
+            spdlog::warn("skip overlong CSV row in {}", recordName);
+            continue;
+        }
+        RECORD_CSV::ParsedLine parsed;
+        if (RECORD_CSV::ParseLine(line, parsed) != RECORD_CSV::line_sample)
+            continue;
+        result.push_back(VA_RECORDER::RecordData_t(parsed.voltage, parsed.current));
+        ++line_count;
     }
 
     fclose(record_file);
@@ -474,6 +505,11 @@ VA_RECORDER::Record HAL_VAMeter::getVaRecord(const std::string& recordName)
 
 bool HAL_VAMeter::deleteVaRecord(const std::string& recordName)
 {
+    if (!LOCAL_CSV_DOWNLOAD::IsCurrentRecordName(recordName) && !LOCAL_CSV_DOWNLOAD::IsLegacyRecordName(recordName))
+    {
+        spdlog::warn("reject delete for invalid record name: {}", recordName);
+        return false;
+    }
     // Get path
     std::string record_path = _rec_folder_path;
     record_path += "/";
@@ -488,7 +524,7 @@ bool HAL_VAMeter::deleteVaRecord(const std::string& recordName)
     }
     else
     {
-        spdlog::error("rm failed");
+        spdlog::error("remove {} failed: errno={} ({})", record_path, errno, strerror(errno));
         return false;
     }
 }

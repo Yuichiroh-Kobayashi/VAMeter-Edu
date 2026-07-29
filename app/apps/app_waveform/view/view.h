@@ -6,6 +6,7 @@
 #pragma once
 #include "../../../hal/hal.h"
 #include "config_panel/config_panel.h"
+#include "libs/waveform_scale/waveform_scale.h"
 #include <smooth_ui_toolkit.h>
 #include <cstdint>
 #include <string>
@@ -90,6 +91,8 @@ namespace VIEWS
         InputProps_t _input_props;
 
         int _mode = 0; // 0: Both, 1: Volt, 2: Current
+        WAVEFORM_SCALE::AutoScaleState _voltage_scale;
+        WAVEFORM_SCALE::AutoScaleState _current_scale;
 
     protected:
         void _update_pm_data();
@@ -102,6 +105,7 @@ namespace VIEWS
 
         void _render_background();
         void _render_y_scales();
+        void _render_scale_readouts();
         void _render_x_scales_notice();
         virtual void _on_render_background_finish() {}
         void _render_wave();
@@ -139,7 +143,7 @@ namespace VIEWS
             bool want_to_quit = false;
 
             ConfigPanel* config_panel = nullptr;
-            VA_RECORDER::TriggerBase* trigger = nullptr;
+            bool destroy_already_timed_out = false;
 
             float threshold_a_scaled_buffer = 0.0f;
             uint32_t recording_start_time_count = 0;
@@ -157,14 +161,18 @@ namespace VIEWS
         void _update_state_saving();
 
         void _handle_render();
-        void _render_mode_icon();
         void _render_threshold_line();
         void _render_rec_state_label();
 
-        void _handle_start_recording();
+        bool _handle_start_recording();
+        void _handle_recorder_error();
+        void _handle_help_request();
 
     public:
-        WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}
+        WaveFormRecorder(uint32_t themeColor, int mode = 0)
+            : Waveform(themeColor, mode)
+        {
+        }
         ~WaveFormRecorder();
 
         void init();

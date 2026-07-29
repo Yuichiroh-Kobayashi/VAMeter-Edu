@@ -9,14 +9,15 @@
 #include "../triggers/triggers.h"
 #include "../../utils/system/system.h"
 #include "../../../assets/assets.h"
-#include <array>
 #include <cmath>
 #include <mooncake.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <vector>
+#include <new>
+#include <memory>
+#include <utility>
 
 using namespace SmoothUIToolKit;
 using namespace VIEWS;
@@ -25,13 +26,11 @@ using namespace SYSTEM::UI;
 
 WaveFormRecorder::~WaveFormRecorder()
 {
+    // HAL owns the trigger after successful creation. A timeout intentionally
+    // leaves both recorder state and trigger alive until the task finishes.
+    HAL::DestroyVaRecorder();
     if (_data.config_panel != nullptr)
         delete _data.config_panel;
-    if (_data.trigger != nullptr)
-        delete _data.trigger;
-
-    // Destroy recorder
-    HAL::DestroyVaRecorder();
 }
 
 void WaveFormRecorder::init()
@@ -59,6 +58,13 @@ void WaveFormRecorder::update()
     Button::Update();
     Encoder::Update();
 
+    const bool sideHeld = Button::Side()->wasHold();
+    const bool sideClicked = Button::Side()->wasClicked();
+    if (_data.state != state_saving && sideHeld)
+        _data.want_to_quit = true;
+    else if (_data.state != state_saving && sideClicked)
+        _handle_help_request();
+
     switch (_data.state)
     {
     case state_idle:
@@ -82,9 +88,6 @@ void WaveFormRecorder::update()
         // Relay toggle omitted
     }
 
-    // Check quit
-    if (Button::Side()->wasHold())
-        _data.want_to_quit = true;
 }
 
 // Override to add y zoom with threshold line
@@ -125,28 +128,18 @@ void WaveFormRecorder::_update_state_idle()
         _update_chart();
     }
 
-    // Open or close config panel
-    if (Button::Side()->wasClicked() && _data.config_panel->isTransitionFinish())
-    {
-        if (_data.config_panel->isHidden())
-        {
-            enableChartXUpdate(false);
-            _data.config_panel->popOut();
-        }
-        else
-        {
-            enableChartXUpdate(true);
-            _data.config_panel->hide();
-        }
-    }
     _data.config_panel->update(HAL::Millis());
 
     // Start recording
     if (!_data.config_panel->isPoppedOut() && Button::Encoder()->wasClicked())
     {
-        _handle_start_recording();
-        spdlog::info("jump to state_waiting_trigger");
-        _data.state = state_waiting_trigger;
+        if (_handle_start_recording())
+        {
+            spdlog::info("jump to state_waiting_trigger");
+            _data.state = state_waiting_trigger;
+        }
+        else
+            _handle_recorder_error();
     }
 
     _handle_render();
@@ -156,6 +149,12 @@ void WaveFormRecorder::_update_state_waiting_trigger()
 {
     _update_chart();
     _handle_render();
+
+    if (HAL::GetVaRecorderError() != VA_RECORDER::error_none)
+    {
+        _handle_recorder_error();
+        return;
+    }
 
     if (HAL::IsVaRecorderRecording())
     {
@@ -169,6 +168,12 @@ void WaveFormRecorder::_update_state_recording()
 {
     _update_chart();
     _handle_render();
+
+    if (HAL::GetVaRecorderError() != VA_RECORDER::error_none)
+    {
+        _handle_recorder_error();
+        return;
+    }
 
     if (!HAL::IsVaRecorderRecording())
     {
@@ -196,6 +201,11 @@ void WaveFormRecorder::_update_state_recording()
 
 void WaveFormRecorder::_update_state_saving()
 {
+    if (HAL::GetVaRecorderError() != VA_RECORDER::error_none)
+    {
+        _handle_recorder_error();
+        return;
+    }
     if (!HAL::IsVaRecorderSaving())
     {
         _data.has_finished_recording = true;
@@ -212,11 +222,9 @@ void WaveFormRecorder::_handle_render()
     // Render waveform
     if (!_data.config_panel->isPoppedOut())
     {
-        Waveform::_update_render(false, true, false);
-        _render_mode_icon();
+        Waveform::_update_render(false, true, true);
         _render_threshold_line();
         _render_rec_state_label();
-        Waveform::_render_x_scales_notice();
     }
 
     // Render config panel
@@ -227,39 +235,6 @@ void WaveFormRecorder::_handle_render()
 
     NotificationBubble::UpdateAndRender();
     HAL::CanvasUpdate();
-}
-
-static const std::vector<std::string> _trigger_mode_icon_list = {
-    "M",
-    "V.H.L",
-    "V.L.L",
-    "C.H.L",
-    "C.L.L",
-};
-static constexpr int _trigger_mode_icon_margin_top = 145 + 23 + 3;
-static constexpr int _trigger_mode_icon_margin_left = 3;
-
-void WaveFormRecorder::_render_mode_icon()
-{
-    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-    // AssetPool::LoadFont14(HAL::GetCanvas());
-
-    HAL::GetCanvas()->setTextDatum(top_left);
-    HAL::GetCanvas()->setTextColor(TFT_WHITE, AssetPool::GetColor().AppWaveform.colorTriggerModeIcon);
-
-    auto panel_width =
-        HAL::GetCanvas()->textWidth(_trigger_mode_icon_list[static_cast<size_t>(getConfig().trigger_mode)].c_str());
-    panel_width += 10;
-    HAL::GetCanvas()->fillSmoothRoundRect(_trigger_mode_icon_margin_left,
-                                          _trigger_mode_icon_margin_top,
-                                          panel_width,
-                                          23,
-                                          6,
-                                          AssetPool::GetColor().AppWaveform.colorTriggerModeIcon);
-
-    HAL::GetCanvas()->drawString(_trigger_mode_icon_list[static_cast<size_t>(getConfig().trigger_mode)].c_str(),
-                                 _trigger_mode_icon_margin_left + 5,
-                                 _trigger_mode_icon_margin_top + 4);
 }
 
 static constexpr int _threshold_line_tag_margin_left = 90;
@@ -373,61 +348,51 @@ void WaveFormRecorder::_render_rec_state_label()
 /* -------------------------------------------------------------------------- */
 /*                                  Recording                                 */
 /* -------------------------------------------------------------------------- */
-void WaveFormRecorder::_handle_start_recording()
+bool WaveFormRecorder::_handle_start_recording()
 {
-    // Free if exist
-    if (_data.trigger != nullptr)
-        delete _data.trigger;
+    static constexpr uint32_t kEducationalRecordTimeMs = 10000;
 
-    // Create new trigger and apply config
-    switch (getConfig().trigger_mode)
+    if (!HAL::DestroyVaRecorder())
     {
-    case trigger_mode_manual:
-    {
-        spdlog::info("create trigger_mode_manual");
-        _data.trigger = new Trigger_Manual;
-        break;
-    }
-    case trigger_mode_v_above_level:
-    {
-        spdlog::info("create trigger_mode_v_above_level");
-        _data.trigger = new Trigger_Level(true);
-        _data.trigger->setTriggerChannel(true);
-        break;
-    }
-    case trigger_mode_v_under_level:
-    {
-        spdlog::info("create trigger_mode_v_under_level");
-        _data.trigger = new Trigger_Level(false);
-        _data.trigger->setTriggerChannel(true);
-        break;
-    }
-    case trigger_mode_a_above_level:
-    {
-        spdlog::info("create trigger_mode_a_above_level");
-        _data.trigger = new Trigger_Level(true);
-        _data.trigger->setTriggerChannel(false);
-        break;
-    }
-    case trigger_mode_a_under_level:
-    {
-        spdlog::info("create trigger_mode_a_under_level");
-        _data.trigger = new Trigger_Level(false);
-        _data.trigger->setTriggerChannel(false);
-        break;
-    }
-    default:
-    {
-        spdlog::error("no trigger mode {}", getConfig().trigger_mode);
-        return;
-    }
+        _data.destroy_already_timed_out = true;
+        return false;
     }
 
-    // Apply config
-    _data.trigger->setRecordTime(getConfig().record_time);
-    _data.trigger->setThreshold(getConfig().threshold);
+    spdlog::info("create educational manual trigger");
+    std::unique_ptr<VA_RECORDER::TriggerBase> trigger(new (std::nothrow) Trigger_Manual);
+    if (!trigger)
+        return false;
+    trigger->setRecordTime(kEducationalRecordTimeMs);
+    trigger->setChannelMode(_mode == 1 ? VA_RECORDER::channel_voltage
+                                      : (_mode == 2 ? VA_RECORDER::channel_current : VA_RECORDER::channel_both));
 
-    // Start recording
-    HAL::DestroyVaRecorder();
-    HAL::CreatVaRecorder(_data.trigger);
+    return HAL::CreatVaRecorder(std::move(trigger));
+}
+
+void WaveFormRecorder::_handle_help_request()
+{
+    // Dedicated integration point for the future HelpEvent transport. No
+    // project-wide HelpEvent sink exists yet, so keep measurement and recorder
+    // state untouched and make the request observable in logs.
+    spdlog::info("waveform help requested (HelpEvent transport not installed)");
+}
+
+void WaveFormRecorder::_handle_recorder_error()
+{
+    const VA_RECORDER::Error_t error = HAL::GetVaRecorderError();
+    if (!_data.destroy_already_timed_out)
+        HAL::DestroyVaRecorder();
+    _data.destroy_already_timed_out = false;
+    _data.state = state_idle;
+    if (error == VA_RECORDER::error_insufficient_space || error == VA_RECORDER::error_storage_info_failed)
+        HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_NoSpace);
+    else
+        HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_Recording);
+
+    Button::Update();
+    Button::Encoder()->wasClicked();
+    Button::Encoder()->wasHold();
+    Button::Side()->wasClicked();
+    Button::Side()->wasHold();
+    Encoder::Reset();
 }
