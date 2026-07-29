@@ -8,9 +8,9 @@
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -31,32 +31,51 @@ namespace
         return std::fabs(lhs - rhs) <= tolerance;
     }
 
-    void TestCsvRows()
+    void TestCsvParsing()
     {
         RECORD_CSV::ParsedLine parsed;
         CHECK(RECORD_CSV::ParseLine("voltage,current,time,capacity,energy\n", parsed) ==
               RECORD_CSV::line_legacy_header);
         CHECK(RECORD_CSV::ParseLine("voltage,current,elapsed_ms,capacity,energy\n", parsed) ==
               RECORD_CSV::line_current_header);
+        CHECK(RECORD_CSV::ParseLine("voltage,current,elapsed_ms\n", parsed) == RECORD_CSV::line_current_header);
+
         CHECK(RECORD_CSV::ParseLine(",,10003,0.0000012,0.0000083\n", parsed) == RECORD_CSV::line_summary);
         CHECK(parsed.recordingDurationMs == 10003);
         CHECK(Near(parsed.capacity, 0.0000012f));
         CHECK(Near(parsed.energy, 0.0000083f));
 
         CHECK(RECORD_CSV::ParseLine("1.2500,0.0004275\n", parsed) == RECORD_CSV::line_sample);
+        CHECK(parsed.hasVoltage);
+        CHECK(parsed.hasCurrent);
         CHECK(!parsed.hasElapsedMs);
         CHECK(Near(parsed.voltage, 1.25f));
         CHECK(Near(parsed.current, 0.0004275f));
 
+        CHECK(RECORD_CSV::ParseLine("1.2500,,0\n", parsed) == RECORD_CSV::line_sample);
+        CHECK(parsed.hasVoltage);
+        CHECK(!parsed.hasCurrent);
+        CHECK(parsed.hasElapsedMs);
+        CHECK(parsed.elapsedMs == 0);
+        CHECK(Near(parsed.current, 0.0f));
+
+        CHECK(RECORD_CSV::ParseLine(",0.0004275,41\n", parsed) == RECORD_CSV::line_sample);
+        CHECK(!parsed.hasVoltage);
+        CHECK(parsed.hasCurrent);
+        CHECK(parsed.elapsedMs == 41);
+        CHECK(Near(parsed.voltage, 0.0f));
+
         const char* rows[] = {
-            "0.0000,0.0000000,0,,\n",
+            "0.0000,0.0000000,0\n",
             "0.0125,0.0000025,41,,\n",
-            "0.0275,0.0000050,82,,\n",
+            "0.0275,0.0000050,82,,,extra\n",
         };
         std::uint32_t lastElapsed = 0;
         for (std::size_t i = 0; i < sizeof(rows) / sizeof(rows[0]); ++i)
         {
             CHECK(RECORD_CSV::ParseLine(rows[i], parsed) == RECORD_CSV::line_sample);
+            CHECK(parsed.hasVoltage);
+            CHECK(parsed.hasCurrent);
             CHECK(parsed.hasElapsedMs);
             if (i == 0)
                 CHECK(parsed.elapsedMs == 0);
@@ -65,11 +84,39 @@ namespace
             lastElapsed = parsed.elapsedMs;
         }
 
-        CHECK(RECORD_CSV::ParseLine("1.0,2.0,not-a-time,,\n", parsed) == RECORD_CSV::line_invalid);
-        CHECK(RECORD_CSV::ParseLine("1.0,,2,,\n", parsed) == RECORD_CSV::line_invalid);
-        CHECK(RECORD_CSV::ParseLine("1.0,2.0,3,,,extra,column\n", parsed) == RECORD_CSV::line_sample);
-        CHECK(parsed.elapsedMs == 3);
+        CHECK(RECORD_CSV::ParseLine("1.0,2.0,not-a-time\n", parsed) == RECORD_CSV::line_invalid);
+        CHECK(RECORD_CSV::ParseLine("bad,2.0,3\n", parsed) == RECORD_CSV::line_invalid);
+        CHECK(RECORD_CSV::ParseLine("1.0,bad,3\n", parsed) == RECORD_CSV::line_invalid);
+        CHECK(RECORD_CSV::ParseLine(",,3\n", parsed) == RECORD_CSV::line_invalid);
+        CHECK(RECORD_CSV::ParseLine("1.0,\n", parsed) == RECORD_CSV::line_invalid);
         CHECK(RECORD_CSV::ParseLine("\n", parsed) == RECORD_CSV::line_empty);
+    }
+
+    void TestCsvOutput()
+    {
+        CHECK(std::string(RECORD_CSV::Header()) == "voltage,current,elapsed_ms\n");
+        FILE* file = std::tmpfile();
+        CHECK(file != nullptr);
+        if (file == nullptr)
+            return;
+
+        CHECK(RECORD_CSV::WriteHeader(file));
+        CHECK(RECORD_CSV::WriteSample(file, RECORD_CSV::output_voltage, 5.125f, -0.25f, 0));
+        CHECK(RECORD_CSV::WriteSample(file, RECORD_CSV::output_current, 5.125f, -0.0004275f, 41));
+        CHECK(RECORD_CSV::WriteSample(file, RECORD_CSV::output_both, 1.25f, 0.0005f, 82));
+        std::rewind(file);
+
+        char line[128] = {0};
+        CHECK(std::fgets(line, sizeof(line), file) != nullptr);
+        CHECK(std::string(line) == "voltage,current,elapsed_ms\n");
+        CHECK(std::fgets(line, sizeof(line), file) != nullptr);
+        CHECK(std::string(line) == "5.1250,,0\n");
+        CHECK(std::fgets(line, sizeof(line), file) != nullptr);
+        CHECK(std::string(line) == ",-0.0004275,41\n");
+        CHECK(std::fgets(line, sizeof(line), file) != nullptr);
+        CHECK(std::string(line) == "1.2500,0.0005000,82\n");
+        CHECK(std::fgets(line, sizeof(line), file) == nullptr); // No summary row.
+        std::fclose(file);
     }
 
     void TestCsvLongLineDrain()
@@ -80,7 +127,7 @@ namespace
             return;
 
         const std::string longLine(RECORD_CSV::kMaxLineBytes + 20, '7');
-        std::fputs((longLine + "\n1.0,2.0,4,,\n").c_str(), file);
+        std::fputs((longLine + "\n1.0,2.0,4\n").c_str(), file);
         std::rewind(file);
 
         char buffer[RECORD_CSV::kMaxLineBytes] = {0};
@@ -95,105 +142,108 @@ namespace
         std::fclose(file);
     }
 
-    void TestScaleCalculations()
+    void TestScaleGeometryAndFormatting()
     {
         using namespace WAVEFORM_SCALE;
-        Settings settings;
-        CHECK(IsVoltageAuto(settings));
-        CHECK(IsCurrentAuto(settings));
+        CHECK(kGuideSpacingPixels == 20);
+        CHECK(kPlotTopY == 20);
+        CHECK(kPlotHeightPixels == 180);
+        CHECK(kZeroY == 200);
+        CHECK(kMiddleLabelY == 120);
+        CHECK(kUpperLabelY == 40);
+        CHECK(kScaleReadoutCenterY == 220);
+        CHECK(kZeroY - kMiddleLabelY == kMiddleDivisions * kGuideSpacingPixels);
+        CHECK(kZeroY - kUpperLabelY == kUpperDivisions * kGuideSpacingPixels);
+        CHECK(kZeroY - kPlotTopY == kPositiveDivisions * kGuideSpacingPixels);
+        CHECK(VisibleSampleSkip(240, 30) == 210);
+        CHECK(VisibleSampleSkip(20, 30) == 0);
 
-        CycleTarget(settings, mode_voltage);
-        CHECK(settings.target == target_voltage);
-        AdjustSelectedScale(settings, 1);
-        CHECK(settings.voltageScaleIndex == 1);
-        CHECK(!IsVoltageAuto(settings));
-        AdjustSelectedScale(settings, -1);
-        CHECK(IsVoltageAuto(settings));
+        const char* voltageReadouts[] = {"0.1V/div", "0.2V/div", "0.5V/div", "1.0V/div", "2V/div", "5V/div"};
+        const char* voltageMiddle[] = {"0.4V", "0.8V", "2.0V", "4.0V", "8V", "20V"};
+        const char* voltageUpper[] = {"0.8V", "1.6V", "4.0V", "8.0V", "16V", "40V"};
+        CHECK(VoltageScaleCount() == sizeof(voltageReadouts) / sizeof(voltageReadouts[0]));
+        for (std::size_t i = 0; i < VoltageScaleCount(); ++i)
+        {
+            CHECK(FormatVoltageScaleReadout(i) == voltageReadouts[i]);
+            CHECK(FormatVoltageDivisionLabel(i, kMiddleDivisions) == voltageMiddle[i]);
+            CHECK(FormatVoltageDivisionLabel(i, kUpperDivisions) == voltageUpper[i]);
+        }
 
-        for (std::size_t i = 0; i < VoltageScaleCount() + 4; ++i)
-            AdjustSelectedScale(settings, 1);
-        CHECK(settings.voltageScaleIndex == VoltageScaleCount() - 1);
-        for (std::size_t i = 0; i < VoltageScaleCount() + 4; ++i)
-            AdjustSelectedScale(settings, -1);
-        CHECK(settings.voltageScaleIndex == 0);
+        const char* currentReadouts[] = {
+            "100uA/div", "200uA/div", "500uA/div", "1.0mA/div", "2mA/div", "5mA/div", "10mA/div",
+            "20mA/div",  "50mA/div",  "100mA/div", "0.2A/div",  "0.5A/div", "1.0A/div",
+        };
+        const char* currentMiddle[] = {
+            "0.4mA", "0.8mA", "2.0mA", "4.0mA", "8mA", "20mA", "40mA",
+            "80mA",  "200mA", "400mA", "0.8A",   "2.0A", "4.0A",
+        };
+        const char* currentUpper[] = {
+            "0.8mA", "1.6mA", "4.0mA", "8.0mA", "16mA", "40mA", "80mA",
+            "160mA", "400mA", "800mA", "1.6A",   "4.0A", "8.0A",
+        };
+        CHECK(CurrentScaleCount() == sizeof(currentReadouts) / sizeof(currentReadouts[0]));
+        std::string allCurrentLabels;
+        for (std::size_t i = 0; i < CurrentScaleCount(); ++i)
+        {
+            CHECK(FormatCurrentScaleReadout(i) == currentReadouts[i]);
+            CHECK(FormatCurrentDivisionLabel(i, kMiddleDivisions) == currentMiddle[i]);
+            CHECK(FormatCurrentDivisionLabel(i, kUpperDivisions) == currentUpper[i]);
+            allCurrentLabels += FormatCurrentScaleReadout(i);
+        }
+        CHECK(allCurrentLabels.find("μ") == std::string::npos);
+        CHECK(allCurrentLabels.find("µ") == std::string::npos);
 
-        settings.target = target_current;
-        for (std::size_t i = 0; i < CurrentScaleCount() + 4; ++i)
-            AdjustSelectedScale(settings, 1);
-        CHECK(settings.currentScaleIndex == CurrentScaleCount() - 1);
-        for (std::size_t i = 0; i < CurrentScaleCount() + 4; ++i)
-            AdjustSelectedScale(settings, -1);
-        CHECK(settings.currentScaleIndex == 0);
+        const Range oneVoltRange = PositiveRange(1.0f);
+        CHECK(Near(oneVoltRange.bottom, 0.0f));
+        CHECK(Near(oneVoltRange.top, 9.0f));
+        CHECK(Near(4.0f / 1.0f * kGuideSpacingPixels, static_cast<float>(kZeroY - kMiddleLabelY)));
+        CHECK(Near(8.0f / 1.0f * kGuideSpacingPixels, static_cast<float>(kZeroY - kUpperLabelY)));
+        CHECK(Near(9.0f / 1.0f * kGuideSpacingPixels, static_cast<float>(kZeroY - kPlotTopY)));
+    }
 
-        CHECK(Near(VisibleDivisions(), 8.5f));
-        CHECK(Near(FullRangeFromPerDiv(1.0f), 8.5f));
-        CHECK(Near(AutoPerDivFromFullRange(8.5f), 1.0f));
-        CHECK(FormatVoltagePerDiv(0.1f) == "0.1V/div");
-        CHECK(FormatVoltagePerDiv(1.0f) == "1V/div");
-        CHECK(FormatCurrentPerDiv(0.0001f) == "100uA/div");
-        CHECK(FormatCurrentPerDiv(0.0002f) == "200uA/div");
-        CHECK(FormatCurrentPerDiv(0.001f) == "1mA/div");
-        CHECK(FormatCurrentPerDiv(0.1f) == "100mA/div");
-        CHECK(FormatCurrentPerDiv(1.0f) == "1A/div");
-        CHECK(FormatVoltageLabel(true, 1.0f) == "V AUTO 1V/div");
-        CHECK(FormatVoltageLabel(false, 1.0f) == "V 1V/div");
-        CHECK(FormatCurrentLabel(true, 0.0001f) == "I AUTO 100uA/div");
-        CHECK(FormatCurrentLabel(false, 0.0002f) == "I 200uA/div");
-        const std::string currentLabels =
-            FormatCurrentLabel(true, 0.0001f) + FormatCurrentLabel(false, 0.0002f);
-        CHECK(currentLabels.find("μ") == std::string::npos);
-        CHECK(currentLabels.find("µ") == std::string::npos);
+    void TestAutoScale()
+    {
+        using namespace WAVEFORM_SCALE;
+        AutoScaleState voltage;
+        AutoScaleState current;
+        CHECK(voltage.scaleIndex == 0);
+        CHECK(current.scaleIndex == 0);
 
-        CHECK(IsTargetSelected(settings, target_current));
-        CHECK(!IsTargetSelected(settings, target_time));
-        const BadgeGeometry badge = MakeRightAlignedBadgeGeometry(237, 180, 120, 5, 19, 2);
-        CHECK(badge.x == 108);
-        CHECK(badge.y == 180);
-        CHECK(badge.width == 130);
-        CHECK(badge.height == 19);
-        CHECK(badge.textRight == 232);
-        CHECK(badge.textTop == 182);
-        const BadgeGeometry clippedBadge = MakeRightAlignedBadgeGeometry(237, 180, 500, 5, 19, 2);
-        CHECK(clippedBadge.x == 0);
-        CHECK(clippedBadge.width == 238);
+        const float voltageUpThreshold = kUpperDivisions * VoltageValuePerDiv(0);
+        UpdateVoltageAutoScale(voltage, voltageUpThreshold - 0.0001f);
+        CHECK(voltage.scaleIndex == 0);
+        UpdateVoltageAutoScale(voltage, voltageUpThreshold);
+        CHECK(voltage.scaleIndex == 1);
 
-        settings = Settings();
-        CycleTarget(settings, mode_both);
-        CHECK(settings.target == target_voltage);
-        CycleTarget(settings, mode_both);
-        CHECK(settings.target == target_current);
-        CycleTarget(settings, mode_both);
-        CHECK(settings.target == target_time);
-        CycleTarget(settings, mode_current);
-        CHECK(settings.target == target_current);
-        CycleTarget(settings, mode_current);
-        CHECK(settings.target == target_time);
+        voltage.scaleIndex = 0;
+        UpdateVoltageAutoScale(voltage, 9.0f);
+        CHECK(voltage.scaleIndex == 4); // Multi-step: 0.1 -> 0.2 -> 0.5 -> 1.0 -> 2.0.
+        UpdateVoltageAutoScale(voltage, 1000.0f);
+        CHECK(voltage.scaleIndex == VoltageScaleCount() - 1);
 
-        settings.voltageScaleIndex = 4; // 1 V/div
-        Range autoVoltage;
-        autoVoltage.bottom = 4.0f;
-        autoVoltage.top = 6.0f;
-        const Range manualVoltage = ResolveVoltageRange(settings, autoVoltage, 0.0f);
-        CHECK(Near(manualVoltage.bottom, 0.0f));
-        CHECK(Near(manualVoltage.top, 8.5f));
-        autoVoltage.bottom = -100.0f;
-        autoVoltage.top = 100.0f;
-        const Range stillManualVoltage = ResolveVoltageRange(settings, autoVoltage, 0.0f);
-        CHECK(Near(stillManualVoltage.top, 8.5f));
-        CHECK(manualVoltage.top > 5.13f); // REC-005 acceptance value.
+        voltage.scaleIndex = 2;
+        const float downThreshold = kMiddleDivisions * VoltageValuePerDiv(1);
+        UpdateVoltageAutoScale(voltage, downThreshold);
+        CHECK(voltage.scaleIndex == 2);
+        UpdateVoltageAutoScale(voltage, downThreshold - 0.0001f);
+        CHECK(voltage.scaleIndex == 1);
+        voltage.scaleIndex = 2;
+        UpdateVoltageAutoScale(voltage, 0.9f); // Visible peak remains above the lower-scale 4-div threshold.
+        CHECK(voltage.scaleIndex == 2);
 
-        settings.currentScaleIndex = 2; // 0.2 mA/div
-        Range autoCurrent;
-        autoCurrent.bottom = -10.0f;
-        autoCurrent.top = 10.0f;
-        const Range manualCurrent = ResolveCurrentRange(settings, autoCurrent);
-        CHECK(Near(manualCurrent.bottom, -0.00085f));
-        CHECK(Near(manualCurrent.top, 0.00085f));
-        CHECK(manualCurrent.top > 0.0005700f); // REC-003 acceptance value.
+        UpdateCurrentAutoScale(current, kUpperDivisions * CurrentValuePerDiv(0));
+        CHECK(current.scaleIndex == 1);
+        CHECK(voltage.scaleIndex == 2); // Independent channel state.
 
-        CHECK(Near(ClampToRange(50.0f, manualVoltage), manualVoltage.top));
-        CHECK(Near(ClampToRange(-50.0f, manualVoltage), manualVoltage.bottom));
-        CHECK(std::isfinite(ClampToRange(1.0e20f, manualVoltage)));
+        const float negativeMeasurement = -0.25f;
+        current.scaleIndex = 0;
+        UpdateCurrentAutoScale(current, negativeMeasurement);
+        CHECK(current.scaleIndex == 0);
+        CHECK(Near(negativeMeasurement, -0.25f));
+        const Range currentRange = PositiveRange(CurrentValuePerDiv(current.scaleIndex));
+        CHECK(Near(ClampToRange(negativeMeasurement, currentRange), 0.0f));
+        CHECK(Near(ClampToRange(1000.0f, currentRange), currentRange.top));
+        CHECK(std::isfinite(ClampToRange(std::numeric_limits<float>::infinity(), currentRange)));
     }
 
     struct TrackedResource
@@ -220,7 +270,7 @@ namespace
         {
             std::unique_ptr<TrackedResource> rejected(new TrackedResource(destructCount));
         }
-        CHECK(destructCount == 2); // Failure before ownership transfer.
+        CHECK(destructCount == 2);
 
         CHECK(owner.acquire(std::unique_ptr<TrackedResource>(new TrackedResource(destructCount))));
         owner.taskCreateFailed();
@@ -230,10 +280,10 @@ namespace
         owner.taskStarted();
         owner.requestStop();
         CHECK(owner.stopRequested());
-        CHECK(!owner.releaseFinished()); // Destroy timeout keeps trigger alive.
+        CHECK(!owner.releaseFinished());
         CHECK(destructCount == 3);
         CHECK(!owner.acquire(std::unique_ptr<TrackedResource>(new TrackedResource(destructCount))));
-        CHECK(destructCount == 4); // Rejected new recorder owns and frees only its candidate.
+        CHECK(destructCount == 4);
         owner.taskFinished();
         CHECK(owner.releaseFinished());
         CHECK(destructCount == 5);
@@ -244,9 +294,11 @@ namespace
 
 int main()
 {
-    TestCsvRows();
+    TestCsvParsing();
+    TestCsvOutput();
     TestCsvLongLineDrain();
-    TestScaleCalculations();
+    TestScaleGeometryAndFormatting();
+    TestAutoScale();
     TestTriggerOwnership();
 
     if (failures != 0)

@@ -5,165 +5,110 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace WAVEFORM_SCALE
 {
     namespace
     {
-        constexpr float kVoltageScales[] = {0.0f, 0.1f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f};
-        constexpr float kCurrentScales[] = {0.0f, 0.0001f, 0.0002f, 0.0005f, 0.001f, 0.002f, 0.005f,
-                                            0.01f, 0.02f,   0.05f,   0.1f,   0.2f,   0.5f,   1.0f, 2.0f};
+        constexpr float kVoltageScales[] = {0.1f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f};
+        constexpr float kCurrentScales[] = {
+            0.0001f, 0.0002f, 0.0005f, 0.001f, 0.002f, 0.005f, 0.01f,
+            0.02f,   0.05f,   0.1f,    0.2f,   0.5f,   1.0f,
+        };
 
-        std::string FormatNumber(float value)
+        constexpr const char* kVoltageReadouts[] = {
+            "0.1V/div", "0.2V/div", "0.5V/div", "1.0V/div", "2V/div", "5V/div",
+        };
+        constexpr const char* kVoltageMiddleLabels[] = {
+            "0.4V", "0.8V", "2.0V", "4.0V", "8V", "20V",
+        };
+        constexpr const char* kVoltageUpperLabels[] = {
+            "0.8V", "1.6V", "4.0V", "8.0V", "16V", "40V",
+        };
+
+        constexpr const char* kCurrentReadouts[] = {
+            "100uA/div", "200uA/div", "500uA/div", "1.0mA/div", "2mA/div", "5mA/div", "10mA/div",
+            "20mA/div",  "50mA/div",  "100mA/div", "0.2A/div",  "0.5A/div", "1.0A/div",
+        };
+        constexpr const char* kCurrentMiddleLabels[] = {
+            "0.4mA", "0.8mA", "2.0mA", "4.0mA", "8mA", "20mA", "40mA",
+            "80mA",  "200mA", "400mA", "0.8A",   "2.0A", "4.0A",
+        };
+        constexpr const char* kCurrentUpperLabels[] = {
+            "0.8mA", "1.6mA", "4.0mA", "8.0mA", "16mA", "40mA", "80mA",
+            "160mA", "400mA", "800mA", "1.6A",   "4.0A", "8.0A",
+        };
+
+        template <std::size_t N>
+        std::size_t ClampIndex(std::size_t index, const float (&)[N])
         {
-            char buffer[24] = {0};
-            if (std::fabs(value - std::round(value)) < 0.0001f)
-                std::snprintf(buffer, sizeof(buffer), "%.0f", value);
-            else if (std::fabs(value * 10.0f - std::round(value * 10.0f)) < 0.0001f)
-                std::snprintf(buffer, sizeof(buffer), "%.1f", value);
-            else
-                std::snprintf(buffer, sizeof(buffer), "%.2f", value);
-            return buffer;
+            return std::min(index, N - 1);
         }
 
-        void AdjustIndex(std::size_t& index, std::size_t count, int direction)
+        template <std::size_t N>
+        void UpdateAutoScale(AutoScaleState& state, float positivePeak, const float (&scales)[N])
         {
-            if (direction == 0 || count < 2)
-                return;
-            if (index == 0)
-            {
-                if (direction > 0)
-                    index = 1;
-                return;
-            }
-            if (direction > 0 && index + 1 < count)
-                ++index;
-            else if (direction < 0)
-                --index;
+            if (!std::isfinite(positivePeak) || positivePeak < 0.0f)
+                positivePeak = 0.0f;
+            state.scaleIndex = ClampIndex(state.scaleIndex, scales);
+
+            while (state.scaleIndex + 1 < N && positivePeak >= kUpperDivisions * scales[state.scaleIndex])
+                ++state.scaleIndex;
+
+            if (state.scaleIndex != 0 && positivePeak < kMiddleDivisions * scales[state.scaleIndex - 1])
+                --state.scaleIndex;
         }
+
+        template <std::size_t N>
+        std::string LookupLabel(std::size_t index, const char* const (&labels)[N])
+        {
+            return labels[std::min(index, N - 1)];
+        }
+
     } // namespace
-
-    float VisibleDivisions()
-    {
-        return static_cast<float>(kChartHeightPixels) / static_cast<float>(kHorizontalGuideSpacingPixels);
-    }
 
     std::size_t VoltageScaleCount() { return sizeof(kVoltageScales) / sizeof(kVoltageScales[0]); }
     std::size_t CurrentScaleCount() { return sizeof(kCurrentScales) / sizeof(kCurrentScales[0]); }
-    float VoltageValuePerDiv(std::size_t index) { return kVoltageScales[std::min(index, VoltageScaleCount() - 1)]; }
-    float CurrentValuePerDiv(std::size_t index) { return kCurrentScales[std::min(index, CurrentScaleCount() - 1)]; }
-    bool IsVoltageAuto(const Settings& settings) { return settings.voltageScaleIndex == 0; }
-    bool IsCurrentAuto(const Settings& settings) { return settings.currentScaleIndex == 0; }
-    bool IsTargetSelected(const Settings& settings, ControlTarget target) { return settings.target == target; }
-
-    void CycleTarget(Settings& settings, DisplayMode mode)
+    float VoltageValuePerDiv(std::size_t index) { return kVoltageScales[ClampIndex(index, kVoltageScales)]; }
+    float CurrentValuePerDiv(std::size_t index) { return kCurrentScales[ClampIndex(index, kCurrentScales)]; }
+    std::size_t VisibleSampleSkip(std::size_t sampleCount, std::size_t visibleLimit)
     {
-        if (mode == mode_voltage)
-            settings.target = settings.target == target_time ? target_voltage : target_time;
-        else if (mode == mode_current)
-            settings.target = settings.target == target_time ? target_current : target_time;
-        else if (settings.target == target_time)
-            settings.target = target_voltage;
-        else if (settings.target == target_voltage)
-            settings.target = target_current;
-        else
-            settings.target = target_time;
+        return sampleCount > visibleLimit ? sampleCount - visibleLimit : 0;
+    }
+    void UpdateVoltageAutoScale(AutoScaleState& state, float positivePeak)
+    {
+        UpdateAutoScale(state, positivePeak, kVoltageScales);
+    }
+    void UpdateCurrentAutoScale(AutoScaleState& state, float positivePeak)
+    {
+        UpdateAutoScale(state, positivePeak, kCurrentScales);
     }
 
-    void AdjustSelectedScale(Settings& settings, int direction)
-    {
-        if (settings.target == target_voltage)
-            AdjustIndex(settings.voltageScaleIndex, VoltageScaleCount(), direction);
-        else if (settings.target == target_current)
-            AdjustIndex(settings.currentScaleIndex, CurrentScaleCount(), direction);
-    }
-
-    float FullRangeFromPerDiv(float valuePerDiv) { return std::max(0.0f, valuePerDiv) * VisibleDivisions(); }
-    float AutoPerDivFromFullRange(float fullRange) { return std::max(0.0f, fullRange) / VisibleDivisions(); }
-
-    Range ManualVoltageRange(float valuePerDiv, float observedMinimum)
+    Range PositiveRange(float valuePerDiv)
     {
         Range range;
-        const float fullRange = FullRangeFromPerDiv(valuePerDiv);
-        if (observedMinimum < 0.0f)
-        {
-            range.bottom = -fullRange / 2.0f;
-            range.top = fullRange / 2.0f;
-        }
-        else
-            range.top = fullRange;
+        range.top = std::max(0.0f, valuePerDiv) * kPositiveDivisions;
         return range;
-    }
-
-    Range ManualCurrentRange(float valuePerDiv)
-    {
-        Range range;
-        const float halfRange = FullRangeFromPerDiv(valuePerDiv) / 2.0f;
-        range.bottom = -halfRange;
-        range.top = halfRange;
-        return range;
-    }
-
-    Range ResolveVoltageRange(const Settings& settings, const Range& autoRange, float observedMinimum)
-    {
-        if (IsVoltageAuto(settings))
-            return autoRange;
-        return ManualVoltageRange(VoltageValuePerDiv(settings.voltageScaleIndex), observedMinimum);
-    }
-
-    Range ResolveCurrentRange(const Settings& settings, const Range& autoRange)
-    {
-        if (IsCurrentAuto(settings))
-            return autoRange;
-        return ManualCurrentRange(CurrentValuePerDiv(settings.currentScaleIndex));
     }
 
     float ClampToRange(float value, const Range& range)
     {
         if (!std::isfinite(value) || !std::isfinite(range.bottom) || !std::isfinite(range.top) || range.top <= range.bottom)
-            return 0.0f;
+            return range.bottom;
         return std::max(range.bottom, std::min(value, range.top));
     }
 
-    std::string FormatVoltagePerDiv(float valuePerDiv) { return FormatNumber(valuePerDiv) + "V/div"; }
-
-    std::string FormatCurrentPerDiv(float valuePerDiv)
+    std::string FormatVoltageScaleReadout(std::size_t index) { return LookupLabel(index, kVoltageReadouts); }
+    std::string FormatVoltageDivisionLabel(std::size_t index, int divisions)
     {
-        const float magnitude = std::fabs(valuePerDiv);
-        if (magnitude < 0.001f)
-            return FormatNumber(valuePerDiv * 1000000.0f) + "uA/div";
-        if (magnitude < 1.0f)
-            return FormatNumber(valuePerDiv * 1000.0f) + "mA/div";
-        return FormatNumber(valuePerDiv) + "A/div";
+        return divisions == kMiddleDivisions ? LookupLabel(index, kVoltageMiddleLabels)
+                                             : LookupLabel(index, kVoltageUpperLabels);
+    }
+    std::string FormatCurrentScaleReadout(std::size_t index) { return LookupLabel(index, kCurrentReadouts); }
+    std::string FormatCurrentDivisionLabel(std::size_t index, int divisions)
+    {
+        return divisions == kMiddleDivisions ? LookupLabel(index, kCurrentMiddleLabels)
+                                             : LookupLabel(index, kCurrentUpperLabels);
     }
 
-    std::string FormatVoltageLabel(bool isAuto, float valuePerDiv)
-    {
-        return isAuto ? "V AUTO " + FormatVoltagePerDiv(valuePerDiv) : "V " + FormatVoltagePerDiv(valuePerDiv);
-    }
-
-    std::string FormatCurrentLabel(bool isAuto, float valuePerDiv)
-    {
-        return isAuto ? "I AUTO " + FormatCurrentPerDiv(valuePerDiv) : "I " + FormatCurrentPerDiv(valuePerDiv);
-    }
-
-    BadgeGeometry MakeRightAlignedBadgeGeometry(int right,
-                                                int top,
-                                                int textWidth,
-                                                int horizontalPadding,
-                                                int height,
-                                                int textTopPadding)
-    {
-        BadgeGeometry geometry;
-        geometry.y = std::max(0, top);
-        geometry.height = std::max(0, height);
-        const int safeRight = std::max(0, right);
-        const int desiredWidth = std::max(0, textWidth) + 2 * std::max(0, horizontalPadding);
-        geometry.width = std::min(safeRight + 1, desiredWidth);
-        geometry.x = safeRight + 1 - geometry.width;
-        geometry.textRight = safeRight - std::max(0, horizontalPadding);
-        geometry.textTop = geometry.y + std::max(0, textTopPadding);
-        return geometry;
-    }
 } // namespace WAVEFORM_SCALE

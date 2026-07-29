@@ -5,6 +5,7 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/record_csv/record_csv.h"
 #include "libs/recorder_lifecycle/owned_task_resource.h"
 #include <mooncake.h>
 #include <freertos/FreeRTOS.h>
@@ -181,6 +182,11 @@ void recorderTask(void* parameter)
     status->taskStarted();
     const RecorderDaemonStatus_t::Data_t initial = status->snapshot();
     VA_RECORDER::TriggerBase* trigger = status->trigger();
+    const RECORD_CSV::OutputMode outputMode =
+        trigger->getChannelMode() == VA_RECORDER::channel_voltage
+            ? RECORD_CSV::output_voltage
+            : (trigger->getChannelMode() == VA_RECORDER::channel_current ? RECORD_CSV::output_current
+                                                                         : RECORD_CSV::output_both);
     VA_RECORDER::PreTriggerBuffer* pretrigger = nullptr;
     FILE* chunk = nullptr;
     FILE* finalFile = nullptr;
@@ -227,10 +233,10 @@ void recorderTask(void* parameter)
         {
             POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
             const uint32_t elapsedMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
-            const int result = fprintf(chunk, "%.4f,%.7f,%lu,,\n", data->busVoltage, data->shuntCurrent,
-                                       static_cast<unsigned long>(elapsedMs));
+            const bool writeOk = RECORD_CSV::WriteSample(
+                chunk, outputMode, data->busVoltage, data->shuntCurrent, elapsedMs);
             _return_pm_data_daemon();
-            if (result < 0) { logErrno("fprintf", chunkPath); error = VA_RECORDER::error_write_chunk_failed; goto cleanup; }
+            if (!writeOk) { logErrno("fprintf", chunkPath); error = VA_RECORDER::error_write_chunk_failed; goto cleanup; }
             recordingDurationMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
             if (recordingDurationMs >= trigger->getRecordTime()) break;
             if (recordingDurationMs - chunkStartedMs >= kChunkSaveIntervalMs)
@@ -255,20 +261,14 @@ void recorderTask(void* parameter)
     finalFile = fopen(initial.savePath, "w");
     if (finalFile == nullptr) { logErrno("fopen", initial.savePath); error = VA_RECORDER::error_open_final_failed; goto cleanup; }
     finalCreated = true;
-    if (fprintf(finalFile, "voltage,current,elapsed_ms,capacity,energy\n") < 0)
+    if (!RECORD_CSV::WriteHeader(finalFile))
     { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
-    {
-        POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
-        const int result = fprintf(finalFile, ",,%lu,%.7f,%.7f\n", static_cast<unsigned long>(recordingDurationMs),
-                                   data->capacity, data->energy);
-        _return_pm_data_daemon();
-        if (result < 0) { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
-    }
     if (pretrigger != nullptr)
     {
         bool writeOk = true;
         pretrigger->peekAll([&](const VA_RECORDER::RecordData_t& data) {
-            if (writeOk && fprintf(finalFile, "%.4f,%.7f,0,,\n", data.voltage, data.current) < 0) writeOk = false;
+            if (writeOk && !RECORD_CSV::WriteSample(finalFile, outputMode, data.voltage, data.current, 0))
+                writeOk = false;
         });
         if (!writeOk) { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
         delete pretrigger;

@@ -31,8 +31,7 @@ void* AppWaveform_Packer::getAppIcon() { return (void*)AssetPool::GetStaticAsset
 void AppWaveform::onResume()
 {
     spdlog::info("{} onResume", getAppName());
-    _data.view = new VIEWS::WaveFormRecorder(
-        AssetPool::GetColor().AppWaveform.primary, (int)_mode, &_data.scale_settings);
+    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 
     // Footprint
@@ -110,8 +109,7 @@ void AppWaveform::_handle_recording_finished()
     }
 
     // Recreate view
-    _data.view = new VIEWS::WaveFormRecorder(
-        AssetPool::GetColor().AppWaveform.primary, (int)_mode, &_data.scale_settings);
+    _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 }
 

@@ -90,13 +90,19 @@ namespace RECORD_CSV
             return parsed.kind;
         }
 
-        if (count >= 5 && std::strcmp(columns[0], "voltage") == 0 && std::strcmp(columns[1], "current") == 0 &&
-            std::strcmp(columns[3], "capacity") == 0 && std::strcmp(columns[4], "energy") == 0)
+        if (count >= 3 && std::strcmp(columns[0], "voltage") == 0 && std::strcmp(columns[1], "current") == 0)
         {
             if (std::strcmp(columns[2], "time") == 0)
-                parsed.kind = line_legacy_header;
+            {
+                if (count >= 5 && std::strcmp(columns[3], "capacity") == 0 && std::strcmp(columns[4], "energy") == 0)
+                    parsed.kind = line_legacy_header;
+            }
             else if (std::strcmp(columns[2], "elapsed_ms") == 0)
-                parsed.kind = line_current_header;
+            {
+                if (count == 3 ||
+                    (count >= 5 && std::strcmp(columns[3], "capacity") == 0 && std::strcmp(columns[4], "energy") == 0))
+                    parsed.kind = line_current_header;
+            }
             return parsed.kind;
         }
 
@@ -109,12 +115,24 @@ namespace RECORD_CSV
             return parsed.kind;
         }
 
-        if (count < 2 || !ParseFloat(columns[0], parsed.voltage) || !ParseFloat(columns[1], parsed.current))
+        if (count < 2)
             return parsed.kind;
 
-        if (count >= 3)
+        parsed.hasVoltage = columns[0][0] != '\0';
+        parsed.hasCurrent = columns[1][0] != '\0';
+        if ((parsed.hasVoltage && !ParseFloat(columns[0], parsed.voltage)) ||
+            (parsed.hasCurrent && !ParseFloat(columns[1], parsed.current)))
+            return parsed.kind;
+        if (count == 2)
+        {
+            if (!parsed.hasVoltage || !parsed.hasCurrent)
+                return parsed.kind;
+        }
+        else
         {
             if (!ParseUint32(columns[2], parsed.elapsedMs))
+                return parsed.kind;
+            if (!parsed.hasVoltage && !parsed.hasCurrent)
                 return parsed.kind;
             parsed.hasElapsedMs = true;
         }
@@ -140,5 +158,24 @@ namespace RECORD_CSV
         {
         }
         return true;
+    }
+
+    const char* Header() { return "voltage,current,elapsed_ms\n"; }
+
+    bool WriteHeader(FILE* file) { return file != nullptr && std::fputs(Header(), file) >= 0; }
+
+    bool WriteSample(FILE* file, OutputMode mode, float voltage, float current, std::uint32_t elapsedMs)
+    {
+        if (file == nullptr)
+            return false;
+        int result = -1;
+        if (mode == output_voltage)
+            result = std::fprintf(file, "%.4f,,%lu\n", voltage, static_cast<unsigned long>(elapsedMs));
+        else if (mode == output_current)
+            result = std::fprintf(file, ",%.7f,%lu\n", current, static_cast<unsigned long>(elapsedMs));
+        else
+            result = std::fprintf(
+                file, "%.4f,%.7f,%lu\n", voltage, current, static_cast<unsigned long>(elapsedMs));
+        return result >= 0;
     }
 } // namespace RECORD_CSV

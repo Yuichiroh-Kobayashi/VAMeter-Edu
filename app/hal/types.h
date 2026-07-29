@@ -133,6 +133,13 @@ namespace CONFIG
 /* -------------------------------------------------------------------------- */
 namespace VA_RECORDER
 {
+    enum ChannelMode
+    {
+        channel_both = 0,
+        channel_voltage,
+        channel_current,
+    };
+
     enum Error_t
     {
         error_none = 0,
@@ -174,6 +181,7 @@ namespace VA_RECORDER
             uint32_t sample_interval = 40;
             bool is_voltage_channel = true;
             bool has_threshold = false;
+            ChannelMode channel_mode = channel_both;
         };
         Data_t _data;
 
@@ -203,6 +211,9 @@ namespace VA_RECORDER
 
         inline const bool& getHasThreshold() { return _data.has_threshold; }
         inline void setHasThreshold(const bool& hasThreshold) { _data.has_threshold = hasThreshold; }
+
+        inline ChannelMode getChannelMode() const { return _data.channel_mode; }
+        inline void setChannelMode(ChannelMode channelMode) { _data.channel_mode = channelMode; }
     };
 } // namespace VA_RECORDER
 

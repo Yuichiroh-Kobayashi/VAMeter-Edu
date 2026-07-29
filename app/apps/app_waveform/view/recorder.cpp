@@ -9,14 +9,12 @@
 #include "../triggers/triggers.h"
 #include "../../utils/system/system.h"
 #include "../../../assets/assets.h"
-#include <array>
 #include <cmath>
 #include <mooncake.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <vector>
 #include <new>
 #include <memory>
 #include <utility>
@@ -60,15 +58,12 @@ void WaveFormRecorder::update()
     Button::Update();
     Encoder::Update();
 
+    const bool sideHeld = Button::Side()->wasHold();
     const bool sideClicked = Button::Side()->wasClicked();
-    if (sideClicked && _data.state != state_saving)
-    {
-        WAVEFORM_SCALE::CycleTarget(
-            *_scale_settings,
-            _mode == 1 ? WAVEFORM_SCALE::mode_voltage
-                       : (_mode == 2 ? WAVEFORM_SCALE::mode_current : WAVEFORM_SCALE::mode_both));
-        Encoder::Reset();
-    }
+    if (_data.state != state_saving && sideHeld)
+        _data.want_to_quit = true;
+    else if (_data.state != state_saving && sideClicked)
+        _handle_help_request();
 
     switch (_data.state)
     {
@@ -93,17 +88,13 @@ void WaveFormRecorder::update()
         // Relay toggle omitted
     }
 
-    // Check quit
-    const bool sideHeld = Button::Side()->wasHold();
-    if (_data.state != state_saving && sideHeld)
-        _data.want_to_quit = true;
 }
 
 // Override to add y zoom with threshold line
 void WaveFormRecorder::_update_input()
 {
     Waveform::_update_pm_data();
-    Waveform::_update_scale_control();
+    Waveform::_update_chart_x_zoom();
 
     // Get a scaled buffer to avoid redundant float operation
     if (IsTriggerModeHasThreshold(getConfig().trigger_mode) && !IsTriggerModeChannelV(getConfig().trigger_mode))
@@ -232,7 +223,6 @@ void WaveFormRecorder::_handle_render()
     if (!_data.config_panel->isPoppedOut())
     {
         Waveform::_update_render(false, true, true);
-        _render_mode_icon();
         _render_threshold_line();
         _render_rec_state_label();
     }
@@ -245,39 +235,6 @@ void WaveFormRecorder::_handle_render()
 
     NotificationBubble::UpdateAndRender();
     HAL::CanvasUpdate();
-}
-
-static const std::vector<std::string> _trigger_mode_icon_list = {
-    "M",
-    "V.H.L",
-    "V.L.L",
-    "C.H.L",
-    "C.L.L",
-};
-static constexpr int _trigger_mode_icon_margin_top = 145 + 23 + 3;
-static constexpr int _trigger_mode_icon_margin_left = 3;
-
-void WaveFormRecorder::_render_mode_icon()
-{
-    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-    // AssetPool::LoadFont14(HAL::GetCanvas());
-
-    HAL::GetCanvas()->setTextDatum(top_left);
-    HAL::GetCanvas()->setTextColor(TFT_WHITE, AssetPool::GetColor().AppWaveform.colorTriggerModeIcon);
-
-    auto panel_width =
-        HAL::GetCanvas()->textWidth(_trigger_mode_icon_list[static_cast<size_t>(getConfig().trigger_mode)].c_str());
-    panel_width += 10;
-    HAL::GetCanvas()->fillSmoothRoundRect(_trigger_mode_icon_margin_left,
-                                          _trigger_mode_icon_margin_top,
-                                          panel_width,
-                                          23,
-                                          6,
-                                          AssetPool::GetColor().AppWaveform.colorTriggerModeIcon);
-
-    HAL::GetCanvas()->drawString(_trigger_mode_icon_list[static_cast<size_t>(getConfig().trigger_mode)].c_str(),
-                                 _trigger_mode_icon_margin_left + 5,
-                                 _trigger_mode_icon_margin_top + 4);
 }
 
 static constexpr int _threshold_line_tag_margin_left = 90;
@@ -406,8 +363,18 @@ bool WaveFormRecorder::_handle_start_recording()
     if (!trigger)
         return false;
     trigger->setRecordTime(kEducationalRecordTimeMs);
+    trigger->setChannelMode(_mode == 1 ? VA_RECORDER::channel_voltage
+                                      : (_mode == 2 ? VA_RECORDER::channel_current : VA_RECORDER::channel_both));
 
     return HAL::CreatVaRecorder(std::move(trigger));
+}
+
+void WaveFormRecorder::_handle_help_request()
+{
+    // Dedicated integration point for the future HelpEvent transport. No
+    // project-wide HelpEvent sink exists yet, so keep measurement and recorder
+    // state untouched and make the request observable in logs.
+    spdlog::info("waveform help requested (HelpEvent transport not installed)");
 }
 
 void WaveFormRecorder::_handle_recorder_error()

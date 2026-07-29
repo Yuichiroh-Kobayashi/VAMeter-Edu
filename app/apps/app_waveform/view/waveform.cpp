@@ -7,6 +7,7 @@
 #include "../../../hal/hal.h"
 #include "../../../assets/assets.h"
 #include "../../utils/system/system.h"
+#include <cstddef>
 #include <cstdint>
 #include <mooncake.h>
 #include <smooth_ui_toolkit.h>
@@ -39,7 +40,7 @@ static constexpr uint32_t _pm_data_a_scale = 1000;
 // Chart
 static constexpr int _guide_line_num = 12;
 static constexpr int _guide_line_padding = 240 / _guide_line_num;
-static_assert(_guide_line_padding == WAVEFORM_SCALE::kHorizontalGuideSpacingPixels,
+static_assert(_guide_line_padding == WAVEFORM_SCALE::kGuideSpacingPixels,
               "waveform division must match the rendered guide spacing");
 // static constexpr uint32_t _guide_line_color = 0xD4D4D4;
 // static constexpr uint32_t _line_v_color = 0x3D7AF5;
@@ -54,32 +55,32 @@ static constexpr int _chart_x_range_step = 30;
 static constexpr float _chart_v_min_y_range = 2;
 static constexpr float _chart_a_min_y_range_big = 0.01 * _pm_data_a_scale;
 static constexpr float _chart_a_min_y_range_small = 0.001 * _pm_data_a_scale;
+static constexpr int _legacy_chart_origin_y = 35;
+static constexpr int _legacy_chart_height = 170;
 
 /* -------------------------------------------------------------------------- */
 /*                                    Setup                                   */
 /* -------------------------------------------------------------------------- */
-Waveform::Waveform(uint32_t themeColor, int mode, WAVEFORM_SCALE::Settings* scaleSettings) : _mode(mode)
+Waveform::Waveform(uint32_t themeColor, int mode) : _mode(mode)
 {
-    _scale_settings = scaleSettings == nullptr ? &_local_scale_settings : scaleSettings;
-    if ((_mode == 1 && _scale_settings->target == WAVEFORM_SCALE::target_current) ||
-        (_mode == 2 && _scale_settings->target == WAVEFORM_SCALE::target_voltage))
-        _scale_settings->target = WAVEFORM_SCALE::target_time;
     // Background
     _bg_color.jumpTo(Hex2Rgb(themeColor));
     _bg_color.moveTo(255, 255, 255);
     _bg_color.setDuration(400);
 
     // Panel
-    _panel_props.panel_transition.jumpTo(-27, 240);
-    _panel_props.panel_transition.moveTo(0, 213);
+    _panel_props.panel_transition.jumpTo(_mode == 1 ? 240 : -27, 240);
+    _panel_props.panel_transition.moveTo(_mode == 1 ? 213 : 0, 213);
     _panel_props.panel_transition.setDuration(400);
     // _panel_props.panel_transition.setTransitionPath(EasingPath::easeOutBack);
 
     // Chart
-    _chart_props.chart_v.setOrigin(0, 35);
-    _chart_props.chart_a.setOrigin(0, 35);
-    _chart_props.chart_v.setSize(240, WAVEFORM_SCALE::kChartHeightPixels);
-    _chart_props.chart_a.setSize(240, WAVEFORM_SCALE::kChartHeightPixels);
+    const int chartOriginY = _mode == 0 ? _legacy_chart_origin_y : WAVEFORM_SCALE::kPlotTopY;
+    const int chartHeight = _mode == 0 ? _legacy_chart_height : WAVEFORM_SCALE::kPlotHeightPixels;
+    _chart_props.chart_v.setOrigin(0, chartOriginY);
+    _chart_props.chart_a.setOrigin(0, chartOriginY);
+    _chart_props.chart_v.setSize(240, chartHeight);
+    _chart_props.chart_a.setSize(240, chartHeight);
 
     _chart_props.chart_v.getZoomTransition().getXTransition().setTransitionPath(EasingPath::easeOutBack);
     _chart_props.chart_v.getZoomTransition().getXTransition().setDuration(400);
@@ -158,31 +159,6 @@ void Waveform::enableChartXUpdate(bool enable)
         Encoder::Reset();
 }
 
-void Waveform::_update_scale_control()
-{
-    if (_scale_settings->target == WAVEFORM_SCALE::target_time)
-    {
-        _update_chart_x_zoom();
-        return;
-    }
-    if (!Encoder::WasMoved())
-        return;
-
-    const std::size_t oldVoltageIndex = _scale_settings->voltageScaleIndex;
-    const std::size_t oldCurrentIndex = _scale_settings->currentScaleIndex;
-    WAVEFORM_SCALE::AdjustSelectedScale(*_scale_settings, Encoder::GetDirection());
-    if (oldVoltageIndex != _scale_settings->voltageScaleIndex)
-    {
-        _input_props.last_min_v = 114514;
-        _input_props.last_max_v = -114514;
-    }
-    if (oldCurrentIndex != _scale_settings->currentScaleIndex)
-    {
-        _input_props.last_min_a = 114514;
-        _input_props.last_max_a = -114514;
-    }
-}
-
 void Waveform::_update_chart_x_zoom()
 {
     if (!_input_props.update_chart_x)
@@ -213,23 +189,28 @@ void Waveform::_update_chart_x_zoom()
 
 void Waveform::_update_chart_y_zoom(bool applyChartZoom)
 {
-    if (_mode != 2 && !WAVEFORM_SCALE::IsVoltageAuto(*_scale_settings))
+    if (_mode == 1)
     {
-        const float observedMinimum = _input_props.min_v == 114514 ? 0.0f : _input_props.min_v;
-        WAVEFORM_SCALE::Range autoRange;
-        autoRange.bottom = _chart_props.current_v_y_range_bottom;
-        autoRange.top = _chart_props.current_v_y_range_top;
+        float positivePeak = 0.0f;
+        const std::size_t valueCount = _input_props.pm_data_buffer_v.valueNum();
+        const std::size_t skipCount =
+            WAVEFORM_SCALE::VisibleSampleSkip(valueCount, static_cast<std::size_t>(_chart_props.current_x_range));
+        std::size_t sampleIndex = 0;
+        _input_props.pm_data_buffer_v.peekAll([&](const float& value) {
+            if (sampleIndex++ < skipCount)
+                return;
+            if (value > positivePeak)
+                positivePeak = value;
+        });
+        WAVEFORM_SCALE::UpdateVoltageAutoScale(_voltage_scale, positivePeak);
         const WAVEFORM_SCALE::Range range =
-            WAVEFORM_SCALE::ResolveVoltageRange(*_scale_settings, autoRange, observedMinimum);
-        if (range.bottom != _chart_props.current_v_y_range_bottom || range.top != _chart_props.current_v_y_range_top)
-        {
-            _chart_props.current_v_y_range_bottom = range.bottom;
-            _chart_props.current_v_y_range_top = range.top;
-            if (applyChartZoom)
-                _chart_props.chart_v.moveYIntoRange(range.bottom, range.top);
-        }
+            WAVEFORM_SCALE::PositiveRange(WAVEFORM_SCALE::VoltageValuePerDiv(_voltage_scale.scaleIndex));
+        _chart_props.current_v_y_range_bottom = range.bottom;
+        _chart_props.current_v_y_range_top = range.top;
+        if (applyChartZoom)
+            _chart_props.chart_v.moveYIntoRange(range.bottom, range.top);
     }
-    else if (_mode != 2 && _input_props.min_v != 114514 &&
+    else if (_mode == 0 && _input_props.min_v != 114514 &&
              (_input_props.min_v != _input_props.last_min_v || _input_props.max_v != _input_props.last_max_v))
     {
         _chart_props.current_v_y_range_top = _input_props.max_v;
@@ -246,23 +227,31 @@ void Waveform::_update_chart_y_zoom(bool applyChartZoom)
         _input_props.last_max_v = _input_props.max_v;
     }
 
-    if (_mode != 1 && !WAVEFORM_SCALE::IsCurrentAuto(*_scale_settings))
+    if (_mode == 2)
     {
-        WAVEFORM_SCALE::Range autoRange;
-        autoRange.bottom = _chart_props.current_a_y_range_bottom / _pm_data_a_scale;
-        autoRange.top = _chart_props.current_a_y_range_top / _pm_data_a_scale;
-        WAVEFORM_SCALE::Range range = WAVEFORM_SCALE::ResolveCurrentRange(*_scale_settings, autoRange);
+        float positivePeak = 0.0f;
+        const std::size_t valueCount = _input_props.pm_data_buffer_a.valueNum();
+        const std::size_t skipCount =
+            WAVEFORM_SCALE::VisibleSampleSkip(valueCount, static_cast<std::size_t>(_chart_props.current_x_range));
+        std::size_t sampleIndex = 0;
+        _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
+            if (sampleIndex++ < skipCount)
+                return;
+            const float valueA = value / _pm_data_a_scale;
+            if (valueA > positivePeak)
+                positivePeak = valueA;
+        });
+        WAVEFORM_SCALE::UpdateCurrentAutoScale(_current_scale, positivePeak);
+        WAVEFORM_SCALE::Range range =
+            WAVEFORM_SCALE::PositiveRange(WAVEFORM_SCALE::CurrentValuePerDiv(_current_scale.scaleIndex));
         range.bottom *= _pm_data_a_scale;
         range.top *= _pm_data_a_scale;
-        if (range.bottom != _chart_props.current_a_y_range_bottom || range.top != _chart_props.current_a_y_range_top)
-        {
-            _chart_props.current_a_y_range_bottom = range.bottom;
-            _chart_props.current_a_y_range_top = range.top;
-            if (applyChartZoom)
-                _chart_props.chart_a.moveYIntoRange(range.bottom, range.top);
-        }
+        _chart_props.current_a_y_range_bottom = range.bottom;
+        _chart_props.current_a_y_range_top = range.top;
+        if (applyChartZoom)
+            _chart_props.chart_a.moveYIntoRange(range.bottom, range.top);
     }
-    else if (_mode != 1 && _input_props.min_a != 114514 &&
+    else if (_mode == 0 && _input_props.min_a != 114514 &&
              (_input_props.min_a != _input_props.last_min_a || _input_props.max_a != _input_props.last_max_a))
     {
         _chart_props.current_a_y_range_top = _input_props.max_a;
@@ -315,7 +304,7 @@ void Waveform::_update_chart_y_zoom_with_third_value(const float& thirdV, const 
 void Waveform::_update_input()
 {
     _update_pm_data();
-    _update_scale_control();
+    _update_chart_x_zoom();
     _update_chart_y_zoom();
 }
 
@@ -369,145 +358,106 @@ void Waveform::_render_background()
     _on_render_background_finish();
 }
 
-static constexpr uint32_t _color_scale_label_v = 0xA4A4A4;
-static constexpr uint32_t _color_scale_label_a = 0xA4A4A4;
+static constexpr uint32_t _color_legacy_scale_label_v = 0xA4A4A4;
+static constexpr uint32_t _color_legacy_scale_label_a = 0xA4A4A4;
 
 void Waveform::_render_y_scales()
 {
-    int chart_y_buffer = 0;
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
 
-    /* -------------------------------- V scales -------------------------------- */
-    if (_mode != 2)
+    if (_mode == 1)
     {
-        HAL::GetCanvas()->setTextColor(_color_scale_label_v);
+        const uint32_t color = AssetPool::GetColor().AppWaveform.colorLineV;
+        HAL::GetCanvas()->drawFastHLine(0, WAVEFORM_SCALE::kZeroY, 240, color);
+        HAL::GetCanvas()->setTextColor(color);
         HAL::GetCanvas()->setTextDatum(middle_left);
-
-        std::vector<float> v_scale_list;
-        v_scale_list.resize(3);
-        v_scale_list[0] = _chart_props.current_v_y_range_top;
-        v_scale_list[1] = (_chart_props.current_v_y_range_top + _chart_props.current_v_y_range_bottom) / 2;
-        v_scale_list[2] = _chart_props.current_v_y_range_bottom;
-
-        for (const auto& i : v_scale_list)
-        {
-            chart_y_buffer = Waveform::_chart_props.chart_v.getChartPoint(0, i).y;
-            _get_string_buffer() = fmt::format("{:.1f}{}", i, i == 0 ? "" : "V");
-            HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 2, chart_y_buffer);
-        }
+        HAL::GetCanvas()->drawString("0V", WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kZeroY);
+        _get_string_buffer() =
+            WAVEFORM_SCALE::FormatVoltageDivisionLabel(_voltage_scale.scaleIndex, WAVEFORM_SCALE::kMiddleDivisions);
+        HAL::GetCanvas()->drawString(
+            _get_string_buffer().c_str(), WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kMiddleLabelY);
+        _get_string_buffer() =
+            WAVEFORM_SCALE::FormatVoltageDivisionLabel(_voltage_scale.scaleIndex, WAVEFORM_SCALE::kUpperDivisions);
+        HAL::GetCanvas()->drawString(
+            _get_string_buffer().c_str(), WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kUpperLabelY);
+        return;
     }
 
-    /* -------------------------------- A scales -------------------------------- */
-    if (_mode != 1)
+    if (_mode == 2)
     {
-        HAL::GetCanvas()->setTextColor(_color_scale_label_a);
-        HAL::GetCanvas()->setTextDatum(middle_right);
+        const uint32_t color = AssetPool::GetColor().AppWaveform.colorLineA;
+        HAL::GetCanvas()->drawFastHLine(0, WAVEFORM_SCALE::kZeroY, 240, color);
+        HAL::GetCanvas()->setTextColor(color);
+        HAL::GetCanvas()->setTextDatum(middle_left);
+        HAL::GetCanvas()->drawString("0A", WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kZeroY);
+        _get_string_buffer() =
+            WAVEFORM_SCALE::FormatCurrentDivisionLabel(_current_scale.scaleIndex, WAVEFORM_SCALE::kMiddleDivisions);
+        HAL::GetCanvas()->drawString(
+            _get_string_buffer().c_str(), WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kMiddleLabelY);
+        _get_string_buffer() =
+            WAVEFORM_SCALE::FormatCurrentDivisionLabel(_current_scale.scaleIndex, WAVEFORM_SCALE::kUpperDivisions);
+        HAL::GetCanvas()->drawString(
+            _get_string_buffer().c_str(), WAVEFORM_SCALE::kScaleLabelX, WAVEFORM_SCALE::kUpperLabelY);
+        return;
+    }
 
+    // USB-C/both mode is outside the educational Auto-scale UI. Preserve its
+    // existing min/mid/max presentation and automatic min/max range.
+    HAL::GetCanvas()->setTextColor(_color_legacy_scale_label_v);
+    HAL::GetCanvas()->setTextDatum(middle_left);
+    const float voltageScales[] = {
+        _chart_props.current_v_y_range_top,
+        (_chart_props.current_v_y_range_top + _chart_props.current_v_y_range_bottom) / 2,
+        _chart_props.current_v_y_range_bottom,
+    };
+    for (const float value : voltageScales)
+    {
+        const int chartY = _chart_props.chart_v.getChartPoint(0, value).y;
+        _get_string_buffer() = fmt::format("{:.1f}{}", value, value == 0 ? "" : "V");
+        HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 2, chartY);
+    }
+
+    HAL::GetCanvas()->setTextColor(_color_legacy_scale_label_a);
+    HAL::GetCanvas()->setTextDatum(middle_right);
+    float currentScales[] = {
+        _chart_props.current_a_y_range_top,
+        (_chart_props.current_a_y_range_top + _chart_props.current_a_y_range_bottom) / 2,
+        _chart_props.current_a_y_range_bottom,
+    };
+    for (float value : currentScales)
+    {
+        const int chartY = _chart_props.chart_a.getChartPoint(0, value).y;
         std::string unit;
-        std::vector<float> a_scale_list;
-        a_scale_list.resize(3);
-        // spdlog::info("{} {}", _chart_props.current_a_y_range_top, _chart_props.current_a_y_range_bottom);
-        a_scale_list[0] = _chart_props.current_a_y_range_top;
-        a_scale_list[1] = (_chart_props.current_a_y_range_top + _chart_props.current_a_y_range_bottom) / 2;
-        a_scale_list[2] = _chart_props.current_a_y_range_bottom;
-
-        HAL::GetCanvas()->setTextColor(_color_scale_label_a);
-        HAL::GetCanvas()->setTextDatum(middle_right);
-        for (auto& i : a_scale_list)
+        if (std::abs(value) < 1)
         {
-            // Get chart y
-            chart_y_buffer = Waveform::_chart_props.chart_a.getChartPoint(0, i).y;
-
-            // Scale unit
-            if (std::abs(i) < 1)
-            {
-                i *= 1000;
-                unit = "uA";
-            }
-            else if (std::abs(i) < 1000)
-                unit = "mA";
-            else
-            {
-                i /= 1000;
-                unit = "A";
-            }
-
-            // Round
-            i = std::round(i * 10) / 10;
-            if (i == 0)
-                unit = "";
-
-            _get_string_buffer() = fmt::format("{}{}", i, unit);
-            HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 237, chart_y_buffer);
+            value *= 1000;
+            unit = "uA";
         }
+        else if (std::abs(value) < 1000)
+            unit = "mA";
+        else
+        {
+            value /= 1000;
+            unit = "A";
+        }
+        value = std::round(value * 10) / 10;
+        if (value == 0)
+            unit = "";
+        _get_string_buffer() = fmt::format("{}{}", value, unit);
+        HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 237, chartY);
     }
 }
 
 void Waveform::_render_scale_readouts()
 {
-    static constexpr int kFirstLineY = 142;
-    static constexpr int kLineHeight = 19;
-
+    if (_mode == 0)
+        return;
     HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-    _render_scale_readout("TIME", WAVEFORM_SCALE::target_time, kFirstLineY);
-
-    int lineY = kFirstLineY + kLineHeight;
-    if (_mode != 2)
-    {
-        const bool isAuto = WAVEFORM_SCALE::IsVoltageAuto(*_scale_settings);
-        const float valuePerDiv = isAuto
-                                      ? WAVEFORM_SCALE::AutoPerDivFromFullRange(
-                                            _chart_props.current_v_y_range_top - _chart_props.current_v_y_range_bottom)
-                                      : WAVEFORM_SCALE::VoltageValuePerDiv(_scale_settings->voltageScaleIndex);
-        _chart_props.string_buffer = WAVEFORM_SCALE::FormatVoltageLabel(isAuto, valuePerDiv);
-        _render_scale_readout(_chart_props.string_buffer, WAVEFORM_SCALE::target_voltage, lineY);
-        lineY += kLineHeight;
-    }
-    if (_mode != 1)
-    {
-        const bool isAuto = WAVEFORM_SCALE::IsCurrentAuto(*_scale_settings);
-        const float fullRangeA =
-            (_chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom) / _pm_data_a_scale;
-        const float valuePerDiv = isAuto ? WAVEFORM_SCALE::AutoPerDivFromFullRange(fullRangeA)
-                                         : WAVEFORM_SCALE::CurrentValuePerDiv(_scale_settings->currentScaleIndex);
-        _chart_props.string_buffer = WAVEFORM_SCALE::FormatCurrentLabel(isAuto, valuePerDiv);
-        _render_scale_readout(_chart_props.string_buffer, WAVEFORM_SCALE::target_current, lineY);
-    }
-}
-
-void Waveform::_render_scale_readout(const std::string& label, WAVEFORM_SCALE::ControlTarget target, int top)
-{
-    static constexpr int kRight = 237;
-    static constexpr int kHorizontalPadding = 5;
-    static constexpr int kBadgeHeight = 19;
-    static constexpr int kTextTopPadding = 2;
-    static constexpr int kBadgeRadius = 5;
-    static constexpr uint32_t kIdleColor = 0x555555;
-
-    const bool selected = WAVEFORM_SCALE::IsTargetSelected(*_scale_settings, target);
-    const WAVEFORM_SCALE::BadgeGeometry geometry = WAVEFORM_SCALE::MakeRightAlignedBadgeGeometry(
-        kRight,
-        top,
-        HAL::GetCanvas()->textWidth(label.c_str()),
-        kHorizontalPadding,
-        kBadgeHeight,
-        kTextTopPadding);
-
-    if (selected)
-    {
-        HAL::GetCanvas()->fillSmoothRoundRect(geometry.x,
-                                              geometry.y,
-                                              geometry.width,
-                                              geometry.height,
-                                              kBadgeRadius,
-                                              AssetPool::GetColor().AppWaveform.primary);
-        HAL::GetCanvas()->setTextColor(TFT_WHITE);
-    }
-    else
-        HAL::GetCanvas()->setTextColor(kIdleColor);
-
-    HAL::GetCanvas()->setTextDatum(top_right);
-    HAL::GetCanvas()->drawString(label.c_str(), geometry.textRight, geometry.textTop);
+    HAL::GetCanvas()->setTextDatum(middle_right);
+    HAL::GetCanvas()->setTextColor(TFT_WHITE);
+    _get_string_buffer() = _mode == 1 ? WAVEFORM_SCALE::FormatVoltageScaleReadout(_voltage_scale.scaleIndex)
+                                     : WAVEFORM_SCALE::FormatCurrentScaleReadout(_current_scale.scaleIndex);
+    HAL::GetCanvas()->drawString(_get_string_buffer().c_str(), 237, WAVEFORM_SCALE::kScaleReadoutCenterY);
 }
 
 static const uint32_t _color_panel_x_scale_notice = 0x9B9B9B;
@@ -581,8 +531,10 @@ void Waveform::_render_wave()
             _chart_props.new_p = _chart_props.chart_v.getChartPoint(static_cast<float>(_chart_props.p_x), visibleValue);
             _chart_props.new_p.x -= _chart_props.temp_buffer;
 
-            // Offset to avoid overlap with a wave
-            _chart_props.new_p.y -= 3;
+            // Preserve the legacy both-mode offset. Educational single-channel
+            // plots use the exact 0..9 division mapping without a visual offset.
+            if (_mode == 0)
+                _chart_props.new_p.y -= 3;
 
             // Render
             if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
@@ -701,36 +653,6 @@ void Waveform::_render_panels()
         HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 120, _panel_props.panel_transition.getValue().y + 15);
     }
 
-    // Max and min label
-    HAL::GetCanvas()->loadFont(AssetPool::GetStaticAsset()->Font.montserrat_semibolditalic_14);
-
-    // V max
-    if (_mode != 2)
-    {
-        HAL::GetCanvas()->setTextDatum(middle_left);
-        HAL::GetCanvas()->setTextColor((uint32_t)0xD8E4FD);
-
-        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_v).value;
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().x + 14);
-
-        // V min
-        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_v).value;
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 13, _panel_props.panel_transition.getValue().y + 14);
-    }
-
-    // A max
-    if (_mode != 1)
-    {
-        HAL::GetCanvas()->setTextDatum(middle_right);
-        HAL::GetCanvas()->setTextColor((uint32_t)0xFED6D6);
-
-        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.max_a / _pm_data_a_scale).value;
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().x + 14);
-
-        // A min
-        _chart_props.string_buffer = HAL::GetUnitAdaptatedVoltage(_input_props.min_a / _pm_data_a_scale).value;
-        HAL::GetCanvas()->drawString(_chart_props.string_buffer.c_str(), 228, _panel_props.panel_transition.getValue().y + 14);
-    }
 }
 
 void Waveform::_update_render(bool pushBuffer, bool renderPanel, bool renderXScaleNotice)

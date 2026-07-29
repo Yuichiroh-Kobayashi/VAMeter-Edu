@@ -28,7 +28,6 @@ namespace MOONCAKE
             struct Data_t
             {
                 VIEWS::WaveFormRecorder* view = nullptr;
-                WAVEFORM_SCALE::Settings scale_settings;
             };
             Data_t _data;
             static WaveformMode_t _mode;

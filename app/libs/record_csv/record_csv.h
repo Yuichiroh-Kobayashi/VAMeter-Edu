@@ -21,11 +21,20 @@ namespace RECORD_CSV
         line_sample,
     };
 
+    enum OutputMode
+    {
+        output_both = 0,
+        output_voltage,
+        output_current,
+    };
+
     struct ParsedLine
     {
         LineKind kind = line_invalid;
         float voltage = 0.0f;
         float current = 0.0f;
+        bool hasVoltage = false;
+        bool hasCurrent = false;
         std::uint32_t elapsedMs = 0;
         bool hasElapsedMs = false;
         std::uint32_t recordingDurationMs = 0;
@@ -35,4 +44,11 @@ namespace RECORD_CSV
 
     LineKind ParseLine(const char* line, ParsedLine& parsed);
     bool ReadLine(FILE* file, char* buffer, std::size_t bufferSize, bool& tooLong);
+    const char* Header();
+    bool WriteHeader(FILE* file);
+    bool WriteSample(FILE* file,
+                     OutputMode mode,
+                     float voltage,
+                     float current,
+                     std::uint32_t elapsedMs);
 } // namespace RECORD_CSV

@@ -8,28 +8,21 @@
 
 namespace WAVEFORM_SCALE
 {
-    constexpr int kChartHeightPixels = 170;
-    constexpr int kHorizontalGuideSpacingPixels = 20;
+    constexpr int kGuideSpacingPixels = 20;
+    constexpr int kPlotTopY = 20;
+    constexpr int kPlotHeightPixels = 180;
+    constexpr int kUpperLabelY = 40;
+    constexpr int kMiddleLabelY = 120;
+    constexpr int kZeroY = 200;
+    constexpr int kScaleReadoutCenterY = 220;
+    constexpr int kScaleLabelX = 2;
+    constexpr int kMiddleDivisions = 4;
+    constexpr int kUpperDivisions = 8;
+    constexpr int kPositiveDivisions = 9;
 
-    enum DisplayMode
+    struct AutoScaleState
     {
-        mode_both = 0,
-        mode_voltage,
-        mode_current,
-    };
-
-    enum ControlTarget
-    {
-        target_time = 0,
-        target_voltage,
-        target_current,
-    };
-
-    struct Settings
-    {
-        ControlTarget target = target_time;
-        std::size_t voltageScaleIndex = 0;
-        std::size_t currentScaleIndex = 0;
+        std::size_t scaleIndex = 0;
     };
 
     struct Range
@@ -38,41 +31,19 @@ namespace WAVEFORM_SCALE
         float top = 0.0f;
     };
 
-    struct BadgeGeometry
-    {
-        int x = 0;
-        int y = 0;
-        int width = 0;
-        int height = 0;
-        int textRight = 0;
-        int textTop = 0;
-    };
-
-    float VisibleDivisions();
     std::size_t VoltageScaleCount();
     std::size_t CurrentScaleCount();
     float VoltageValuePerDiv(std::size_t index);
     float CurrentValuePerDiv(std::size_t index);
-    bool IsVoltageAuto(const Settings& settings);
-    bool IsCurrentAuto(const Settings& settings);
-    bool IsTargetSelected(const Settings& settings, ControlTarget target);
-    void CycleTarget(Settings& settings, DisplayMode mode);
-    void AdjustSelectedScale(Settings& settings, int direction);
-    float FullRangeFromPerDiv(float valuePerDiv);
-    float AutoPerDivFromFullRange(float fullRange);
-    Range ManualVoltageRange(float valuePerDiv, float observedMinimum);
-    Range ManualCurrentRange(float valuePerDiv);
-    Range ResolveVoltageRange(const Settings& settings, const Range& autoRange, float observedMinimum);
-    Range ResolveCurrentRange(const Settings& settings, const Range& autoRange);
+    std::size_t VisibleSampleSkip(std::size_t sampleCount, std::size_t visibleLimit);
+    void UpdateVoltageAutoScale(AutoScaleState& state, float positivePeak);
+    void UpdateCurrentAutoScale(AutoScaleState& state, float positivePeak);
+    Range PositiveRange(float valuePerDiv);
     float ClampToRange(float value, const Range& range);
-    std::string FormatVoltagePerDiv(float valuePerDiv);
-    std::string FormatCurrentPerDiv(float valuePerDiv);
-    std::string FormatVoltageLabel(bool isAuto, float valuePerDiv);
-    std::string FormatCurrentLabel(bool isAuto, float valuePerDiv);
-    BadgeGeometry MakeRightAlignedBadgeGeometry(int right,
-                                                int top,
-                                                int textWidth,
-                                                int horizontalPadding,
-                                                int height,
-                                                int textTopPadding);
+
+    std::string FormatVoltageScaleReadout(std::size_t index);
+    std::string FormatVoltageDivisionLabel(std::size_t index, int divisions);
+    std::string FormatCurrentScaleReadout(std::size_t index);
+    std::string FormatCurrentDivisionLabel(std::size_t index, int divisions);
+
 } // namespace WAVEFORM_SCALE
