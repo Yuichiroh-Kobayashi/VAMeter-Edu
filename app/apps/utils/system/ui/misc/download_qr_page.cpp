@@ -31,7 +31,11 @@ namespace SYSTEM
             spdlog::info("Starting local download server for: {}", recordName);
 
             // Start download server
-            HAL::StartDownloadServer(recordName);
+            if (!HAL::StartDownloadServer(recordName))
+            {
+                spdlog::error("Failed to start local download server");
+                return;
+            }
 
             // Show preparing status (Debug & UX)
             HAL::GetCanvas()->fillScreen(AssetPool::GetColor().AppSettings.background);

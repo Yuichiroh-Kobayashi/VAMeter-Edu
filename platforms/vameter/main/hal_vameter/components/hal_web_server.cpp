@@ -9,12 +9,14 @@
 #include "libs/local_csv_download/local_csv_download_name.h"
 #include "libs/local_csv_download/local_csv_download_selection.h"
 #include "libs/local_csv_download/local_csv_stream.h"
+#include "libs/web_server_owner/web_server_owner.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
 #include <FS.h>
 #include <vfs_api.h>
 #include <cstdlib>
+#include <new>
 
 // class VFS_t : public FS
 // {
@@ -23,7 +25,91 @@
 // };
 // static VFS_t VFS;
 
-static PsychicHttpServer* _web_server = nullptr;
+namespace
+{
+    class OwnedPsychicHttpServer : public PsychicHttpServer
+    {
+    public:
+        ~OwnedPsychicHttpServer() override
+        {
+            for (std::list<PsychicEndpoint*>::iterator endpoint = _endpoints.begin(); endpoint != _endpoints.end(); ++endpoint)
+                delete (*endpoint)->handler();
+            delete defaultEndpoint->handler();
+        }
+    };
+
+    PsychicHttpServer* _http_server = nullptr;
+    WEB_SERVER_OWNER::State _http_server_owner;
+
+    bool StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner)
+    {
+        if (!_http_server_owner.acquire(owner))
+        {
+            spdlog::error("port 80 already owned by another server lifecycle");
+            return false;
+        }
+
+        OwnedPsychicHttpServer* server = new (std::nothrow) OwnedPsychicHttpServer;
+        if (server == nullptr)
+        {
+            _http_server_owner.release(owner);
+            spdlog::error("failed to allocate port 80 server");
+            return false;
+        }
+
+        server->server = nullptr;
+        const esp_err_t listenResult = server->listen(80);
+        if (listenResult != ESP_OK)
+        {
+            spdlog::error("port 80 listen failed: {}", esp_err_to_name(listenResult));
+            if (server->server == nullptr)
+            {
+                delete server;
+                _http_server_owner.release(owner);
+            }
+            else
+            {
+                const esp_err_t stopResult = httpd_stop(server->server);
+                if (stopResult == ESP_OK)
+                {
+                    _http_server_owner.release(owner);
+                }
+                else
+                {
+                    _http_server = server;
+                    spdlog::critical("failed to stop partially started port 80 server: {}", esp_err_to_name(stopResult));
+                }
+            }
+            return false;
+        }
+
+        _http_server = server;
+        return true;
+    }
+
+    bool StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner)
+    {
+        if (_http_server_owner.owner() == WEB_SERVER_OWNER::Owner::None)
+            return true;
+
+        if (_http_server_owner.owner() != owner || _http_server == nullptr)
+        {
+            spdlog::error("port 80 stop rejected for non-owner lifecycle");
+            return false;
+        }
+
+        const esp_err_t stopResult = httpd_stop(_http_server->server);
+        if (stopResult != ESP_OK)
+        {
+            spdlog::error("port 80 server stop failed: {}", esp_err_to_name(stopResult));
+            return false;
+        }
+
+        _http_server = nullptr;
+        return _http_server_owner.release(owner);
+    }
+} // namespace
+
 static PsychicWebSocketHandler* _ws_pm_data = nullptr;
 
 /* -------------------------------------------------------------------------- */
@@ -102,9 +188,9 @@ public:
 
 void HAL_VAMeter::_web_server_page_loading()
 {
-    _web_server->on("/", [&](PsychicRequest* request) { return request->redirect("/syscfg"); });
+    _http_server->on("/", [&](PsychicRequest* request) { return request->redirect("/syscfg"); });
 
-    _web_server->on("/syscfg",
+    _http_server->on("/syscfg",
                     [&](PsychicRequest* request)
                     {
                         MyChunkResponse response(request,
@@ -114,7 +200,7 @@ void HAL_VAMeter::_web_server_page_loading()
                         return response.send();
                     });
 
-    _web_server->on("/favicon.ico",
+    _http_server->on("/favicon.ico",
                     [&](PsychicRequest* request)
                     {
                         MyChunkResponse response(request,
@@ -137,7 +223,7 @@ void HAL_VAMeter::_print_stack_high_water_mark()
 /* -------------------------------------------------------------------------- */
 void HAL_VAMeter::_web_server_api_loading()
 {
-    _web_server->on("/api/get_net_info",
+    _http_server->on("/api/get_net_info",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer;
@@ -151,7 +237,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(string_buffer.c_str());
                     });
 
-    _web_server->on("/api/set_syscfg",
+    _http_server->on("/api/set_syscfg",
                     HTTP_POST,
                     [&](PsychicRequest* request)
                     {
@@ -192,7 +278,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(200, "application/json", "{\"msg\":\"ok\"}");
                     });
 
-    _web_server->on("/api/get_wifi_list",
+    _http_server->on("/api/get_wifi_list",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer;
@@ -210,7 +296,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(string_buffer.c_str());
                     });
 
-    _web_server->on("/api/get_syscfg",
+    _http_server->on("/api/get_syscfg",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer = _create_config_json();
@@ -250,7 +336,7 @@ static void _ws_pm_data_daemon(void* param)
 void HAL_VAMeter::_web_server_ws_api_loading()
 {
     _ws_pm_data = new PsychicWebSocketHandler;
-    _web_server->on("/api/ws/pm_data", _ws_pm_data);
+    _http_server->on("/api/ws/pm_data", _ws_pm_data);
 
     // Callbacks
     _ws_pm_data->onOpen(
@@ -309,16 +395,15 @@ HELL:
     }
 
     onLogPageRender("start web server", true, true);
-    // assert(_web_server == nullptr);
-    if (_web_server == nullptr)
+    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System))
     {
-        _web_server = new PsychicHttpServer;
-        _web_server->listen(80);
-
-        _web_server_page_loading();
-        _web_server_api_loading();
-        // _web_server_ws_api_loading();
+        _stop_ap_mode();
+        return false;
     }
+
+    _web_server_page_loading();
+    _web_server_api_loading();
+    // _web_server_ws_api_loading();
 
     spdlog::info("web server started");
 
@@ -329,17 +414,12 @@ bool HAL_VAMeter::stopWebServer()
 {
     spdlog::info("stop web server");
 
-    // Kill server
-    // feedTheDog();
-    // _web_server->stop();
-    // delay(200);
-    // feedTheDog();
-    // delete _web_server;
-    // delay(200);
-    // _web_server = nullptr;
+    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System))
+        return false;
 
     // Stop ap
-    _stop_ap_mode();
+    if (!_stop_ap_mode())
+        return false;
 
     return true;
 }
@@ -356,8 +436,6 @@ std::string HAL_VAMeter::getSystemConfigUrl()
 /*                            Local Download Server                           */
 /* -------------------------------------------------------------------------- */
 static LOCAL_CSV_DOWNLOAD::DownloadSelection _download_selection;
-static PsychicHttpServer* _download_server = nullptr;
-
 namespace
 {
     class ScopedFile
@@ -427,12 +505,12 @@ namespace
     }
 } // namespace
 
-void HAL_VAMeter::startDownloadServer(const std::string& recordName)
+bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
     if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
     {
         spdlog::warn("reject local download for invalid record name: {}", recordName);
-        return;
+        return false;
     }
 
     spdlog::info("start download server for: {}", recordName);
@@ -441,16 +519,21 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
     _download_selection.set(recordName, recordPath);
 
     // Publish the complete selection before making the AP reachable.
-    _start_ap_mode();
-
-    // Start server if not running
-    if (_download_server == nullptr)
+    if (!_start_ap_mode())
     {
-        _download_server = new PsychicHttpServer;
-        _download_server->listen(80);
+        _download_selection.clear();
+        return false;
+    }
 
-        // Add download endpoint
-        _download_server->on("/download/*",
+    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download))
+    {
+        _download_selection.clear();
+        _stop_ap_mode();
+        return false;
+    }
+
+    // Add download endpoint
+    _http_server->on("/download/*",
                              [](PsychicRequest* request)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
@@ -532,29 +615,24 @@ void HAL_VAMeter::startDownloadServer(const std::string& recordName)
                                               stats.bytesSent,
                                               stats.chunksSent);
                                  return finishResult == LOCAL_CSV_DOWNLOAD::StreamResult::Complete ? ESP_OK : sender.result;
-                             });
+                         });
 
-        spdlog::info("download server started");
-    }
+    spdlog::info("download server started");
+    return true;
 }
 
 void HAL_VAMeter::stopDownloadServer()
 {
     spdlog::info("stop download server");
 
+    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download))
+        return;
+
     _download_selection.clear();
 
     // Stop AP mode
     _stop_ap_mode();
 
-    // Note: Server is kept alive for potential reuse
-    // If you want to fully stop:
-    // if (_download_server != nullptr)
-    // {
-    //     _download_server->stop();
-    //     delete _download_server;
-    //     _download_server = nullptr;
-    // }
 }
 
 std::string HAL_VAMeter::getLocalIP() { return _get_ip(); }

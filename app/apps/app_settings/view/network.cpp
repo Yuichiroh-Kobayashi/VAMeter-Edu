@@ -65,7 +65,11 @@ void AppSettings::_on_page_network()
         // Configure via Web
         else if (selected == 1)
         {
-            HAL::StartWebServer(OnLogPageRender);
+            if (!HAL::StartWebServer(OnLogPageRender))
+            {
+                spdlog::error("Failed to start system web server");
+                continue;
+            }
 
             // Pop wifi code
             auto text = fmt::format("WIFI:T:nopass;S:{};;", HAL::GetApWifiSsid());

@@ -563,9 +563,10 @@ public:
      * @brief Start local download server for CSV file via AP mode
      *
      * @param recordName Name of the record file to serve
+     * @return true when the server owns port 80 and is ready
      */
-    static void StartDownloadServer(const std::string& recordName) { Get()->startDownloadServer(recordName); }
-    virtual void startDownloadServer(const std::string& recordName) {}
+    static bool StartDownloadServer(const std::string& recordName) { return Get()->startDownloadServer(recordName); }
+    virtual bool startDownloadServer(const std::string& recordName) { return false; }
 
     /**
      * @brief Stop local download server and AP mode

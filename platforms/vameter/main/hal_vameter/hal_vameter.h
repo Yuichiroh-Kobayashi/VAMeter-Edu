@@ -121,7 +121,7 @@ public:
     std::string getSystemConfigUrl() override;
 
     // Local download server
-    void startDownloadServer(const std::string& recordName) override;
+    bool startDownloadServer(const std::string& recordName) override;
     void stopDownloadServer() override;
     std::string getLocalIP() override;
 
