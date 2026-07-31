@@ -10,6 +10,7 @@
 #include "libs/local_csv_download/local_csv_download_selection.h"
 #include "libs/local_csv_download/local_csv_stream.h"
 #include "libs/web_server_owner/web_server_owner.h"
+#include "d2b_esp_transport.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
@@ -97,6 +98,9 @@ namespace
             spdlog::error("port 80 stop rejected for non-owner lifecycle");
             return false;
         }
+
+        if (owner == WEB_SERVER_OWNER::Owner::System)
+            D2B_ESP::Stop(_http_server->server);
 
         const esp_err_t stopResult = httpd_stop(_http_server->server);
         if (stopResult != ESP_OK)
@@ -403,6 +407,14 @@ HELL:
 
     _web_server_page_loading();
     _web_server_api_loading();
+    if (!D2B_ESP::Register(_http_server->server))
+    {
+        StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System);
+        _stop_ap_mode();
+        return false;
+    }
+    _http_server->onClose(
+        [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
     // _web_server_ws_api_loading();
 
     spdlog::info("web server started");
