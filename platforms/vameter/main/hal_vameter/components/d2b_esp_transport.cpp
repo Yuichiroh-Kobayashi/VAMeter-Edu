@@ -1,4 +1,5 @@
 #include "d2b_esp_transport.h"
+#include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
 
 #include "libs/d2b_vi/d2b_control.h"
@@ -31,6 +32,12 @@ namespace D2B_ESP
             std::uint32_t generation;
             bool active;
         };
+
+        D2B_PIPELINE::OwnerKey PipelineOwner(const Owner& owner)
+        {
+            const D2B_PIPELINE::OwnerKey key = {owner.server, owner.socket, owner.generation};
+            return key;
+        }
 
         class Transport
         {
@@ -69,6 +76,15 @@ namespace D2B_ESP
                 _violations = 0;
                 _buffer.reset();
                 D2B::OpenSession(_session);
+                if (!D2B_PIPELINE::Open(PipelineOwner(_owner)))
+                {
+                    D2B::CloseSession(_session);
+                    _owner.server = 0;
+                    _owner.socket = -1;
+                    _owner.generation = 0;
+                    _owner.active = false;
+                    return false;
+                }
                 ESP_LOGI(kTag, "WebSocket owner opened, generation=%lu", static_cast<unsigned long>(_owner.generation));
                 return true;
             }
@@ -128,21 +144,39 @@ namespace D2B_ESP
                 if (!parsed.ok())
                     return protocolViolation(request, parsed.error);
 
+                if (D2B_PIPELINE::StopPending(PipelineOwner(_owner)))
+                    return protocolViolation(request, D2B::ErrorCode::InvalidState);
+
                 D2B::Session proposedSession = _session;
                 D2B::ControlResponse response =
                     D2B::HandleClientMessage(proposedSession, parsed.message, _streamIdCounter);
-                result = sendText(request, response.data, response.size);
-                if (result != ESP_OK)
-                    return result;
-
                 const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
                 const std::uint32_t previousStreamId = _session.streamId;
+                const bool isOrderlyStop = wasStreaming && response.ok() &&
+                                           parsed.message.type == D2B::ClientMessageType::StopStream &&
+                                           proposedSession.state == D2B::ControlState::Ready;
+                if (isOrderlyStop)
+                {
+                    if (!D2B_PIPELINE::RequestOrderlyStop(PipelineOwner(_owner),
+                                                          previousStreamId,
+                                                          response.data,
+                                                          response.size))
+                        return ESP_FAIL;
+                }
+                else
+                {
+                    result = sendText(request, response.data, response.size);
+                    if (result != ESP_OK)
+                        return result;
+                }
+
                 _session = proposedSession;
                 const bool isStreaming = _session.state == D2B::ControlState::Streaming;
                 if (!wasStreaming && isStreaming)
-                    D2B_PRODUCER::Start(_session.streamId);
-                else if (wasStreaming && !isStreaming)
-                    D2B_PRODUCER::Abort(previousStreamId);
+                {
+                    if (!D2B_PIPELINE::StartStream(PipelineOwner(_owner), _session.streamId))
+                        return ESP_FAIL;
+                }
                 if (response.error != D2B::ErrorCode::None)
                 {
                     ++_violations;
@@ -161,7 +195,7 @@ namespace D2B_ESP
                 if (!matches(server, socket))
                     return;
                 const std::uint32_t generation = _owner.generation;
-                D2B_PRODUCER::Abort(_session.streamId);
+                D2B_PIPELINE::Close(PipelineOwner(_owner));
                 D2B::CloseSession(_session);
                 _buffer.reset();
                 _owner.server = 0;
@@ -176,6 +210,8 @@ namespace D2B_ESP
             {
                 if (_owner.active && _owner.server == server)
                     close(_owner.server, _owner.socket);
+                D2B_PIPELINE::StopServer(server);
+                D2B_PIPELINE::QuiesceSends();
             }
 
             bool streaming() const { return _owner.active && _session.state == D2B::ControlState::Streaming; }
@@ -228,14 +264,12 @@ namespace D2B_ESP
                 return result == ESP_OK && _violations < 3 ? ESP_OK : ESP_FAIL;
             }
 
-            static esp_err_t sendText(httpd_req_t* request, const char* payload, std::size_t size)
+            esp_err_t sendText(httpd_req_t* request, const char* payload, std::size_t size)
             {
-                httpd_ws_frame_t frame = {};
-                frame.final = true;
-                frame.type = HTTPD_WS_TYPE_TEXT;
-                frame.payload = reinterpret_cast<std::uint8_t*>(const_cast<char*>(payload));
-                frame.len = size;
-                return httpd_ws_send_frame(request, &frame);
+                const int socket = httpd_req_to_sockfd(request);
+                if (!matches(request->handle, socket))
+                    return ESP_FAIL;
+                return D2B_PIPELINE::SendText(PipelineOwner(_owner), payload, size);
             }
 
             Owner _owner;
@@ -273,17 +307,31 @@ namespace D2B_ESP
 
         esp_err_t StatusHandler(httpd_req_t* request)
         {
-            char response[320];
+            char response[384];
+            const std::uint64_t maximumSafeInteger = 9007199254740991ULL;
+            const std::uint64_t rawUptime = static_cast<std::uint64_t>(esp_timer_get_time());
+            const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+            const D2B_PIPELINE::Snapshot pipeline = D2B_PIPELINE::GetSnapshot();
+            const std::uint64_t producerDrops =
+                producer.producerDropCount > maximumSafeInteger ? maximumSafeInteger : producer.producerDropCount;
+            const std::uint64_t outputDrops = pipeline.outputQueueDropCount > maximumSafeInteger
+                                                  ? maximumSafeInteger
+                                                  : pipeline.outputQueueDropCount;
+            const std::uint64_t queued = static_cast<std::uint64_t>(producer.queuedSampleCount) +
+                                         pipeline.queuedOutputFrames;
             const unsigned long long uptime =
-                static_cast<unsigned long long>(esp_timer_get_time() > 9007199254740991LL ? 9007199254740991LL
-                                                                                         : esp_timer_get_time());
+                static_cast<unsigned long long>(rawUptime > maximumSafeInteger ? maximumSafeInteger : rawUptime);
             const int length = std::snprintf(response,
                                              sizeof(response),
                                              "{\"protocol\":\"d2b-stream\",\"version\":\"0.1\",\"state\":\"%s\","
-                                             "\"connected_client_count\":%u,\"producer_drop_count\":0,"
-                                             "\"output_queue_drop_count\":0,\"uptime_us\":%llu}",
+                                             "\"connected_client_count\":%u,\"producer_drop_count\":%llu,"
+                                             "\"output_queue_drop_count\":%llu,\"queued_sample_count\":%llu,"
+                                             "\"uptime_us\":%llu}",
                                              GetTransport().streaming() ? "streaming" : "idle",
                                              GetTransport().connectedCount(),
+                                             static_cast<unsigned long long>(producerDrops),
+                                             static_cast<unsigned long long>(outputDrops),
+                                             static_cast<unsigned long long>(queued),
                                              uptime);
             if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(response))
                 return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "status unavailable");
@@ -313,6 +361,11 @@ namespace D2B_ESP
 
     bool Register(httpd_handle_t server)
     {
+        if (!D2B_PIPELINE::Initialize())
+        {
+            ESP_LOGE(kTag, "failed to initialize bounded encoder/TX tasks");
+            return false;
+        }
         const httpd_uri_t routes[] = {
             MakeUri("/d2b/v0/", IndexHandler, false),
             MakeUri("/d2b/v0/capabilities", CapabilitiesHandler, false),

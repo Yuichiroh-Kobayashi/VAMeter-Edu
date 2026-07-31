@@ -2,6 +2,9 @@
 
 #include "libs/d2b_vi/d2b_acquisition.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include <cstdint>
 
 namespace D2B_PRODUCER
@@ -19,7 +22,9 @@ namespace D2B_PRODUCER
     };
 
     void Start(std::uint32_t streamId);
+    bool Freeze(std::uint32_t streamId);
     void Abort(std::uint32_t streamId);
+    void SetConsumerTask(TaskHandle_t task);
     void Tap(std::uint64_t timestampUs, std::uint32_t validMask, float voltageV, float currentA);
     bool Pop(D2B::AcquisitionSample& sample, bool& producerOverflowBeforeSample, std::uint32_t& streamId);
     Snapshot GetSnapshot();
