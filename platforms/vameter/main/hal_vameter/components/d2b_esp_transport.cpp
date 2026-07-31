@@ -1,4 +1,5 @@
 #include "d2b_esp_transport.h"
+#include "d2b_vi_producer.h"
 
 #include "libs/d2b_vi/d2b_control.h"
 #include "libs/d2b_vi/d2b_capabilities.h"
@@ -134,7 +135,14 @@ namespace D2B_ESP
                 if (result != ESP_OK)
                     return result;
 
+                const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
+                const std::uint32_t previousStreamId = _session.streamId;
                 _session = proposedSession;
+                const bool isStreaming = _session.state == D2B::ControlState::Streaming;
+                if (!wasStreaming && isStreaming)
+                    D2B_PRODUCER::Start(_session.streamId);
+                else if (wasStreaming && !isStreaming)
+                    D2B_PRODUCER::Abort(previousStreamId);
                 if (response.error != D2B::ErrorCode::None)
                 {
                     ++_violations;
@@ -153,6 +161,7 @@ namespace D2B_ESP
                 if (!matches(server, socket))
                     return;
                 const std::uint32_t generation = _owner.generation;
+                D2B_PRODUCER::Abort(_session.streamId);
                 D2B::CloseSession(_session);
                 _buffer.reset();
                 _owner.server = 0;

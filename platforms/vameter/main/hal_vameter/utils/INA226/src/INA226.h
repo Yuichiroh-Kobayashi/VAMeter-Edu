@@ -146,6 +146,11 @@ public:
     float readBusVoltage(void);
     int16_t readRawShuntCurrent(void);
 
+    bool readBusVoltageChecked(float& value);
+    bool readShuntCurrentChecked(float& value);
+    bool readShuntVoltageChecked(float& value);
+    bool readMathOverflowChecked(bool& overflow);
+
     float getMaxPossibleCurrent(void);
     float getMaxCurrent(void);
     float getMaxShuntVoltage(void);
@@ -162,6 +167,7 @@ private:
 
     void writeRegister16(uint8_t reg, uint16_t val);
     int16_t readRegister16(uint8_t reg);
+    bool readRegister16Checked(uint8_t reg, int16_t& value);
 };
 
 #endif

@@ -145,6 +145,42 @@ float INA226::readBusVoltage(void)
     return (voltage * 0.00125);
 }
 
+bool INA226::readBusVoltageChecked(float& value)
+{
+    int16_t raw = 0;
+    if (!readRegister16Checked(INA226_REG_BUSVOLTAGE, raw))
+        return false;
+    value = raw * 0.00125f;
+    return true;
+}
+
+bool INA226::readShuntCurrentChecked(float& value)
+{
+    int16_t raw = 0;
+    if (!readRegister16Checked(INA226_REG_CURRENT, raw))
+        return false;
+    value = raw * currentLSB;
+    return true;
+}
+
+bool INA226::readShuntVoltageChecked(float& value)
+{
+    int16_t raw = 0;
+    if (!readRegister16Checked(INA226_REG_SHUNTVOLTAGE, raw))
+        return false;
+    value = raw * 0.0000025f;
+    return true;
+}
+
+bool INA226::readMathOverflowChecked(bool& overflow)
+{
+    int16_t raw = 0;
+    if (!readRegister16Checked(INA226_REG_MASKENABLE, raw))
+        return false;
+    overflow = (static_cast<uint16_t>(raw) & INA226_BIT_OVF) == INA226_BIT_OVF;
+    return true;
+}
+
 ina226_averages_t INA226::getAverages(void)
 {
     uint16_t value;
@@ -262,7 +298,7 @@ bool INA226::isAlert(void) { return ((getMaskEnable() & INA226_BIT_AFF) == INA22
 
 int16_t INA226::readRegister16(uint8_t reg)
 {
-    int16_t value;
+    int16_t value = 0;
 
     //     Wire.beginTransmission(inaAddress);
     // #if ARDUINO >= 100
@@ -283,11 +319,20 @@ int16_t INA226::readRegister16(uint8_t reg)
 
     // value = vha << 8 | vla;
 
-    uint8_t r_buffer[2] = {0};
-    i2c_master_write_read_device(I2C_NUM_0, inaAddress, &reg, 1, r_buffer, 2, portMAX_DELAY);
-    value = r_buffer[0] << 8 | r_buffer[1];
+    readRegister16Checked(reg, value);
 
     return value;
+}
+
+bool INA226::readRegister16Checked(uint8_t reg, int16_t& value)
+{
+    uint8_t r_buffer[2] = {0};
+    const esp_err_t result =
+        i2c_master_write_read_device(I2C_NUM_0, inaAddress, &reg, 1, r_buffer, 2, portMAX_DELAY);
+    if (result != ESP_OK)
+        return false;
+    value = static_cast<int16_t>(static_cast<uint16_t>(r_buffer[0]) << 8 | r_buffer[1]);
+    return true;
 }
 
 void INA226::writeRegister16(uint8_t reg, uint16_t val)
