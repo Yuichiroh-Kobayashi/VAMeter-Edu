@@ -14,7 +14,18 @@ VAMeter-Eduへ、Device-to-Browser Data Streaming protocol `d2b-stream/0.1` のV
 
 現時点では、protocol oracleによる検証、host build／unit test、ESP-IDF v5.1.6 build、authorized firmwareの実機flash、boot smoke test、VAMeter softAPへの実接続、D2B HTTP root／capabilities／statusの実機確認まで完了しています。
 
-一方、browser WebSocket live captureはWindows側の試験harness不備により完了していません。最終製品目標はiPad Safariでの利用です。Windows Edgeはデスクトップ側の補助的な相互運用確認とし、Edge PASSをSafari PASSへ読み替えません。
+Chromeは試験harness上の問題が続いたため、試験計画上SKIPPEDとし、PASS／FAILのいずれにも扱っていない。
+
+Microsoft Edgeでは、専用user-data-dir、CDP endpoint、device page targetの確認、tracked `capture-live.js`の実行まで到達した。
+
+collector開始後、強いRF条件（signal 100%、RSSI -30～-32 dBm）にもかかわらず、HTTPがtimeoutへ移行し、WebSocketがclose code 1006で終了した。
+その後、Windows Wi-Fiは切断され、VAMeter softAPはWLAN scanから消失した。
+
+ユーザーはVAMeter本体が再起動したように見える表示遷移を目視した。
+ただし、serial evidenceにはboot banner、reset reason、panic、watchdog等が残っておらず、device resetが確定したとは扱わない。
+
+したがって、現在のblockerは単なるbrowser harness問題ではない。
+VI0、VI1、VI4を中心に、WebSocket開始を契機としたHTTP server、softAP、task、socket、owner、resource、reset lifecycleの静的レビューが必要である。
 
 本レビューでは、物理試験の未完了とは分離して、VI0～VI4の製品実装とVI5の検証設計を静的・批判的に確認してください。
 
@@ -186,7 +197,7 @@ Windows Edge 150.0.4078.105を専用user-data-dirおよびCDP endpointで起動�
 4. 約01:01:57 WebSocket close code 1006
 5. postflightでWindows Wi-Fi disconnected
 6. VAMeter softAPはWLAN scanから消失
-7. ユーザーがVAMeter本体のresetを目視
+7. ユーザーがVAMeter本体の再起動と見える挙動を目視した。ただしreset reasonは未取得であり、confirmed device resetとは扱わない。
 
 serial raw captureにはboot banner、panic、watchdog、assert、abort等は残らなかったが、これはresetがなかったことの証明ではない。
 
