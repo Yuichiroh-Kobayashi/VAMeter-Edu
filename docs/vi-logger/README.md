@@ -28,6 +28,7 @@ AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoff
 ## Operations
 
 - [Battery and protection test plan](operations/battery_and_protection_test_plan.md)
+- [D2B V/I live-stream validation plan](operations/d2b_vi_live_validation_plan.md)
 
 ## Validation
 
