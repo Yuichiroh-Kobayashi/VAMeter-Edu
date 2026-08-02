@@ -34,6 +34,13 @@ namespace D2B_ESP
             bool active;
         };
 
+        struct SessionPublication
+        {
+            class Transport* transport;
+            D2B::Session session;
+            D2B_PIPELINE::OwnerKey owner;
+        };
+
         D2B_PIPELINE::OwnerKey PipelineOwner(const Owner& owner)
         {
             const D2B_PIPELINE::OwnerKey key = {owner.server, owner.socket, owner.generation};
@@ -172,12 +179,19 @@ namespace D2B_ESP
                         return result;
                 }
 
-                _session = proposedSession;
-                const bool isStreaming = _session.state == D2B::ControlState::Streaming;
+                const bool isStreaming = proposedSession.state == D2B::ControlState::Streaming;
                 if (!wasStreaming && isStreaming)
                 {
-                    if (!D2B_PIPELINE::StartStream(PipelineOwner(_owner), _session.streamId))
+                    SessionPublication publication = {this, proposedSession, PipelineOwner(_owner)};
+                    if (!D2B_PIPELINE::StartStream(PipelineOwner(_owner),
+                                                   proposedSession.streamId,
+                                                   &Transport::PublishSession,
+                                                   &publication))
                         return ESP_FAIL;
+                }
+                else
+                {
+                    _session = proposedSession;
                 }
                 if (response.error != D2B::ErrorCode::None)
                 {
@@ -212,12 +226,19 @@ namespace D2B_ESP
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
             }
 
-            void stop(httpd_handle_t server)
+            void sanityCleanupAfterServerStopped(httpd_handle_t server)
             {
+                D2B_PIPELINE::MarkStopSucceeded(server);
                 if (_owner.active && _owner.server == server)
-                    close(_owner.server, _owner.socket, RUNTIME_EVIDENCE::Reason::ServerStop);
-                D2B_PIPELINE::StopServer(server, RUNTIME_EVIDENCE::Reason::ServerStop);
-                D2B_PIPELINE::QuiesceSends();
+                {
+                    D2B::CloseSession(_session);
+                    _buffer.reset();
+                    _owner.server = 0;
+                    _owner.socket = -1;
+                    _owner.generation = 0;
+                    _owner.active = false;
+                    _violations = 0;
+                }
             }
 
             void setServerGeneration(std::uint32_t generation)
@@ -232,6 +253,19 @@ namespace D2B_ESP
             bool matches(httpd_handle_t server, int socket) const
             {
                 return _owner.active && _owner.server == server && _owner.socket == socket && _owner.generation != 0;
+            }
+
+            static bool PublishSession(void* context)
+            {
+                SessionPublication* publication = static_cast<SessionPublication*>(context);
+                if (publication == nullptr || publication->transport == nullptr)
+                    return false;
+                Transport* transport = publication->transport;
+                if (!transport->matches(publication->owner.server, publication->owner.socket) ||
+                    transport->_owner.generation != publication->owner.generation)
+                    return false;
+                transport->_session = publication->session;
+                return true;
             }
 
             bool originAllowed(httpd_req_t* request) const
@@ -377,7 +411,7 @@ namespace D2B_ESP
         }
     } // namespace
 
-    bool Register(httpd_handle_t server)
+    bool Register(httpd_handle_t server, std::uint32_t generation)
     {
         if (!D2B_PIPELINE::Initialize())
         {
@@ -405,6 +439,16 @@ namespace D2B_ESP
                 return false;
             }
         }
+        if (!D2B_PIPELINE::CommitServerRunning(server, generation))
+        {
+            ESP_LOGE(kTag, "D2B lifecycle commit failed after route registration");
+            while (registered != 0)
+            {
+                --registered;
+                httpd_unregister_uri_handler(server, routes[registered].uri, routes[registered].method);
+            }
+            return false;
+        }
         return true;
     }
 
@@ -415,5 +459,12 @@ namespace D2B_ESP
         GetTransport().close(server, socket, RUNTIME_EVIDENCE::Reason::Disconnect);
     }
 
-    void Stop(httpd_handle_t server) { GetTransport().stop(server); }
+    void PrepareServerStop(httpd_handle_t server)
+    {
+        D2B_PIPELINE::StopServer(server, RUNTIME_EVIDENCE::Reason::ServerStop);
+    }
+
+    void ServerStopFailed(httpd_handle_t server) { D2B_PIPELINE::MarkStopFailed(server); }
+
+    void AfterServerStopped(httpd_handle_t server) { GetTransport().sanityCleanupAfterServerStopped(server); }
 } // namespace D2B_ESP

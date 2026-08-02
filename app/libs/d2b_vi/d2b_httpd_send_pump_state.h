@@ -47,9 +47,10 @@ namespace D2B_HTTPD_SEND_PUMP
     };
 
     /*
-     * Allocation-free, non-thread-safe ownership state for one HTTPD work
-     * callback.  Device callers serialize every method with the pipeline lock;
-     * the host tests drive it directly to make the handoff rules explicit.
+     * Allocation-free, non-thread-safe ownership state for one HTTPD
+     * connection's queued work callback.  Device callers serialize every
+     * method with the pipeline lock; orderly stream completion returns the
+     * callback state to idle without ending connection ownership.
      */
     class State
     {
@@ -68,6 +69,10 @@ namespace D2B_HTTPD_SEND_PUMP
         FinishDecision finish(std::uint32_t generation,
                               std::uintptr_t token,
                               bool workRemains);
+
+        // Orderly stream completion ends the current callback but preserves
+        // connection-lifetime pump ownership for the next stream.
+        FinishDecision finishOrderlyStream(std::uint32_t generation, std::uintptr_t token);
 
         bool reject(std::uintptr_t token);
         bool reject(std::uint32_t generation, std::uintptr_t token);

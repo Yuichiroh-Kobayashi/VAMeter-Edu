@@ -30,15 +30,24 @@ namespace D2B_PIPELINE
         std::uint32_t txStackHighWaterBytes;
     };
 
+    typedef bool (*StartPublicationCallback)(void* context);
+
     bool Initialize();
+    bool CommitServerRunning(httpd_handle_t server, std::uint32_t generation);
     bool Open(const OwnerKey& owner);
     void Close(const OwnerKey& owner,
                RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::Disconnect);
     void StopServer(httpd_handle_t server,
                     RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::ServerStop);
     void QuiesceSends();
+    void MarkStopFailed(httpd_handle_t server);
+    void MarkStopSucceeded(httpd_handle_t server);
 
     bool StartStream(const OwnerKey& owner, std::uint32_t streamId);
+    bool StartStream(const OwnerKey& owner,
+                     std::uint32_t streamId,
+                     StartPublicationCallback publish,
+                     void* publishContext);
     bool RequestOrderlyStop(const OwnerKey& owner,
                             std::uint32_t streamId,
                             const char* stoppedResponse,

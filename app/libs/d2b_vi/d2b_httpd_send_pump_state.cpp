@@ -81,6 +81,11 @@ namespace D2B_HTTPD_SEND_PUMP
         return finish(token, workRemains);
     }
 
+    FinishDecision State::finishOrderlyStream(std::uint32_t generation, std::uintptr_t token)
+    {
+        return finish(generation, token, false);
+    }
+
     bool State::reject(std::uintptr_t token)
     {
         if (!_active || token == 0 || _pendingToken != token)

@@ -18,6 +18,7 @@
 #include <FS.h>
 #include <vfs_api.h>
 #include <cstdlib>
+#include <memory>
 #include <new>
 
 // class VFS_t : public FS
@@ -34,6 +35,11 @@ namespace
     public:
         ~OwnedPsychicHttpServer() override
         {
+            // PsychicEndpoint has no destructor for its handler pointer in
+            // the pinned PsychicHttp revision.  The wrapper therefore owns
+            // and releases endpoint/default handlers before the base class
+            // releases the endpoint objects themselves.  The wrapper itself
+            // remains owned by ESP-IDF global_user_ctx_free_fn or unique_ptr.
             for (std::list<PsychicEndpoint*>::iterator endpoint = _endpoints.begin(); endpoint != _endpoints.end(); ++endpoint)
                 delete (*endpoint)->handler();
             delete defaultEndpoint->handler();
@@ -77,8 +83,8 @@ namespace
         const std::uint32_t generation = _http_server_owner.generation();
         D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
 
-        OwnedPsychicHttpServer* server = new (std::nothrow) OwnedPsychicHttpServer;
-        if (server == nullptr)
+        std::unique_ptr<OwnedPsychicHttpServer> ownedServer(new (std::nothrow) OwnedPsychicHttpServer);
+        if (!ownedServer)
         {
             _http_server_owner.release(owner);
             D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
@@ -90,26 +96,36 @@ namespace
             return false;
         }
 
-        server->server = nullptr;
-        const esp_err_t listenResult = server->listen(80);
+        if (owner == WEB_SERVER_OWNER::Owner::System)
+        {
+            ownedServer->onClose(
+                [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
+        }
+
+        ownedServer->server = nullptr;
+        const esp_err_t listenResult = ownedServer->listen(80);
         if (listenResult != ESP_OK)
         {
             spdlog::error("port 80 listen failed: {}", esp_err_to_name(listenResult));
-            if (server->server == nullptr)
+            const httpd_handle_t partialHandle = ownedServer->server;
+            if (partialHandle == nullptr)
             {
-                delete server;
                 _http_server_owner.release(owner);
             }
             else
             {
-                const esp_err_t stopResult = httpd_stop(server->server);
+                // Once httpd_start returned a handle, ESP-IDF owns the
+                // wrapper through global_user_ctx_free_fn.  Transfer that
+                // ownership before stopping; never delete the wrapper here.
+                OwnedPsychicHttpServer* retainedServer = ownedServer.release();
+                const esp_err_t stopResult = httpd_stop(partialHandle);
                 if (stopResult == ESP_OK)
                 {
                     _http_server_owner.release(owner);
                 }
                 else
                 {
-                    _http_server = server;
+                    _http_server = retainedServer;
                     spdlog::critical("failed to stop partially started port 80 server: {}", esp_err_to_name(stopResult));
                 }
             }
@@ -121,7 +137,7 @@ namespace
             return false;
         }
 
-        _http_server = server;
+        _http_server = ownedServer.release();
         D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
                                                runtimeOwner,
                                                reason,
@@ -159,13 +175,18 @@ namespace
         }
 
         const std::uint32_t generation = _http_server_owner.generation();
+        // Capture the raw handle while the PsychicHttp wrapper is valid.  No
+        // wrapper field or method is touched after a successful httpd_stop.
+        const httpd_handle_t serverHandle = _http_server->server;
 
         if (owner == WEB_SERVER_OWNER::Owner::System)
-            D2B_ESP::Stop(_http_server->server);
+            D2B_ESP::PrepareServerStop(serverHandle);
 
-        const esp_err_t stopResult = httpd_stop(_http_server->server);
+        const esp_err_t stopResult = httpd_stop(serverHandle);
         if (stopResult != ESP_OK)
         {
+            if (owner == WEB_SERVER_OWNER::Owner::System)
+                D2B_ESP::ServerStopFailed(serverHandle);
             D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
                                                    runtimeOwner,
                                                    RUNTIME_EVIDENCE::Reason::ServerStopFailed,
@@ -176,6 +197,8 @@ namespace
         }
 
         _http_server = nullptr;
+        if (owner == WEB_SERVER_OWNER::Owner::System)
+            D2B_ESP::AfterServerStopped(serverHandle);
         const bool released = _http_server_owner.release(owner);
         D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
                                                runtimeOwner,
@@ -427,14 +450,12 @@ HELL:
     _web_server_page_loading();
     _web_server_api_loading();
     D2B_ESP::SetServerGeneration(_http_server_owner.generation());
-    if (!D2B_ESP::Register(_http_server->server))
+    if (!D2B_ESP::Register(_http_server->server, _http_server_owner.generation()))
     {
         StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, RUNTIME_EVIDENCE::Reason::ServerStartFailed);
         _stop_ap_mode();
         return false;
     }
-    _http_server->onClose(
-        [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
     spdlog::info("web server started");
 
     return true;

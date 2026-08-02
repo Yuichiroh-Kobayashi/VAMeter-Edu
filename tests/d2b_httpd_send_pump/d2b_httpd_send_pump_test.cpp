@@ -130,6 +130,39 @@ namespace
         Expect(state.begin(stopToken) == BeginResult::Stale, "stopped callback cannot affect reconnect");
     }
 
+    void TestOrderlyStreamReuse()
+    {
+        using namespace D2B_HTTPD_SEND_PUMP;
+        State state;
+        Expect(state.activate(51), "orderly stream connection activates once");
+
+        const ScheduleDecision first = state.request(51);
+        Expect(first.result == ScheduleResult::Accepted, "first stream schedules a callback");
+        Expect(state.begin(51, first.token) == BeginResult::Began, "first stream callback begins");
+        Expect(state.finishOrderlyStream(51, first.token).result == FinishResult::Idle,
+               "orderly stream completion finishes current callback without invalidating connection pump");
+        Snapshot idle = state.snapshot();
+        Expect(idle.active && idle.generation == 51 && !idle.pending && !idle.executing,
+               "orderly stream completion leaves active idle pump for same connection");
+
+        const ScheduleDecision second = state.request(51);
+        Expect(second.result == ScheduleResult::Accepted, "second stream on same connection is accepted");
+        Expect(state.begin(51, second.token) == BeginResult::Began, "second stream callback begins");
+        Expect(state.finishOrderlyStream(51, second.token).result == FinishResult::Idle,
+               "second orderly stream completion returns pump to idle");
+        idle = state.snapshot();
+        Expect(idle.active && !idle.pending && !idle.executing,
+               "connection pump remains reusable after two orderly streams");
+
+        const ScheduleDecision closePending = state.request(51);
+        Expect(closePending.result == ScheduleResult::Accepted, "close regression schedules stale callback");
+        Expect(state.invalidate(51), "connection close invalidates pump ownership");
+        Expect(state.request(51).result == ScheduleResult::Inactive,
+               "closed connection rejects queue_work after orderly reuse");
+        Expect(state.begin(51, closePending.token) == BeginResult::Stale,
+               "closed connection makes pending callback stale");
+    }
+
     void TestBoundedFifoAndMetadata()
     {
         using namespace D2B_HTTPD_SEND_PUMP;
@@ -199,6 +232,7 @@ int main()
 {
     TestBoundedLifecycle();
     TestGenerationStaleness();
+    TestOrderlyStreamReuse();
     TestBoundedFifoAndMetadata();
     std::cout << "PASS: bounded HTTPD send-pump lifecycle and D2B FIFO metadata\n";
     return 0;
