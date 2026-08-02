@@ -63,5 +63,24 @@ namespace D2B_RUNTIME_EVIDENCE
                         const D2B_PIPELINE::Snapshot& pipeline,
                         const D2B_PRODUCER::Snapshot& producer);
 
+    void LogPumpScheduleAccepted(const D2B_PIPELINE::OwnerKey& owner,
+                                 const D2B_PIPELINE::Snapshot& pipeline,
+                                 const D2B_PRODUCER::Snapshot& producer);
+    void LogPumpScheduleCoalesced(const D2B_PIPELINE::OwnerKey& owner,
+                                  const D2B_PIPELINE::Snapshot& pipeline,
+                                  const D2B_PRODUCER::Snapshot& producer);
+    void LogPumpQueueRejected(const D2B_PIPELINE::OwnerKey& owner,
+                              const D2B_PIPELINE::Snapshot& pipeline,
+                              const D2B_PRODUCER::Snapshot& producer);
+    void LogPumpCallbackBegin(const D2B_PIPELINE::OwnerKey& owner,
+                              const D2B_PIPELINE::Snapshot& pipeline,
+                              const D2B_PRODUCER::Snapshot& producer);
+    void LogPumpCallbackEnd(const D2B_PIPELINE::OwnerKey& owner,
+                            const D2B_PIPELINE::Snapshot& pipeline,
+                            const D2B_PRODUCER::Snapshot& producer);
+    void LogPumpStale(const D2B_PIPELINE::OwnerKey& owner,
+                      const D2B_PIPELINE::Snapshot& pipeline,
+                      const D2B_PRODUCER::Snapshot& producer);
+
     void LogBoot();
 } // namespace D2B_RUNTIME_EVIDENCE

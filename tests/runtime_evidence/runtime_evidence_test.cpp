@@ -69,6 +69,7 @@ int main()
         Event::StreamAbrupt,
         Event::QueueSnapshot,
         Event::SendFailure,
+        Event::Pump,
         Event::HeapTrend,
         Event::StackTrend,
     };
@@ -104,6 +105,12 @@ int main()
         Reason::ServerStartFailed,
         Reason::ServerStopFailed,
         Reason::ActiveStreamTrend,
+        Reason::PumpScheduleAccepted,
+        Reason::PumpScheduleCoalesced,
+        Reason::PumpQueueRejected,
+        Reason::PumpCallbackBegin,
+        Reason::PumpCallbackEnd,
+        Reason::PumpStale,
     };
     for (const Reason reason : reasons)
         Expect(IsMachineToken(ReasonToken(reason)), "reason token is machine-safe");
@@ -118,6 +125,18 @@ int main()
            "download intentional stop reason token");
     Expect(std::strcmp(ReasonToken(Reason::ServerStop), "server_stop") == 0, "server stop reason token");
     Expect(std::strcmp(ReasonToken(Reason::SendFailure), "send_failure") == 0, "send failure reason token");
+    Expect(std::strcmp(EventToken(Event::Pump), "pump") == 0, "pump event token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpScheduleAccepted), "pump_schedule_accepted") == 0,
+           "pump accepted reason token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpScheduleCoalesced), "pump_schedule_coalesced") == 0,
+           "pump coalesced reason token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpQueueRejected), "pump_queue_rejected") == 0,
+           "pump rejection reason token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpCallbackBegin), "pump_callback_begin") == 0,
+           "pump begin reason token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpCallbackEnd), "pump_callback_end") == 0,
+           "pump end reason token");
+    Expect(std::strcmp(ReasonToken(Reason::PumpStale), "pump_stale") == 0, "pump stale reason token");
 
     const Result results[] = {Result::Unknown,
                               Result::Requested,
@@ -190,6 +209,14 @@ int main()
     Expect(limiter.Allow(7), "clock rollback recovers");
     Expect(!limiter.Allow(7 + kMinimumRateIntervalUs - 1), "rollback interval gate");
     Expect(limiter.Allow(7 + kMinimumRateIntervalUs), "rollback gate accepts at interval");
+
+    RateLimiter acceptedLimiter;
+    RateLimiter coalescedLimiter;
+    Expect(acceptedLimiter.Allow(1000) && coalescedLimiter.Allow(1000),
+           "pump breadcrumbs have independent initial limiter state");
+    Expect(!acceptedLimiter.Allow(1000 + kMinimumRateIntervalUs - 1) &&
+               coalescedLimiter.Allow(1000 + kMinimumRateIntervalUs),
+           "pump breadcrumb limiters gate independently");
 
     std::cout << "PASS: runtime evidence formatter and limiter\n";
     return 0;

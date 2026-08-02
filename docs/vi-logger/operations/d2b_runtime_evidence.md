@@ -33,6 +33,10 @@ SSID、password、IP、MAC、payload、測定値、個人情報は記録しな�
 - send failure: 既存 TX task から `event=send_failure reason=send_failure` の snapshot と、続けて
   `event=stream_abrupt reason=send_failure` の二行を記録する。internal task failure は少なくとも
   `event=stream_abrupt reason=internal_failure` を記録する。
+- HTTPD pump: `event=pump` に `reason=pump_schedule_accepted`、
+  `pump_schedule_coalesced`、`pump_queue_rejected`、`pump_callback_begin`、
+  `pump_callback_end`、`pump_stale` を記録する。これらは scheduling/callback の境界だけを示し、
+  frame ごとのログではない。各 reason は独立した 5,000,000 us 以上の rate limiter を持つ。
 - stream: accepted start、orderly stop accepted/completed、abrupt termination を記録する。
 - resource trend: internal 8-bit heap の free/minimum-ever/largest と D2B encoder/TX task の
   byte 単位 stack high-water を記録する。
@@ -47,6 +51,11 @@ start/intentional stop、server stop、WebSocket connect/disconnect、start/stop
 breadcrumb を同じ WebSocket `generation` と `stream_id` で時系列に並べ、必要に応じて
 server lifecycle の `server_generation` と照合する。
 
+HTTPD pump breadcrumbs は accepted/coalesced/begin/end/rejected/stale の scheduling 状態を確認する
+ためのものだが、queue-work の retry 成否や WebSocket の実際の frame transmission の代替証拠では
+ない。`pump_queue_rejected` と `pump_stale` は 100 ms TX wake が繰り返しても rate-limited であり、
+output ring の depth 32、drop-oldest、sequence/timestamp、discontinuity/cause metadata を変更しない。
+
 この層は既存の D2B protocol v0.1、32-byte envelope、sequence/timestamp、backpressure、
-public endpoint、測定表示、CSV、UI navigation を変更しない。HTTPD queue-work 修正や
-transactional stream start はこの phase の対象外である。
+public endpoint、測定表示、CSV、UI navigation を変更しない。HTTPD work callback による bounded
+send scheduling を使うが、transactional stream start はこの phase の対象外である。

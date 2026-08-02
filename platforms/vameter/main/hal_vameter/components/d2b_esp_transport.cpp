@@ -280,7 +280,14 @@ namespace D2B_ESP
                 const int socket = httpd_req_to_sockfd(request);
                 if (!matches(request->handle, socket))
                     return ESP_FAIL;
-                return D2B_PIPELINE::SendText(PipelineOwner(_owner), payload, size);
+                if (payload == nullptr || size == 0)
+                    return ESP_ERR_INVALID_ARG;
+                httpd_ws_frame_t frame = {};
+                frame.final = true;
+                frame.type = HTTPD_WS_TYPE_TEXT;
+                frame.payload = reinterpret_cast<std::uint8_t*>(const_cast<char*>(payload));
+                frame.len = size;
+                return httpd_ws_send_frame(request, &frame);
             }
 
             Owner _owner;

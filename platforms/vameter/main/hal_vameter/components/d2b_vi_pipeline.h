@@ -38,7 +38,6 @@ namespace D2B_PIPELINE
                     RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::ServerStop);
     void QuiesceSends();
 
-    esp_err_t SendText(const OwnerKey& owner, const char* payload, std::size_t size);
     bool StartStream(const OwnerKey& owner, std::uint32_t streamId);
     bool RequestOrderlyStop(const OwnerKey& owner,
                             std::uint32_t streamId,

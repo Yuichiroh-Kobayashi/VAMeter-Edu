@@ -23,6 +23,7 @@ namespace RUNTIME_EVIDENCE
         SendFailure,
         HeapTrend,
         StackTrend,
+        Pump,
     };
 
     enum class Reason : std::uint8_t
@@ -52,6 +53,12 @@ namespace RUNTIME_EVIDENCE
         ServerStartFailed,
         ServerStopFailed,
         ActiveStreamTrend,
+        PumpScheduleAccepted,
+        PumpScheduleCoalesced,
+        PumpQueueRejected,
+        PumpCallbackBegin,
+        PumpCallbackEnd,
+        PumpStale,
     };
 
     enum class Result : std::uint8_t

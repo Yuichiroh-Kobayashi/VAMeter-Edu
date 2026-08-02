@@ -187,8 +187,6 @@ namespace
     }
 } // namespace
 
-static PsychicWebSocketHandler* _ws_pm_data = nullptr;
-
 /* -------------------------------------------------------------------------- */
 /*                                    Pages                                   */
 /* -------------------------------------------------------------------------- */
@@ -382,63 +380,6 @@ void HAL_VAMeter::_web_server_api_loading()
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 Web socket                                 */
-/* -------------------------------------------------------------------------- */
-POWER_MONITOR::PMData_t* _borrow_pm_data_daemon();
-void _return_pm_data_daemon();
-
-static void _ws_pm_data_daemon(void* param)
-{
-    char* string_buffer = new char[35];
-    POWER_MONITOR::PMData_t* pm_data = _borrow_pm_data_daemon();
-    _return_pm_data_daemon();
-
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    while (1)
-    {
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        _borrow_pm_data_daemon();
-        snprintf(string_buffer, 35, "{\"v\":%.4f,\"a\":%.7f}", pm_data->busVoltage, pm_data->shuntCurrent);
-        _return_pm_data_daemon();
-
-        // _ws_pm_data->sendAll("{\"v\":0.0001,\"a\":0.0000001}");
-        _ws_pm_data->sendAll(string_buffer);
-    }
-
-    delete[] string_buffer;
-    vTaskDelete(NULL);
-}
-
-void HAL_VAMeter::_web_server_ws_api_loading()
-{
-    _ws_pm_data = new PsychicWebSocketHandler;
-    _http_server->on("/api/ws/pm_data", _ws_pm_data);
-
-    // Callbacks
-    _ws_pm_data->onOpen(
-        [](PsychicWebSocketClient* client)
-        {
-            spdlog::info("[socket] connection #{} connected from {}", client->socket(), client->remoteIP().toString().c_str());
-            client->sendMessage("Hello!");
-        });
-
-    _ws_pm_data->onFrame(
-        [](PsychicWebSocketRequest* request, httpd_ws_frame* frame)
-        {
-            spdlog::info("[socket] #{} sent: {}", request->client()->socket(), (char*)frame->payload);
-            return request->reply(frame);
-        });
-
-    _ws_pm_data->onClose(
-        [](PsychicWebSocketClient* client)
-        { spdlog::info("[socket] connection #{} closed from {}", client->socket(), client->remoteIP().toString().c_str()); });
-
-    // Daemon
-    xTaskCreate(_ws_pm_data_daemon, "ws", 4000, NULL, 5, NULL);
-}
-
-/* -------------------------------------------------------------------------- */
 /*                                 Web server                                 */
 /* -------------------------------------------------------------------------- */
 bool HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender,
@@ -494,8 +435,6 @@ HELL:
     }
     _http_server->onClose(
         [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
-    // _web_server_ws_api_loading();
-
     spdlog::info("web server started");
 
     return true;

@@ -3,6 +3,7 @@
 #include "d2b_vi_producer.h"
 #include "d2b_runtime_evidence.h"
 #include "libs/d2b_vi/d2b_frame_writer.h"
+#include "libs/d2b_vi/d2b_httpd_send_pump_state.h"
 #include "libs/d2b_vi/d2b_output_ring.h"
 
 #include <esp_log.h>
@@ -21,6 +22,7 @@ namespace D2B_PIPELINE
         static const std::uint32_t kEncoderStackBytes = 3072;
         static const std::uint32_t kTxStackBytes = 4096;
         static const std::size_t kMaximumStoppedResponseSize = 192;
+        static const unsigned kPumpFramesPerCallback = 4;
 
         portMUX_TYPE _lock = portMUX_INITIALIZER_UNLOCKED;
         D2B::OutputRing _output;
@@ -48,6 +50,7 @@ namespace D2B_PIPELINE
         std::uint64_t _last_diag_producer_drops = 0;
         std::uint64_t _last_diag_output_drops = 0;
         RUNTIME_EVIDENCE::RateLimiter _diag_trend_limiter;
+        D2B_HTTPD_SEND_PUMP::State _pump;
 
         StaticSemaphore_t _send_mutex_storage;
         SemaphoreHandle_t _send_mutex = nullptr;
@@ -66,6 +69,10 @@ namespace D2B_PIPELINE
 
         bool OwnerMatchesLocked(const OwnerKey& owner) { return _owner_open && SameOwner(_owner, owner); }
 
+        void FailStream(const OwnerKey& owner, std::uint32_t streamId, bool taskFault, bool fromPump);
+        void PumpWork(void* argument);
+        void RequestPump(const OwnerKey& owner);
+
         void UpdateHighWater(std::uint32_t& stored)
         {
             const std::uint32_t current = static_cast<std::uint32_t>(uxTaskGetStackHighWaterMark(nullptr));
@@ -73,29 +80,6 @@ namespace D2B_PIPELINE
             if (current < stored)
                 stored = current;
             portEXIT_CRITICAL(&_lock);
-        }
-
-        esp_err_t SendFrame(const OwnerKey& owner, httpd_ws_type_t type, std::uint8_t* payload, std::size_t size)
-        {
-            if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
-                return ESP_FAIL;
-
-            portENTER_CRITICAL(&_lock);
-            const bool matched = OwnerMatchesLocked(owner);
-            portEXIT_CRITICAL(&_lock);
-
-            esp_err_t result = ESP_FAIL;
-            if (matched && httpd_ws_get_fd_info(owner.server, owner.socket) == HTTPD_WS_CLIENT_WEBSOCKET)
-            {
-                httpd_ws_frame_t frame = {};
-                frame.final = true;
-                frame.type = type;
-                frame.payload = payload;
-                frame.len = size;
-                result = httpd_ws_send_frame_async(owner.server, owner.socket, &frame);
-            }
-            xSemaphoreGive(_send_mutex);
-            return result;
         }
 
         void WakeTasks()
@@ -106,12 +90,16 @@ namespace D2B_PIPELINE
                 xTaskNotifyGive(_tx_task);
         }
 
-        void FailStream(const OwnerKey& owner, std::uint32_t streamId, bool taskFault)
+        void FailStream(const OwnerKey& owner, std::uint32_t streamId, bool taskFault, bool fromPump)
         {
+            bool sendMutexHeld = fromPump;
+            if (!sendMutexHeld && _send_mutex != nullptr)
+                sendMutexHeld = xSemaphoreTake(_send_mutex, portMAX_DELAY) == pdTRUE;
             bool matched = false;
             portENTER_CRITICAL(&_lock);
             if (OwnerMatchesLocked(owner) && _stream_active && _stream_id == streamId)
             {
+                (void)_pump.invalidate(owner.generation);
                 _stream_active = false;
                 _stopping = false;
                 _stream_id = 0;
@@ -128,20 +116,26 @@ namespace D2B_PIPELINE
                 matched = true;
             }
             portEXIT_CRITICAL(&_lock);
-            if (matched)
+            if (!matched)
             {
-                D2B_PRODUCER::Abort(streamId);
-                if (taskFault)
-                    ESP_LOGE(kTag, "internal stream pipeline failure; closing owner generation=%lu",
-                             static_cast<unsigned long>(owner.generation));
-                else
-                    ESP_LOGW(kTag, "WebSocket send failed; closing owner generation=%lu",
-                             static_cast<unsigned long>(owner.generation));
-                WakeTasks();
-                const esp_err_t closeResult = httpd_sess_trigger_close(owner.server, owner.socket);
-                if (closeResult != ESP_OK)
-                    ESP_LOGE(kTag, "failed to schedule owner close: %s", esp_err_to_name(closeResult));
+                if (sendMutexHeld && !fromPump)
+                    xSemaphoreGive(_send_mutex);
+                return;
             }
+
+            D2B_PRODUCER::Abort(streamId);
+            if (taskFault)
+                ESP_LOGE(kTag, "internal stream pipeline failure; closing owner generation=%lu",
+                         static_cast<unsigned long>(owner.generation));
+            else
+                ESP_LOGW(kTag, "WebSocket send failed; closing owner generation=%lu",
+                         static_cast<unsigned long>(owner.generation));
+            WakeTasks();
+            const esp_err_t closeResult = httpd_sess_trigger_close(owner.server, owner.socket);
+            if (closeResult != ESP_OK)
+                ESP_LOGE(kTag, "failed to schedule owner close: %s", esp_err_to_name(closeResult));
+            if (sendMutexHeld && !fromPump)
+                xSemaphoreGive(_send_mutex);
         }
 
         void EmitPendingEvidence()
@@ -271,7 +265,7 @@ namespace D2B_PIPELINE
                         portENTER_CRITICAL(&_lock);
                         owner = _owner;
                         portEXIT_CRITICAL(&_lock);
-                        FailStream(owner, streamId, true);
+                        FailStream(owner, streamId, true, false);
                         break;
                     }
                     if (accepted && _tx_task != nullptr)
@@ -281,13 +275,17 @@ namespace D2B_PIPELINE
             }
         }
 
+        bool ReadyForStreamEndLocked(const D2B_PRODUCER::Snapshot& producer)
+        {
+            return _stopping && _stream_active && !_encoder_busy && producer.streamId == _stream_id &&
+                   producer.queuedSampleCount == 0 && _output.queuedCount() == 0;
+        }
+
         bool ReadyForStreamEnd()
         {
             const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
             portENTER_CRITICAL(&_lock);
-            const bool ready = _stopping && _stream_active && !_encoder_busy &&
-                               producer.streamId == _stream_id && producer.queuedSampleCount == 0 &&
-                               _output.queuedCount() == 0;
+            const bool ready = ReadyForStreamEndLocked(producer);
             portEXIT_CRITICAL(&_lock);
             return ready;
         }
@@ -317,6 +315,201 @@ namespace D2B_PIPELINE
                      static_cast<unsigned long>(txHighWater));
         }
 
+        void RequestPump(const OwnerKey& owner)
+        {
+            if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+                return;
+
+            D2B_HTTPD_SEND_PUMP::ScheduleDecision decision = {D2B_HTTPD_SEND_PUMP::ScheduleResult::Inactive, 0};
+            portENTER_CRITICAL(&_lock);
+            if (OwnerMatchesLocked(owner) && _stream_active)
+                decision = _pump.request(owner.generation);
+            portEXIT_CRITICAL(&_lock);
+
+            if (decision.result == D2B_HTTPD_SEND_PUMP::ScheduleResult::Accepted)
+            {
+                D2B_RUNTIME_EVIDENCE::LogPumpScheduleAccepted(owner, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
+                const esp_err_t queued = httpd_queue_work(owner.server,
+                                                          PumpWork,
+                                                          reinterpret_cast<void*>(decision.token));
+                if (queued != ESP_OK)
+                {
+                    portENTER_CRITICAL(&_lock);
+                    (void)_pump.reject(owner.generation, decision.token);
+                    portEXIT_CRITICAL(&_lock);
+                    D2B_RUNTIME_EVIDENCE::LogPumpQueueRejected(owner,
+                                                               GetSnapshot(),
+                                                               D2B_PRODUCER::GetSnapshot());
+                }
+            }
+            else if (decision.result == D2B_HTTPD_SEND_PUMP::ScheduleResult::Coalesced)
+            {
+                D2B_RUNTIME_EVIDENCE::LogPumpScheduleCoalesced(owner, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
+            }
+            xSemaphoreGive(_send_mutex);
+        }
+
+        void PumpWork(void* argument)
+        {
+            const std::uintptr_t token = reinterpret_cast<std::uintptr_t>(argument);
+            if (token == 0 || _send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+                return;
+
+            OwnerKey owner = {};
+            std::uint32_t streamId = 0;
+            bool began = false;
+            portENTER_CRITICAL(&_lock);
+            owner = _owner;
+            if (_owner_open && _stream_active && owner.generation != 0 &&
+                _pump.begin(owner.generation, token) == D2B_HTTPD_SEND_PUMP::BeginResult::Began)
+            {
+                streamId = _stream_id;
+                began = true;
+            }
+            portEXIT_CRITICAL(&_lock);
+
+            if (!began)
+            {
+                D2B_RUNTIME_EVIDENCE::LogPumpStale(owner, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
+                xSemaphoreGive(_send_mutex);
+                return;
+            }
+
+            D2B_RUNTIME_EVIDENCE::LogPumpCallbackBegin(owner, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
+
+            bool failed = false;
+            unsigned drained = 0;
+            auto sendFrame = [&](httpd_ws_type_t type, std::uint8_t* payload, std::size_t size) -> esp_err_t
+            {
+                if (httpd_ws_get_fd_info(owner.server, owner.socket) != HTTPD_WS_CLIENT_WEBSOCKET)
+                    return ESP_FAIL;
+                httpd_ws_frame_t frame = {};
+                frame.final = true;
+                frame.type = type;
+                frame.payload = payload;
+                frame.len = size;
+                return httpd_ws_send_frame_async(owner.server, owner.socket, &frame);
+            };
+
+            while (drained < kPumpFramesPerCallback)
+            {
+                D2B::OutputFrame queued = {};
+                std::uint8_t pendingFlags = 0;
+                bool firstFrame = false;
+                std::uint64_t expectedSequence = 0;
+                portENTER_CRITICAL(&_lock);
+                const bool available = OwnerMatchesLocked(owner) && _stream_active && _stream_id == streamId &&
+                                       _output.popForTransport(queued, pendingFlags);
+                if (available)
+                {
+                    firstFrame = _first_transport_frame;
+                    expectedSequence = _expected_sequence;
+                }
+                portEXIT_CRITICAL(&_lock);
+                if (!available)
+                    break;
+
+                std::uint8_t prepared[D2B::kSingleViFrameSize];
+                std::uint64_t nextSequence = 0;
+                const bool preparedOk = D2B::PrepareOutputFrame(queued,
+                                                                 pendingFlags,
+                                                                 firstFrame,
+                                                                 expectedSequence,
+                                                                 prepared,
+                                                                 sizeof(prepared),
+                                                                 nextSequence);
+                if (!preparedOk)
+                {
+                    FailStream(owner, streamId, true, true);
+                    failed = true;
+                    break;
+                }
+                if (sendFrame(HTTPD_WS_TYPE_BINARY, prepared, sizeof(prepared)) != ESP_OK)
+                {
+                    FailStream(owner, streamId, false, true);
+                    failed = true;
+                    break;
+                }
+
+                portENTER_CRITICAL(&_lock);
+                if (OwnerMatchesLocked(owner) && _stream_active && _stream_id == streamId)
+                {
+                    _first_transport_frame = false;
+                    _expected_sequence = nextSequence;
+                }
+                portEXIT_CRITICAL(&_lock);
+                ++drained;
+            }
+
+            if (!failed && ReadyForStreamEnd())
+            {
+                const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+                char stoppedResponse[kMaximumStoppedResponseSize] = {};
+                std::size_t stoppedResponseSize = 0;
+                std::uint64_t endTimestampUs = 0;
+                portENTER_CRITICAL(&_lock);
+                owner = _owner;
+                streamId = _stream_id;
+                endTimestampUs = _end_timestamp_us;
+                stoppedResponseSize = _stopped_response_size;
+                std::memcpy(stoppedResponse, _stopped_response, stoppedResponseSize);
+                portEXIT_CRITICAL(&_lock);
+
+                std::uint8_t endFrame[D2B::kEnvelopeSize];
+                const D2B::FrameWriteResult end = D2B::WriteStreamEndFrame(endFrame,
+                                                                            sizeof(endFrame),
+                                                                            streamId,
+                                                                            producer.nextSequence,
+                                                                            endTimestampUs);
+                if (!end.ok() || sendFrame(HTTPD_WS_TYPE_BINARY, endFrame, end.size) != ESP_OK ||
+                    sendFrame(HTTPD_WS_TYPE_TEXT,
+                              reinterpret_cast<std::uint8_t*>(stoppedResponse),
+                              stoppedResponseSize) != ESP_OK)
+                {
+                    FailStream(owner, streamId, !end.ok(), true);
+                    failed = true;
+                }
+                else
+                {
+                    CompleteOrderlyStop(owner, streamId);
+                }
+            }
+
+            if (!failed)
+            {
+                D2B_HTTPD_SEND_PUMP::FinishDecision finish = {D2B_HTTPD_SEND_PUMP::FinishResult::Stale, 0};
+                bool workRemains = false;
+                const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+                portENTER_CRITICAL(&_lock);
+                if (OwnerMatchesLocked(owner))
+                {
+                    workRemains = _stream_active && _stream_id == streamId &&
+                                  (_output.queuedCount() != 0 || ReadyForStreamEndLocked(producer));
+                    finish = _pump.finish(owner.generation, token, workRemains);
+                }
+                portEXIT_CRITICAL(&_lock);
+
+                if (finish.result == D2B_HTTPD_SEND_PUMP::FinishResult::Rescheduled)
+                {
+                    const esp_err_t queued = httpd_queue_work(owner.server,
+                                                              PumpWork,
+                                                              reinterpret_cast<void*>(finish.token));
+                    if (queued != ESP_OK)
+                    {
+                        portENTER_CRITICAL(&_lock);
+                        (void)_pump.reject(owner.generation, finish.token);
+                        portEXIT_CRITICAL(&_lock);
+                        D2B_RUNTIME_EVIDENCE::LogPumpQueueRejected(owner,
+                                                                   GetSnapshot(),
+                                                                   D2B_PRODUCER::GetSnapshot());
+                    }
+                }
+            }
+            if (began)
+                D2B_RUNTIME_EVIDENCE::LogPumpCallbackEnd(owner, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
+            xSemaphoreGive(_send_mutex);
+        }
+
         void TxTask(void*)
         {
             while (true)
@@ -325,96 +518,13 @@ namespace D2B_PIPELINE
                 UpdateHighWater(_tx_stack_high_water);
                 EmitPendingEvidence();
                 EmitTxEvidence();
-                while (true)
-                {
-                    D2B::OutputFrame queued = {};
-                    std::uint8_t pendingFlags = 0;
-                    OwnerKey owner = {};
-                    std::uint32_t streamId = 0;
-                    bool firstFrame = false;
-                    std::uint64_t expectedSequence = 0;
-
-                    portENTER_CRITICAL(&_lock);
-                    const bool available = _owner_open && _stream_active &&
-                                           _output.popForTransport(queued, pendingFlags);
-                    if (available)
-                    {
-                        owner = _owner;
-                        streamId = _stream_id;
-                        firstFrame = _first_transport_frame;
-                        expectedSequence = _expected_sequence;
-                    }
-                    portEXIT_CRITICAL(&_lock);
-
-                    if (available)
-                    {
-                        std::uint8_t prepared[D2B::kSingleViFrameSize];
-                        std::uint64_t nextSequence = 0;
-                        if (!D2B::PrepareOutputFrame(queued,
-                                                     pendingFlags,
-                                                     firstFrame,
-                                                     expectedSequence,
-                                                     prepared,
-                                                     sizeof(prepared),
-                                                     nextSequence))
-                        {
-                            FailStream(owner, streamId, true);
-                            break;
-                        }
-                        if (SendFrame(owner, HTTPD_WS_TYPE_BINARY, prepared, sizeof(prepared)) != ESP_OK)
-                        {
-                            FailStream(owner, streamId, false);
-                            break;
-                        }
-
-                        portENTER_CRITICAL(&_lock);
-                        if (OwnerMatchesLocked(owner) && _stream_active && _stream_id == streamId)
-                        {
-                            _first_transport_frame = false;
-                            _expected_sequence = nextSequence;
-                        }
-                        portEXIT_CRITICAL(&_lock);
-                        continue;
-                    }
-
-                    if (!ReadyForStreamEnd())
-                        break;
-
-                    const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
-                    char stoppedResponse[kMaximumStoppedResponseSize];
-                    std::size_t stoppedResponseSize = 0;
-                    std::uint64_t endTimestampUs = 0;
-                    portENTER_CRITICAL(&_lock);
+                OwnerKey owner = {};
+                portENTER_CRITICAL(&_lock);
+                if (_owner_open && _stream_active)
                     owner = _owner;
-                    streamId = _stream_id;
-                    endTimestampUs = _end_timestamp_us;
-                    stoppedResponseSize = _stopped_response_size;
-                    std::memcpy(stoppedResponse, _stopped_response, stoppedResponseSize);
-                    portEXIT_CRITICAL(&_lock);
-
-                    std::uint8_t endFrame[D2B::kEnvelopeSize];
-                    const D2B::FrameWriteResult end = D2B::WriteStreamEndFrame(endFrame,
-                                                                               sizeof(endFrame),
-                                                                               streamId,
-                                                                               producer.nextSequence,
-                                                                               endTimestampUs);
-                    if (!end.ok())
-                    {
-                        FailStream(owner, streamId, true);
-                        break;
-                    }
-                    if (SendFrame(owner, HTTPD_WS_TYPE_BINARY, endFrame, end.size) != ESP_OK ||
-                        SendFrame(owner,
-                                  HTTPD_WS_TYPE_TEXT,
-                                  reinterpret_cast<std::uint8_t*>(stoppedResponse),
-                                  stoppedResponseSize) != ESP_OK)
-                    {
-                        FailStream(owner, streamId, false);
-                        break;
-                    }
-                    CompleteOrderlyStop(owner, streamId);
-                    break;
-                }
+                portEXIT_CRITICAL(&_lock);
+                if (owner.generation != 0)
+                    RequestPump(owner);
                 UpdateHighWater(_tx_stack_high_water);
             }
         }
@@ -459,9 +569,13 @@ namespace D2B_PIPELINE
 
     bool Open(const OwnerKey& owner)
     {
+        if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+            return false;
         portENTER_CRITICAL(&_lock);
-        const bool accepted = _initialized && !_task_fault && !_owner_open && owner.server != nullptr &&
-                              owner.socket >= 0 && owner.generation != 0;
+        bool accepted = _initialized && !_task_fault && !_owner_open && owner.server != nullptr &&
+                        owner.socket >= 0 && owner.generation != 0;
+        if (accepted)
+            accepted = _pump.activate(owner.generation);
         if (accepted)
         {
             _owner = owner;
@@ -472,16 +586,20 @@ namespace D2B_PIPELINE
             _output.clear();
         }
         portEXIT_CRITICAL(&_lock);
+        xSemaphoreGive(_send_mutex);
         return accepted;
     }
 
     void Close(const OwnerKey& owner, RUNTIME_EVIDENCE::Reason reason)
     {
+        if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+            return;
         std::uint32_t streamId = 0;
         OwnerKey abruptOwner = {};
         portENTER_CRITICAL(&_lock);
         if (OwnerMatchesLocked(owner))
         {
+            (void)_pump.invalidate(owner.generation);
             streamId = _stream_id;
             if (streamId != 0 && _stream_active)
                 abruptOwner = _owner;
@@ -494,6 +612,7 @@ namespace D2B_PIPELINE
             _stopped_response_size = 0;
         }
         portEXIT_CRITICAL(&_lock);
+        xSemaphoreGive(_send_mutex);
         if (streamId != 0)
             D2B_PRODUCER::Abort(streamId);
         if (abruptOwner.generation != 0)
@@ -522,18 +641,10 @@ namespace D2B_PIPELINE
             xSemaphoreGive(_send_mutex);
     }
 
-    esp_err_t SendText(const OwnerKey& owner, const char* payload, std::size_t size)
-    {
-        if (payload == nullptr || size == 0)
-            return ESP_ERR_INVALID_ARG;
-        return SendFrame(owner,
-                         HTTPD_WS_TYPE_TEXT,
-                         reinterpret_cast<std::uint8_t*>(const_cast<char*>(payload)),
-                         size);
-    }
-
     bool StartStream(const OwnerKey& owner, std::uint32_t streamId)
     {
+        if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+            return false;
         portENTER_CRITICAL(&_lock);
         const bool accepted = OwnerMatchesLocked(owner) && !_stream_active && !_stopping && streamId != 0;
         if (accepted)
@@ -550,6 +661,7 @@ namespace D2B_PIPELINE
             _diag_trend_limiter.Reset();
         }
         portEXIT_CRITICAL(&_lock);
+        xSemaphoreGive(_send_mutex);
         if (!accepted)
             return false;
         D2B_PRODUCER::Start(streamId);
@@ -568,6 +680,12 @@ namespace D2B_PIPELINE
             return false;
         const std::uint64_t recognizedAt = static_cast<std::uint64_t>(esp_timer_get_time());
 
+        if (_send_mutex == nullptr || xSemaphoreTake(_send_mutex, portMAX_DELAY) != pdTRUE)
+        {
+            D2B_PRODUCER::Abort(streamId);
+            return false;
+        }
+
         portENTER_CRITICAL(&_lock);
         const bool accepted = OwnerMatchesLocked(owner) && _stream_active && !_stopping && _stream_id == streamId;
         if (accepted)
@@ -578,6 +696,7 @@ namespace D2B_PIPELINE
             _stopped_response_size = stoppedResponseSize;
         }
         portEXIT_CRITICAL(&_lock);
+        xSemaphoreGive(_send_mutex);
         if (!accepted)
         {
             D2B_PRODUCER::Abort(streamId);

@@ -9,6 +9,8 @@
 #include <esp_random.h>
 #include <esp_rom_sys.h>
 #include <esp_system.h>
+#include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
 
 #include <cstddef>
 
@@ -22,6 +24,13 @@ namespace D2B_RUNTIME_EVIDENCE
         RTC_NOINIT_ATTR volatile std::uint32_t _bootCounterMagic = 0;
         RTC_NOINIT_ATTR volatile std::uint32_t _bootCounter = 0;
         volatile std::uint32_t _serverGeneration = 0;
+        portMUX_TYPE _pump_diag_lock = portMUX_INITIALIZER_UNLOCKED;
+        RUNTIME_EVIDENCE::RateLimiter _pump_schedule_accepted_limiter;
+        RUNTIME_EVIDENCE::RateLimiter _pump_schedule_coalesced_limiter;
+        RUNTIME_EVIDENCE::RateLimiter _pump_queue_rejected_limiter;
+        RUNTIME_EVIDENCE::RateLimiter _pump_callback_begin_limiter;
+        RUNTIME_EVIDENCE::RateLimiter _pump_callback_end_limiter;
+        RUNTIME_EVIDENCE::RateLimiter _pump_stale_limiter;
 
         RUNTIME_EVIDENCE::Resource EmptyResource(RUNTIME_EVIDENCE::Event event,
                                                   RUNTIME_EVIDENCE::Reason reason,
@@ -89,6 +98,34 @@ namespace D2B_RUNTIME_EVIDENCE
             char line[896];
             RUNTIME_EVIDENCE::FormatBootLine(resource, line, sizeof(line));
             ESP_LOGI(kTag, "%s", line);
+        }
+
+        bool PumpAllowed(RUNTIME_EVIDENCE::RateLimiter& limiter)
+        {
+            const std::uint64_t nowUs = static_cast<std::uint64_t>(esp_timer_get_time());
+            portENTER_CRITICAL(&_pump_diag_lock);
+            const bool allowed = limiter.Allow(nowUs);
+            portEXIT_CRITICAL(&_pump_diag_lock);
+            return allowed;
+        }
+
+        void EmitPump(const D2B_PIPELINE::OwnerKey& owner,
+                      const D2B_PIPELINE::Snapshot& pipeline,
+                      const D2B_PRODUCER::Snapshot& producer,
+                      RUNTIME_EVIDENCE::Reason reason,
+                      RUNTIME_EVIDENCE::RateLimiter& limiter)
+        {
+            if (!PumpAllowed(limiter))
+                return;
+            Emit(PipelineResource(RUNTIME_EVIDENCE::Event::Pump,
+                                  reason,
+                                  reason == RUNTIME_EVIDENCE::Reason::PumpQueueRejected
+                                      ? RUNTIME_EVIDENCE::Result::Rejected
+                                      : RUNTIME_EVIDENCE::Result::Observed,
+                                  owner,
+                                  pipeline,
+                                  producer,
+                                  pipeline.streamId));
         }
     } // namespace
 
@@ -250,6 +287,56 @@ namespace D2B_RUNTIME_EVIDENCE
                               pipeline,
                               producer,
                               pipeline.streamId));
+    }
+
+    void LogPumpScheduleAccepted(const D2B_PIPELINE::OwnerKey& owner,
+                                 const D2B_PIPELINE::Snapshot& pipeline,
+                                 const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner,
+                 pipeline,
+                 producer,
+                 RUNTIME_EVIDENCE::Reason::PumpScheduleAccepted,
+                 _pump_schedule_accepted_limiter);
+    }
+
+    void LogPumpScheduleCoalesced(const D2B_PIPELINE::OwnerKey& owner,
+                                  const D2B_PIPELINE::Snapshot& pipeline,
+                                  const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner,
+                 pipeline,
+                 producer,
+                 RUNTIME_EVIDENCE::Reason::PumpScheduleCoalesced,
+                 _pump_schedule_coalesced_limiter);
+    }
+
+    void LogPumpQueueRejected(const D2B_PIPELINE::OwnerKey& owner,
+                              const D2B_PIPELINE::Snapshot& pipeline,
+                              const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner, pipeline, producer, RUNTIME_EVIDENCE::Reason::PumpQueueRejected, _pump_queue_rejected_limiter);
+    }
+
+    void LogPumpCallbackBegin(const D2B_PIPELINE::OwnerKey& owner,
+                              const D2B_PIPELINE::Snapshot& pipeline,
+                              const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner, pipeline, producer, RUNTIME_EVIDENCE::Reason::PumpCallbackBegin, _pump_callback_begin_limiter);
+    }
+
+    void LogPumpCallbackEnd(const D2B_PIPELINE::OwnerKey& owner,
+                            const D2B_PIPELINE::Snapshot& pipeline,
+                            const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner, pipeline, producer, RUNTIME_EVIDENCE::Reason::PumpCallbackEnd, _pump_callback_end_limiter);
+    }
+
+    void LogPumpStale(const D2B_PIPELINE::OwnerKey& owner,
+                      const D2B_PIPELINE::Snapshot& pipeline,
+                      const D2B_PRODUCER::Snapshot& producer)
+    {
+        EmitPump(owner, pipeline, producer, RUNTIME_EVIDENCE::Reason::PumpStale, _pump_stale_limiter);
     }
 
     void LogBoot()

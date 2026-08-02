@@ -30,6 +30,8 @@ namespace RUNTIME_EVIDENCE
                 return "queue_snapshot";
             case Event::SendFailure:
                 return "send_failure";
+            case Event::Pump:
+                return "pump";
             case Event::HeapTrend:
                 return "heap_trend";
             case Event::StackTrend:
@@ -92,6 +94,18 @@ namespace RUNTIME_EVIDENCE
                 return "server_stop_failed";
             case Reason::ActiveStreamTrend:
                 return "active_stream_trend";
+            case Reason::PumpScheduleAccepted:
+                return "pump_schedule_accepted";
+            case Reason::PumpScheduleCoalesced:
+                return "pump_schedule_coalesced";
+            case Reason::PumpQueueRejected:
+                return "pump_queue_rejected";
+            case Reason::PumpCallbackBegin:
+                return "pump_callback_begin";
+            case Reason::PumpCallbackEnd:
+                return "pump_callback_end";
+            case Reason::PumpStale:
+                return "pump_stale";
             case Reason::Unknown:
             default:
                 return "unknown";
