@@ -1,6 +1,7 @@
 #include "d2b_vi_pipeline.h"
 
 #include "d2b_vi_producer.h"
+#include "d2b_runtime_evidence.h"
 #include "libs/d2b_vi/d2b_frame_writer.h"
 #include "libs/d2b_vi/d2b_output_ring.h"
 
@@ -38,6 +39,15 @@ namespace D2B_PIPELINE
         std::size_t _stopped_response_size = 0;
         std::uint32_t _encoder_stack_high_water = kEncoderStackBytes;
         std::uint32_t _tx_stack_high_water = kTxStackBytes;
+
+        bool _pending_failure = false;
+        bool _pending_failure_task_fault = false;
+        RUNTIME_EVIDENCE::Reason _pending_failure_reason = RUNTIME_EVIDENCE::Reason::SendFailure;
+        OwnerKey _pending_failure_owner = {};
+        std::uint32_t _pending_failure_stream_id = 0;
+        std::uint64_t _last_diag_producer_drops = 0;
+        std::uint64_t _last_diag_output_drops = 0;
+        RUNTIME_EVIDENCE::RateLimiter _diag_trend_limiter;
 
         StaticSemaphore_t _send_mutex_storage;
         SemaphoreHandle_t _send_mutex = nullptr;
@@ -109,6 +119,12 @@ namespace D2B_PIPELINE
                 _task_fault = _task_fault || taskFault;
                 _owner = {};
                 _owner_open = false;
+                _pending_failure = true;
+                _pending_failure_task_fault = taskFault;
+                _pending_failure_owner = owner;
+                _pending_failure_stream_id = streamId;
+                _pending_failure_reason = taskFault ? RUNTIME_EVIDENCE::Reason::InternalFailure
+                                                    : RUNTIME_EVIDENCE::Reason::SendFailure;
                 matched = true;
             }
             portEXIT_CRITICAL(&_lock);
@@ -126,6 +142,79 @@ namespace D2B_PIPELINE
                 if (closeResult != ESP_OK)
                     ESP_LOGE(kTag, "failed to schedule owner close: %s", esp_err_to_name(closeResult));
             }
+        }
+
+        void EmitPendingEvidence()
+        {
+            OwnerKey owner = {};
+            std::uint32_t streamId = 0;
+            RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::Disconnect;
+            bool failure = false;
+            bool taskFault = false;
+            portENTER_CRITICAL(&_lock);
+            if (_pending_failure)
+            {
+                owner = _pending_failure_owner;
+                streamId = _pending_failure_stream_id;
+                reason = _pending_failure_reason;
+                failure = true;
+                taskFault = _pending_failure_task_fault;
+                _pending_failure = false;
+            }
+            portEXIT_CRITICAL(&_lock);
+            if (streamId == 0 || owner.generation == 0)
+                return;
+
+            const Snapshot pipeline = GetSnapshot();
+            const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+            if (failure && !taskFault)
+            {
+                D2B_RUNTIME_EVIDENCE::LogSendFailure(owner, streamId, reason, pipeline, producer);
+                D2B_RUNTIME_EVIDENCE::LogStreamAbrupt(owner,
+                                                      streamId,
+                                                      RUNTIME_EVIDENCE::Reason::SendFailure,
+                                                      pipeline,
+                                                      producer);
+            }
+            else
+            {
+                D2B_RUNTIME_EVIDENCE::LogStreamAbrupt(owner, streamId, reason, pipeline, producer);
+            }
+        }
+
+        void EmitTxEvidence()
+        {
+            OwnerKey owner = {};
+            portENTER_CRITICAL(&_lock);
+            const bool active = _owner_open && _stream_active;
+            if (active)
+                owner = _owner;
+            portEXIT_CRITICAL(&_lock);
+            if (!active)
+                return;
+
+            const Snapshot pipeline = GetSnapshot();
+            const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+            bool outputDropsChanged = false;
+            bool producerDropsChanged = false;
+            bool trendAllowed = false;
+            portENTER_CRITICAL(&_lock);
+            outputDropsChanged = pipeline.outputQueueDropCount != _last_diag_output_drops;
+            producerDropsChanged = producer.producerDropCount != _last_diag_producer_drops;
+            _last_diag_output_drops = pipeline.outputQueueDropCount;
+            _last_diag_producer_drops = producer.producerDropCount;
+            trendAllowed = _diag_trend_limiter.Allow(static_cast<std::uint64_t>(esp_timer_get_time()));
+            portEXIT_CRITICAL(&_lock);
+            if (outputDropsChanged || producerDropsChanged)
+            {
+                D2B_RUNTIME_EVIDENCE::LogQueueSnapshot(owner,
+                                                       pipeline,
+                                                       producer,
+                                                       outputDropsChanged ? RUNTIME_EVIDENCE::Reason::OutputDrop
+                                                                          : RUNTIME_EVIDENCE::Reason::ProducerDrop);
+            }
+            if (trendAllowed)
+                D2B_RUNTIME_EVIDENCE::LogActiveTrend(owner, pipeline, producer);
         }
 
         void EncoderTask(void*)
@@ -170,7 +259,7 @@ namespace D2B_PIPELINE
                     portENTER_CRITICAL(&_lock);
                     if (write.ok() && _owner_open && _stream_active && _stream_id == streamId)
                     {
-                        _output.pushDropOldest(frame);
+                        (void)_output.pushDropOldest(frame);
                         owner = _owner;
                         accepted = true;
                     }
@@ -218,6 +307,10 @@ namespace D2B_PIPELINE
             const std::uint32_t txHighWater = _tx_stack_high_water;
             portEXIT_CRITICAL(&_lock);
             D2B_PRODUCER::Abort(streamId);
+            D2B_RUNTIME_EVIDENCE::LogStreamStopCompleted(owner,
+                                                         streamId,
+                                                         GetSnapshot(),
+                                                         D2B_PRODUCER::GetSnapshot());
             ESP_LOGI(kTag,
                      "stream stopped; stack high-water encoder=%lu tx=%lu bytes",
                      static_cast<unsigned long>(encoderHighWater),
@@ -230,6 +323,8 @@ namespace D2B_PIPELINE
             {
                 ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
                 UpdateHighWater(_tx_stack_high_water);
+                EmitPendingEvidence();
+                EmitTxEvidence();
                 while (true)
                 {
                     D2B::OutputFrame queued = {};
@@ -380,13 +475,16 @@ namespace D2B_PIPELINE
         return accepted;
     }
 
-    void Close(const OwnerKey& owner)
+    void Close(const OwnerKey& owner, RUNTIME_EVIDENCE::Reason reason)
     {
         std::uint32_t streamId = 0;
+        OwnerKey abruptOwner = {};
         portENTER_CRITICAL(&_lock);
         if (OwnerMatchesLocked(owner))
         {
             streamId = _stream_id;
+            if (streamId != 0 && _stream_active)
+                abruptOwner = _owner;
             _owner = {};
             _owner_open = false;
             _stream_active = false;
@@ -398,10 +496,16 @@ namespace D2B_PIPELINE
         portEXIT_CRITICAL(&_lock);
         if (streamId != 0)
             D2B_PRODUCER::Abort(streamId);
+        if (abruptOwner.generation != 0)
+            D2B_RUNTIME_EVIDENCE::LogStreamAbrupt(abruptOwner,
+                                                  streamId,
+                                                  reason,
+                                                  GetSnapshot(),
+                                                  D2B_PRODUCER::GetSnapshot());
         WakeTasks();
     }
 
-    void StopServer(httpd_handle_t server)
+    void StopServer(httpd_handle_t server, RUNTIME_EVIDENCE::Reason reason)
     {
         OwnerKey owner = {};
         portENTER_CRITICAL(&_lock);
@@ -409,7 +513,7 @@ namespace D2B_PIPELINE
             owner = _owner;
         portEXIT_CRITICAL(&_lock);
         if (owner.server != nullptr)
-            Close(owner);
+            Close(owner, reason);
     }
 
     void QuiesceSends()
@@ -441,12 +545,16 @@ namespace D2B_PIPELINE
             _end_timestamp_us = 0;
             _stopped_response_size = 0;
             _output.clear();
+            _last_diag_producer_drops = 0;
+            _last_diag_output_drops = 0;
+            _diag_trend_limiter.Reset();
         }
         portEXIT_CRITICAL(&_lock);
         if (!accepted)
             return false;
         D2B_PRODUCER::Start(streamId);
         WakeTasks();
+        D2B_RUNTIME_EVIDENCE::LogStreamStart(owner, streamId, GetSnapshot(), D2B_PRODUCER::GetSnapshot());
         return true;
     }
 
@@ -475,6 +583,10 @@ namespace D2B_PIPELINE
             D2B_PRODUCER::Abort(streamId);
             return false;
         }
+        D2B_RUNTIME_EVIDENCE::LogStreamStopAccepted(owner,
+                                                    streamId,
+                                                    GetSnapshot(),
+                                                    D2B_PRODUCER::GetSnapshot());
         WakeTasks();
         return true;
     }

@@ -36,6 +36,15 @@ private:
     static HAL* _hal;
 
 public:
+    enum class WebServerReason
+    {
+        Unspecified,
+        NetworkSettingsStart,
+        NetworkSettingsIntentionalStop,
+        DownloadStart,
+        DownloadIntentionalStop,
+    };
+
     /**
      * @brief Get HAL instance
      *
@@ -609,14 +618,29 @@ public:
     /*                                 Web server                                 */
     /* -------------------------------------------------------------------------- */
 public:
-    static bool StartWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode = false)
+    static bool StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                               bool autoWifiMode = false,
+                               WebServerReason reason = WebServerReason::Unspecified)
     {
-        return Get()->startWebServer(onLogPageRender, autoWifiMode);
+        return Get()->startWebServer(onLogPageRender, autoWifiMode, reason);
     }
-    virtual bool startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode) { return false; }
+    virtual bool startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                bool autoWifiMode,
+                                WebServerReason reason = WebServerReason::Unspecified)
+    {
+        (void)reason;
+        return false;
+    }
 
-    static bool StopWebServer() { return Get()->stopWebServer(); }
-    virtual bool stopWebServer() { return true; }
+    static bool StopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    {
+        return Get()->stopWebServer(reason);
+    }
+    virtual bool stopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    {
+        (void)reason;
+        return true;
+    }
 
     static std::string GetSystemConfigUrl() { return Get()->getSystemConfigUrl(); }
     virtual std::string getSystemConfigUrl() { return "http://192.168.4.1/syscfg"; }

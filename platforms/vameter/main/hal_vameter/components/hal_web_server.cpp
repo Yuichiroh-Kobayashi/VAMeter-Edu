@@ -11,6 +11,7 @@
 #include "libs/local_csv_download/local_csv_stream.h"
 #include "libs/web_server_owner/web_server_owner.h"
 #include "d2b_esp_transport.h"
+#include "d2b_runtime_evidence.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
@@ -42,18 +43,49 @@ namespace
     PsychicHttpServer* _http_server = nullptr;
     WEB_SERVER_OWNER::State _http_server_owner;
 
-    bool StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner)
+    RUNTIME_EVIDENCE::Owner RuntimeOwner(WEB_SERVER_OWNER::Owner owner)
     {
+        switch (owner)
+        {
+        case WEB_SERVER_OWNER::Owner::System:
+            return RUNTIME_EVIDENCE::Owner::System;
+        case WEB_SERVER_OWNER::Owner::Download:
+            return RUNTIME_EVIDENCE::Owner::Download;
+        case WEB_SERVER_OWNER::Owner::None:
+        default:
+            return RUNTIME_EVIDENCE::Owner::None;
+        }
+    }
+
+    bool StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner, RUNTIME_EVIDENCE::Reason reason)
+    {
+        const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
+        D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStart,
+                                               runtimeOwner,
+                                               reason,
+                                               _http_server_owner.generation());
         if (!_http_server_owner.acquire(owner))
         {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Rejected,
+                                                   _http_server_owner.generation());
             spdlog::error("port 80 already owned by another server lifecycle");
             return false;
         }
+        const std::uint32_t generation = _http_server_owner.generation();
+        D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
 
         OwnedPsychicHttpServer* server = new (std::nothrow) OwnedPsychicHttpServer;
         if (server == nullptr)
         {
             _http_server_owner.release(owner);
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Failed,
+                                                   generation);
             spdlog::error("failed to allocate port 80 server");
             return false;
         }
@@ -81,23 +113,52 @@ namespace
                     spdlog::critical("failed to stop partially started port 80 server: {}", esp_err_to_name(stopResult));
                 }
             }
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Failed,
+                                                   generation);
             return false;
         }
 
         _http_server = server;
+        D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                               runtimeOwner,
+                                               reason,
+                                               RUNTIME_EVIDENCE::Result::Succeeded,
+                                               generation);
         return true;
     }
 
-    bool StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner)
+    bool StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner, RUNTIME_EVIDENCE::Reason reason)
     {
+        const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
+        D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStop,
+                                               runtimeOwner,
+                                               reason,
+                                               _http_server_owner.generation());
         if (_http_server_owner.owner() == WEB_SERVER_OWNER::Owner::None)
+        {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
+                                                   runtimeOwner,
+                                                   reason,
+                                                   RUNTIME_EVIDENCE::Result::Completed,
+                                                   _http_server_owner.generation());
             return true;
+        }
 
         if (_http_server_owner.owner() != owner || _http_server == nullptr)
         {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStopFailed,
+                                                   RUNTIME_EVIDENCE::Result::Rejected,
+                                                   _http_server_owner.generation());
             spdlog::error("port 80 stop rejected for non-owner lifecycle");
             return false;
         }
+
+        const std::uint32_t generation = _http_server_owner.generation();
 
         if (owner == WEB_SERVER_OWNER::Owner::System)
             D2B_ESP::Stop(_http_server->server);
@@ -105,12 +166,24 @@ namespace
         const esp_err_t stopResult = httpd_stop(_http_server->server);
         if (stopResult != ESP_OK)
         {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStopFailed,
+                                                   RUNTIME_EVIDENCE::Result::Failed,
+                                                   generation);
             spdlog::error("port 80 server stop failed: {}", esp_err_to_name(stopResult));
             return false;
         }
 
         _http_server = nullptr;
-        return _http_server_owner.release(owner);
+        const bool released = _http_server_owner.release(owner);
+        D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
+                                               runtimeOwner,
+                                               released ? reason : RUNTIME_EVIDENCE::Reason::ServerStopFailed,
+                                               released ? RUNTIME_EVIDENCE::Result::Completed
+                                                        : RUNTIME_EVIDENCE::Result::Failed,
+                                               generation);
+        return released;
     }
 } // namespace
 
@@ -368,7 +441,9 @@ void HAL_VAMeter::_web_server_ws_api_loading()
 /* -------------------------------------------------------------------------- */
 /*                                 Web server                                 */
 /* -------------------------------------------------------------------------- */
-bool HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode)
+bool HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                 bool autoWifiMode,
+                                 WebServerReason reason)
 {
     // if (!connectWifi(onLogPageRender, false))
     //     return false;
@@ -399,7 +474,10 @@ HELL:
     }
 
     onLogPageRender("start web server", true, true);
-    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System))
+    const RUNTIME_EVIDENCE::Reason evidenceReason =
+        reason == WebServerReason::NetworkSettingsStart ? RUNTIME_EVIDENCE::Reason::NetworkSettingsStart
+                                                        : RUNTIME_EVIDENCE::Reason::OwnerAcquire;
+    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, evidenceReason))
     {
         _stop_ap_mode();
         return false;
@@ -407,9 +485,10 @@ HELL:
 
     _web_server_page_loading();
     _web_server_api_loading();
+    D2B_ESP::SetServerGeneration(_http_server_owner.generation());
     if (!D2B_ESP::Register(_http_server->server))
     {
-        StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System);
+        StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, RUNTIME_EVIDENCE::Reason::ServerStartFailed);
         _stop_ap_mode();
         return false;
     }
@@ -422,11 +501,15 @@ HELL:
     return true;
 }
 
-bool HAL_VAMeter::stopWebServer()
+bool HAL_VAMeter::stopWebServer(WebServerReason reason)
 {
     spdlog::info("stop web server");
 
-    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System))
+    const RUNTIME_EVIDENCE::Reason evidenceReason =
+        reason == WebServerReason::NetworkSettingsIntentionalStop
+            ? RUNTIME_EVIDENCE::Reason::NetworkSettingsIntentionalStop
+            : RUNTIME_EVIDENCE::Reason::OwnerRelease;
+    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, evidenceReason))
         return false;
 
     // Stop ap
@@ -537,7 +620,7 @@ bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
         return false;
     }
 
-    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download))
+    if (!StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download, RUNTIME_EVIDENCE::Reason::DownloadStart))
     {
         _download_selection.clear();
         _stop_ap_mode();
@@ -637,7 +720,8 @@ void HAL_VAMeter::stopDownloadServer()
 {
     spdlog::info("stop download server");
 
-    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download))
+    if (!StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download,
+                             RUNTIME_EVIDENCE::Reason::DownloadIntentionalStop))
         return;
 
     _download_selection.clear();

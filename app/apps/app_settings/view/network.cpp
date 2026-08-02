@@ -65,7 +65,7 @@ void AppSettings::_on_page_network()
         // Configure via Web
         else if (selected == 1)
         {
-            if (!HAL::StartWebServer(OnLogPageRender))
+            if (!HAL::StartWebServer(OnLogPageRender, false, HAL::WebServerReason::NetworkSettingsStart))
             {
                 spdlog::error("Failed to start system web server");
                 continue;
@@ -140,7 +140,7 @@ void AppSettings::_on_page_network()
                 },
                 nullptr);
 
-            HAL::StopWebServer();
+            HAL::StopWebServer(HAL::WebServerReason::NetworkSettingsIntentionalStop);
         }
         // AP Suffix Setting
         else if (selected == 2)

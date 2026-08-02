@@ -6,6 +6,7 @@
 #include <app.h>
 #include <mooncake.h>
 #include "hal_vameter/hal_vameter.h"
+#include "hal_vameter/components/d2b_runtime_evidence.h"
 #include <esp_partition.h>
 #include <spi_flash_mmap.h>
 #include <nvs_flash.h>
@@ -13,6 +14,7 @@
 
 extern "C" void app_main(void)
 {
+    D2B_RUNTIME_EVIDENCE::LogBoot();
     ESP_LOGI("boot", "HELLO from app_main");
     spdlog::set_pattern("[%H:%M:%S] [%L] %v");
     // spdlog::set_level(spdlog::level::warn);

@@ -52,8 +52,26 @@ Relevant host test directories:
 
 - `tests/local_csv_download/`
 - `tests/recorder_followup/`
+- `tests/runtime_evidence/`
 
 Host tests should cover pure naming, parser, selection, lifecycle, and Auto-scale behavior where possible.
+
+Runtime evidence の純粋 C++11 formatter、mapping、rate limiter、web-server generation の
+focused test は次で実行する。
+
+```bash
+ctest --test-dir build/desktop --output-on-failure -R 'runtime_evidence|web_server_owner'
+```
+
+ESP-IDF 側では `D2B_DIAG` 行に internal 8-bit heap と既存 D2B task の byte 単位 stack
+high-water が含まれる。これらは診断用の runtime evidence であり、物理測定値や均一周期を
+保証するものではない。active-stream trend は既存 TX task から出力し、5,000,000 us 未満
+では繰り返さない。
+
+ESP-IDF の static resource gate は、dedicated 16 KiB IRAM display を informational only として扱う。
+authoritative gate は application/bootloader/partition の successful link、`iram0_0_seg` overflow が
+ないこと、linker map における full `iram0_0_seg` remaining headroom、shared D/IRAM remaining
+capacity、および同一基準 build との差分である。これらは広範な IRAM 削減を示唆するものではない。
 
 A desktop PASS does not prove:
 

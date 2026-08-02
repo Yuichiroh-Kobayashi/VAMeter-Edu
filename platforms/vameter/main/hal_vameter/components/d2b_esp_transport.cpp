@@ -1,6 +1,7 @@
 #include "d2b_esp_transport.h"
 #include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
+#include "d2b_runtime_evidence.h"
 
 #include "libs/d2b_vi/d2b_control.h"
 #include "libs/d2b_vi/d2b_capabilities.h"
@@ -85,6 +86,7 @@ namespace D2B_ESP
                     _owner.active = false;
                     return false;
                 }
+                D2B_RUNTIME_EVIDENCE::LogWebSocketConnect(PipelineOwner(_owner));
                 ESP_LOGI(kTag, "WebSocket owner opened, generation=%lu", static_cast<unsigned long>(_owner.generation));
                 return true;
             }
@@ -190,12 +192,15 @@ namespace D2B_ESP
                 return ESP_OK;
             }
 
-            void close(httpd_handle_t server, int socket)
+            void close(httpd_handle_t server,
+                       int socket,
+                       RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::Disconnect)
             {
                 if (!matches(server, socket))
                     return;
                 const std::uint32_t generation = _owner.generation;
-                D2B_PIPELINE::Close(PipelineOwner(_owner));
+                const D2B_PIPELINE::OwnerKey owner = PipelineOwner(_owner);
+                D2B_PIPELINE::Close(owner, reason);
                 D2B::CloseSession(_session);
                 _buffer.reset();
                 _owner.server = 0;
@@ -203,15 +208,21 @@ namespace D2B_ESP
                 _owner.generation = 0;
                 _owner.active = false;
                 _violations = 0;
+                D2B_RUNTIME_EVIDENCE::LogWebSocketDisconnect(owner, reason);
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
             }
 
             void stop(httpd_handle_t server)
             {
                 if (_owner.active && _owner.server == server)
-                    close(_owner.server, _owner.socket);
-                D2B_PIPELINE::StopServer(server);
+                    close(_owner.server, _owner.socket, RUNTIME_EVIDENCE::Reason::ServerStop);
+                D2B_PIPELINE::StopServer(server, RUNTIME_EVIDENCE::Reason::ServerStop);
                 D2B_PIPELINE::QuiesceSends();
+            }
+
+            void setServerGeneration(std::uint32_t generation)
+            {
+                D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
             }
 
             bool streaming() const { return _owner.active && _session.state == D2B::ControlState::Streaming; }
@@ -390,7 +401,12 @@ namespace D2B_ESP
         return true;
     }
 
-    void OnClientClosed(httpd_handle_t server, int socket) { GetTransport().close(server, socket); }
+    void SetServerGeneration(std::uint32_t generation) { GetTransport().setServerGeneration(generation); }
+
+    void OnClientClosed(httpd_handle_t server, int socket)
+    {
+        GetTransport().close(server, socket, RUNTIME_EVIDENCE::Reason::Disconnect);
+    }
 
     void Stop(httpd_handle_t server) { GetTransport().stop(server); }
 } // namespace D2B_ESP

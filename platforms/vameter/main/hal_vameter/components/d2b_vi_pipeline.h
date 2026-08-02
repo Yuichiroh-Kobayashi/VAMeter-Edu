@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "libs/runtime_evidence/runtime_evidence.h"
+
 namespace D2B_PIPELINE
 {
     struct OwnerKey
@@ -30,8 +32,10 @@ namespace D2B_PIPELINE
 
     bool Initialize();
     bool Open(const OwnerKey& owner);
-    void Close(const OwnerKey& owner);
-    void StopServer(httpd_handle_t server);
+    void Close(const OwnerKey& owner,
+               RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::Disconnect);
+    void StopServer(httpd_handle_t server,
+                    RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::ServerStop);
     void QuiesceSends();
 
     esp_err_t SendText(const OwnerKey& owner, const char* payload, std::size_t size);

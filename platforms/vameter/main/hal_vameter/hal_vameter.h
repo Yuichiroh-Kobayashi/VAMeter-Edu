@@ -116,8 +116,10 @@ public:
     bool renderCustomStartupImage() override;
     std::vector<std::string> getStartupImageList() override;
 
-    bool startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode) override;
-    bool stopWebServer() override;
+    bool startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                        bool autoWifiMode,
+                        WebServerReason reason = WebServerReason::Unspecified) override;
+    bool stopWebServer(WebServerReason reason = WebServerReason::Unspecified) override;
     std::string getSystemConfigUrl() override;
 
     // Local download server
