@@ -245,6 +245,21 @@ namespace
         return WEB_SERVER_OWNER::StartResult::Started;
     }
 
+    WEB_SERVER_OWNER::StartResult MapApStartResult(WEB_SERVER_OWNER::ApStartResult result)
+    {
+        switch (result)
+        {
+        case WEB_SERVER_OWNER::ApStartResult::Started:
+            return WEB_SERVER_OWNER::StartResult::Started;
+        case WEB_SERVER_OWNER::ApStartResult::StaDisconnectFailed:
+        case WEB_SERVER_OWNER::ApStartResult::StartFailed:
+            return WEB_SERVER_OWNER::StartResult::ApStartFailed;
+        case WEB_SERVER_OWNER::ApStartResult::StopRetryRequired:
+        default:
+            return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        }
+    }
+
     WEB_SERVER_OWNER::StopResult StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner, RUNTIME_EVIDENCE::Reason reason)
     {
         const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
@@ -486,7 +501,14 @@ WEB_SERVER_OWNER::StartResult HAL_VAMeter::startWebServer(OnLogPageRenderCallbac
                                                           bool autoWifiMode,
                                                           WebServerReason reason)
 {
-    // Wi-Fi/AP setup is performed only after the owner preflight below.
+    // A pending AP cleanup is the first fail-closed gate.  Do not acquire the
+    // HTTPD owner, connect Wi-Fi, or publish any server side effect while it
+    // is pending.
+    if (_ap_stop_retry_required())
+    {
+        spdlog::error("web server start rejected: AP stop retry required");
+        return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+    }
 
     const WEB_SERVER_OWNER::StartPreflightResult preflight =
         WEB_SERVER_OWNER::StartPreflight(_http_server_owner,
@@ -521,7 +543,9 @@ HELL:
     else
     {
         onLogPageRender("start ap mode", true, true);
-        _start_ap_mode();
+        const WEB_SERVER_OWNER::StartResult apStart = MapApStartResult(_start_ap_mode());
+        if (apStart != WEB_SERVER_OWNER::StartResult::Started)
+            return apStart;
     }
 
     onLogPageRender("start web server", true, true);
@@ -533,7 +557,11 @@ HELL:
     if (ownedStart != WEB_SERVER_OWNER::StartResult::Started)
     {
         if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(ownedStart))
-            _stop_ap_mode();
+        {
+            const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+            if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+                return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        }
         return ownedStart;
     }
 
@@ -546,8 +574,9 @@ HELL:
             StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, RUNTIME_EVIDENCE::Reason::ServerStartFailed);
         if (!WEB_SERVER_OWNER::IsStopSuccessful(cleanup))
             return WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
-        if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure))
-            _stop_ap_mode();
+        const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+        if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+            return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
         return WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure;
     }
     spdlog::info("web server started");
@@ -569,8 +598,8 @@ WEB_SERVER_OWNER::StopResult HAL_VAMeter::stopWebServer(WebServerReason reason)
         serverResult == WEB_SERVER_OWNER::StopResult::RejectedWrongOwner)
         return serverResult;
 
-    // Stop ap
-    if (!_stop_ap_mode())
+    const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+    if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
         return WEB_SERVER_OWNER::StopResult::ApStopFailed;
 
     return serverResult;
@@ -659,6 +688,14 @@ namespace
 
 bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
+    // Keep a pending AP cleanup as a hard boundary.  In particular, do not
+    // validate/publish a new selection or allocate/listen an HTTPD wrapper.
+    if (_ap_stop_retry_required())
+    {
+        spdlog::error("download server start rejected: AP stop retry required");
+        return false;
+    }
+
     if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
     {
         spdlog::warn("reject local download for invalid record name: {}", recordName);
@@ -678,9 +715,12 @@ bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
     _download_selection.set(recordName, recordPath);
 
     // Publish the complete selection before making the AP reachable.
-    if (!_start_ap_mode())
+    const WEB_SERVER_OWNER::ApStartResult apStart = _start_ap_mode();
+    if (apStart != WEB_SERVER_OWNER::ApStartResult::Started)
     {
         _download_selection.clear();
+        if (apStart == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired)
+            spdlog::error("download server AP start cleanup retained: stop retry required");
         return false;
     }
 
@@ -690,7 +730,11 @@ bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
     {
         _download_selection.clear();
         if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(ownedStart))
-            _stop_ap_mode();
+        {
+            const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+            if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+                spdlog::error("download server rollback retained AP: stop retry required");
+        }
         return false;
     }
 
@@ -795,8 +839,9 @@ void HAL_VAMeter::stopDownloadServer()
 
     _download_selection.clear();
 
-    // Stop AP mode
-    _stop_ap_mode();
+    const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+    if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+        spdlog::error("download server AP stop failed: stop retry required");
 
 }
 

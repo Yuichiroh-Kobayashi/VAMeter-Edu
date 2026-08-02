@@ -5,6 +5,7 @@
  */
 #pragma once
 #include <hal/hal.h>
+#include "libs/web_server_owner/web_server_ap_operation.h"
 
 class HAL_VAMeter : public HAL
 {
@@ -36,9 +37,12 @@ private:
 
     std::string _get_mac();
     std::string _get_ip();
-    bool _start_ap_mode();
-    bool _stop_ap_mode();
+    WEB_SERVER_OWNER::ApStartResult _start_ap_mode();
+    WEB_SERVER_OWNER::ApStopResult _stop_ap_mode();
+    bool _ap_stop_retry_required() const;
     std::vector<std::string> _get_wifi_list();
+
+    WEB_SERVER_OWNER::ApOperation _ap_operation;
 
     void _web_server_page_loading();
     void _web_server_api_loading();

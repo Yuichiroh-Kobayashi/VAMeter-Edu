@@ -10,6 +10,8 @@ namespace WEB_SERVER_OWNER
     {
         Started,
         BusyOtherOwner,
+        ApStartFailed,
+        RetainedApNeedsStopRetry,
         RetainedServerNeedsStopRetry,
         AllocationOrListenFailure,
         RouteOrRegistrationFailure,

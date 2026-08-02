@@ -10,6 +10,10 @@ namespace NETWORK_WEB_SERVER_RECOVERY
             return Action::ContinueWorkflow;
         case WEB_SERVER_OWNER::StartResult::BusyOtherOwner:
             return Action::ShowBusyNotice;
+        case WEB_SERVER_OWNER::StartResult::ApStartFailed:
+            return Action::ShowStartFailure;
+        case WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry:
+            return Action::EnterStopRecovery;
         case WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry:
             return Action::EnterStopRecovery;
         case WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure:
