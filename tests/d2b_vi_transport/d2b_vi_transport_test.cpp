@@ -1,6 +1,8 @@
 #include "d2b_control.h"
 #include "d2b_message_buffer.h"
 #include "d2b_session.h"
+#include "d2b_stream_start_disposition.h"
+#include "d2b_transport_runtime_state.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -35,6 +37,37 @@ int main()
     using D2B::ControlState;
     using D2B::ErrorCode;
     using D2B::Profile;
+
+    Expect(D2B::DecideStreamStartDisposition(true) == D2B::StreamStartDisposition::ContinueConnection,
+           "successful publication keeps the connection");
+    Expect(D2B::DecideStreamStartDisposition(false) == D2B::StreamStartDisposition::CloseConnection,
+           "publication failure closes the handler connection");
+
+    const D2B::PublicStreamingSnapshot coherent = {
+        true,
+        true,
+        7,
+        static_cast<std::uintptr_t>(0x1234),
+        9,
+        true,
+        true,
+        true,
+        false,
+        false,
+        7,
+        true,
+        7,
+        true,
+        static_cast<std::uintptr_t>(0x1234),
+        9,
+    };
+    Expect(D2B::IsPublicStreaming(coherent), "status is streaming only for coherent owner snapshots");
+    D2B::PublicStreamingSnapshot stopFailed = coherent;
+    stopFailed.lifecycleAccepting = false;
+    Expect(!D2B::IsPublicStreaming(stopFailed), "stop-failed lifecycle reports idle");
+    D2B::PublicStreamingSnapshot mismatched = coherent;
+    mismatched.producerStreamId = 8;
+    Expect(!D2B::IsPublicStreaming(mismatched), "stream ID mismatch reports idle");
 
     const D2B::ParseResult hello = Parse("{\"type\":\"hello\",\"protocol\":\"d2b-stream\",\"versions\":[\"1.0\",\"0.1\"]}");
     Expect(hello.ok() && hello.message.type == ClientMessageType::Hello && hello.message.supportsVersion01,
@@ -139,6 +172,35 @@ int main()
     response = D2B::HandleClientMessage(session, matchingStop.message, streamIdCounter);
     Expect(response.ok() && session.state == ControlState::Ready && !session.ownsStream && session.streamId == 0,
            "matching stop releases ownership");
+    response = D2B::HandleClientMessage(session, vi.message, streamIdCounter);
+    Expect(response.ok() && session.state == ControlState::Streaming && session.ownsStream && session.streamId == 2,
+           "orderly stop permits a second stream on the same connection with a new id");
+    const D2B::ParseResult reconnectStop = Parse("{\"type\":\"stop_stream\",\"stream_id\":2}");
+    response = D2B::HandleClientMessage(session, reconnectStop.message, streamIdCounter);
+    Expect(response.ok() && session.state == ControlState::Ready && !session.ownsStream && session.streamId == 0,
+           "second orderly stream returns the connection to ready");
+
+    D2B::Session publicationFailed = {};
+    D2B::OpenSession(publicationFailed);
+    response = D2B::HandleClientMessage(publicationFailed, hello.message, streamIdCounter);
+    Expect(response.ok() && publicationFailed.state == ControlState::Ready,
+           "publication-failure session completes hello before stream start");
+    response = D2B::HandleClientMessage(publicationFailed, vi.message, streamIdCounter);
+    Expect(response.ok() && publicationFailed.state == ControlState::Streaming && publicationFailed.streamId == 3,
+           "production session allocates an id before publication callback");
+    Expect(D2B::DecideStreamStartDisposition(false) == D2B::StreamStartDisposition::CloseConnection,
+           "failed publication selects handler close disposition");
+    D2B::CloseSession(publicationFailed);
+
+    D2B::Session reconnected = {};
+    D2B::OpenSession(reconnected);
+    response = D2B::HandleClientMessage(reconnected, hello.message, streamIdCounter);
+    Expect(response.ok() && reconnected.state == ControlState::Ready,
+           "reconnect opens a new production session");
+    response = D2B::HandleClientMessage(reconnected, vi.message, streamIdCounter);
+    Expect(response.ok() && reconnected.state == ControlState::Streaming && reconnected.streamId == 4,
+           "reconnect receives a fresh persistent stream id after publication close");
+    D2B::CloseSession(reconnected);
 
     const D2B::ParseResult nulPing = Parse("{\"type\":\"ping\",\"correlation\":\"a\\u0000b\"}");
     response = D2B::HandleClientMessage(session, nulPing.message, streamIdCounter);

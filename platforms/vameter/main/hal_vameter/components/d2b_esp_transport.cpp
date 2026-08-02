@@ -7,6 +7,8 @@
 #include "libs/d2b_vi/d2b_capabilities.h"
 #include "libs/d2b_vi/d2b_message_buffer.h"
 #include "libs/d2b_vi/d2b_session.h"
+#include "libs/d2b_vi/d2b_stream_start_disposition.h"
+#include "libs/d2b_vi/d2b_transport_runtime_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -50,7 +52,14 @@ namespace D2B_ESP
         class Transport
         {
         public:
-            Transport() : _owner(), _session(), _buffer(), _streamIdCounter(0), _generationCounter(0), _violations(0)
+            Transport()
+                : _owner(),
+                  _session(),
+                  _buffer(),
+                  _streamIdCounter(0),
+                  _generationCounter(0),
+                  _serverGeneration(0),
+                  _violations(0)
             {
                 _owner.server = 0;
                 _owner.socket = -1;
@@ -183,10 +192,12 @@ namespace D2B_ESP
                 if (!wasStreaming && isStreaming)
                 {
                     SessionPublication publication = {this, proposedSession, PipelineOwner(_owner)};
-                    if (!D2B_PIPELINE::StartStream(PipelineOwner(_owner),
-                                                   proposedSession.streamId,
-                                                   &Transport::PublishSession,
-                                                   &publication))
+                    const bool pipelineStarted = D2B_PIPELINE::StartStream(PipelineOwner(_owner),
+                                                                             proposedSession.streamId,
+                                                                             &Transport::PublishSession,
+                                                                             &publication);
+                    if (D2B::DecideStreamStartDisposition(pipelineStarted) ==
+                        D2B::StreamStartDisposition::CloseConnection)
                         return ESP_FAIL;
                 }
                 else
@@ -239,14 +250,39 @@ namespace D2B_ESP
                     _owner.active = false;
                     _violations = 0;
                 }
+                _serverGeneration = 0;
             }
 
             void setServerGeneration(std::uint32_t generation)
             {
+                _serverGeneration = generation;
                 D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
             }
 
-            bool streaming() const { return _owner.active && _session.state == D2B::ControlState::Streaming; }
+            D2B::PublicStreamingSnapshot publicSnapshot(const D2B_PIPELINE::Snapshot& pipeline,
+                                                         const D2B_PRODUCER::Snapshot& producer) const
+            {
+                const D2B::PublicStreamingSnapshot snapshot = {
+                    _owner.active,
+                    _session.state == D2B::ControlState::Streaming,
+                    _session.streamId,
+                    reinterpret_cast<std::uintptr_t>(_owner.server),
+                    _serverGeneration,
+                    pipeline.initialized,
+                    pipeline.ownerOpen,
+                    pipeline.streamActive,
+                    pipeline.stopping,
+                    pipeline.taskFault,
+                    pipeline.streamId,
+                    producer.active,
+                    producer.streamId,
+                    pipeline.lifecycleAccepting,
+                    pipeline.lifecycleHandleKey,
+                    pipeline.lifecycleGeneration,
+                };
+                return snapshot;
+            }
+
             unsigned connectedCount() const { return _owner.active ? 1U : 0U; }
 
         private:
@@ -329,6 +365,7 @@ namespace D2B_ESP
             D2B::MessageBuffer _buffer;
             std::uint32_t _streamIdCounter;
             std::uint32_t _generationCounter;
+            std::uint32_t _serverGeneration;
             unsigned _violations;
             mutable char _originBuffer[192];
             mutable char _hostBuffer[128];
@@ -362,8 +399,9 @@ namespace D2B_ESP
             char response[384];
             const std::uint64_t maximumSafeInteger = 9007199254740991ULL;
             const std::uint64_t rawUptime = static_cast<std::uint64_t>(esp_timer_get_time());
-            const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
             const D2B_PIPELINE::Snapshot pipeline = D2B_PIPELINE::GetSnapshot();
+            const D2B_PRODUCER::Snapshot producer = D2B_PRODUCER::GetSnapshot();
+            const D2B::PublicStreamingSnapshot transport = GetTransport().publicSnapshot(pipeline, producer);
             const std::uint64_t producerDrops =
                 producer.producerDropCount > maximumSafeInteger ? maximumSafeInteger : producer.producerDropCount;
             const std::uint64_t outputDrops = pipeline.outputQueueDropCount > maximumSafeInteger
@@ -379,7 +417,7 @@ namespace D2B_ESP
                                              "\"connected_client_count\":%u,\"producer_drop_count\":%llu,"
                                              "\"output_queue_drop_count\":%llu,\"queued_sample_count\":%llu,"
                                              "\"uptime_us\":%llu}",
-                                             GetTransport().streaming() ? "streaming" : "idle",
+                                             D2B::IsPublicStreaming(transport) ? "streaming" : "idle",
                                              GetTransport().connectedCount(),
                                              static_cast<unsigned long long>(producerDrops),
                                              static_cast<unsigned long long>(outputDrops),

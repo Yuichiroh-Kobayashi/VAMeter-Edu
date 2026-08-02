@@ -897,6 +897,7 @@ namespace D2B_PIPELINE
     Snapshot GetSnapshot()
     {
         portENTER_CRITICAL(&_lock);
+        const D2B_HTTPD_LIFECYCLE::Snapshot lifecycle = _lifecycle.snapshot();
         const Snapshot snapshot = {
             _initialized,
             _owner_open,
@@ -904,6 +905,9 @@ namespace D2B_PIPELINE
             _stopping,
             _task_fault,
             _stream_id,
+            lifecycle.accepting,
+            lifecycle.handleKey,
+            lifecycle.generation,
             static_cast<std::uint32_t>(_output.queuedCount()),
             _output.outputQueueDropCount(),
             _encoder_stack_high_water,

@@ -316,14 +316,16 @@ namespace
         Expect(publicationFailure.open(), "publication failure retry opens owner");
         Expect(!publicationFailure.startStream(false) && publicationFailure.invariant() &&
                    !publicationFailure.mutexHeld,
-               "publication failure aborts producer without invalidating connection pump");
-        const D2B_HTTPD_SEND_PUMP::Snapshot retryIdle = publicationFailure.pump.snapshot();
-        Expect(retryIdle.active && !retryIdle.pending && !retryIdle.executing,
-               "publication failure leaves pump active and idle for retry");
-        Expect(publicationFailure.startStream(true) && publicationFailure.orderlyStop() &&
+               "publication failure rolls back producer before handler closes connection");
+        publicationFailure.closeCallback();
+        const D2B_HTTPD_SEND_PUMP::Snapshot closedAfterFailure = publicationFailure.pump.snapshot();
+        Expect(!closedAfterFailure.active && !closedAfterFailure.pending && !closedAfterFailure.executing,
+               "publication failure closes and invalidates the connection pump");
+        Expect(publicationFailure.open() && publicationFailure.startStream(true) &&
+                   publicationFailure.activeStreamId != 1 && publicationFailure.orderlyStop() &&
                    publicationFailure.invariant() && !publicationFailure.mutexHeld &&
                    publicationFailure.queueWorkCalls == 1,
-               "publication failure retry starts and completes a stream with accepted queue_work");
+               "reconnect obtains a new stream id after publication failure");
 
         model.closeCallback();
         const D2B_HTTPD_SEND_PUMP::ScheduleDecision closeQueue = model.queueWork();

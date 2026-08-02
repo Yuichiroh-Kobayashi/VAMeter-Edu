@@ -4,7 +4,7 @@
 
 namespace WEB_SERVER_OWNER
 {
-    State::State(std::uint32_t generationSeed) : _owner(Owner::None), _generation(generationSeed) {}
+    State::State(std::uint32_t generationSeed) : _owner(Owner::None), _generation(generationSeed), _retained(false) {}
 
     bool State::acquire(Owner owner)
     {
@@ -17,6 +17,7 @@ namespace WEB_SERVER_OWNER
         if (_generation == 0)
             ++_generation;
         _owner = owner;
+        _retained = false;
         return true;
     }
 
@@ -26,8 +27,13 @@ namespace WEB_SERVER_OWNER
             return false;
 
         _owner = Owner::None;
+        _retained = false;
         return true;
     }
+
+    void State::markRetained() { _retained = true; }
+
+    bool State::retained() const { return _retained; }
 
     Owner State::owner() const { return _owner; }
 

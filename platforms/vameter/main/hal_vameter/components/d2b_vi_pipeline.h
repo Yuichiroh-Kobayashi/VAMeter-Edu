@@ -24,6 +24,9 @@ namespace D2B_PIPELINE
         bool stopping;
         bool taskFault;
         std::uint32_t streamId;
+        bool lifecycleAccepting;
+        std::uintptr_t lifecycleHandleKey;
+        std::uint32_t lifecycleGeneration;
         std::uint32_t queuedOutputFrames;
         std::uint64_t outputQueueDropCount;
         std::uint32_t encoderStackHighWaterBytes;

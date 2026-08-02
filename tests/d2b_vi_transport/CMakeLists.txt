@@ -8,6 +8,8 @@ add_executable(d2b_vi_transport_test
     ../../app/libs/d2b_vi/d2b_control.cpp
     ../../app/libs/d2b_vi/d2b_message_buffer.cpp
     ../../app/libs/d2b_vi/d2b_session.cpp
+    ../../app/libs/d2b_vi/d2b_stream_start_disposition.cpp
+    ../../app/libs/d2b_vi/d2b_transport_runtime_state.cpp
 )
 
 target_include_directories(d2b_vi_transport_test PRIVATE

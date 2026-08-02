@@ -18,11 +18,14 @@ namespace WEB_SERVER_OWNER
 
         bool acquire(Owner owner);
         bool release(Owner owner);
+        void markRetained();
+        bool retained() const;
         Owner owner() const;
         std::uint32_t generation() const;
 
     private:
         Owner _owner;
         std::uint32_t _generation;
+        bool _retained;
     };
 } // namespace WEB_SERVER_OWNER

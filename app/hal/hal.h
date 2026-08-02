@@ -23,6 +23,7 @@
 #include <LovyanGFX.hpp>
 #include "types.h"
 #endif
+#include "../libs/web_server_owner/web_server_results.h"
 
 /**
  * @brief Provide a dingleton to abstract hardware methods
@@ -618,28 +619,30 @@ public:
     /*                                 Web server                                 */
     /* -------------------------------------------------------------------------- */
 public:
-    static bool StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
-                               bool autoWifiMode = false,
-                               WebServerReason reason = WebServerReason::Unspecified)
+    static WEB_SERVER_OWNER::StartResult StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                        bool autoWifiMode = false,
+                                                        WebServerReason reason = WebServerReason::Unspecified)
     {
         return Get()->startWebServer(onLogPageRender, autoWifiMode, reason);
     }
-    virtual bool startWebServer(OnLogPageRenderCallback_t onLogPageRender,
-                                bool autoWifiMode,
-                                WebServerReason reason = WebServerReason::Unspecified)
+    virtual WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                         bool autoWifiMode,
+                                                         WebServerReason reason = WebServerReason::Unspecified)
     {
         (void)reason;
-        return false;
+        (void)onLogPageRender;
+        (void)autoWifiMode;
+        return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
     }
 
-    static bool StopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    static WEB_SERVER_OWNER::StopResult StopWebServer(WebServerReason reason = WebServerReason::Unspecified)
     {
         return Get()->stopWebServer(reason);
     }
-    virtual bool stopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    virtual WEB_SERVER_OWNER::StopResult stopWebServer(WebServerReason reason = WebServerReason::Unspecified)
     {
         (void)reason;
-        return true;
+        return WEB_SERVER_OWNER::StopResult::AlreadyStopped;
     }
 
     static std::string GetSystemConfigUrl() { return Get()->getSystemConfigUrl(); }
