@@ -70,11 +70,29 @@ namespace D2B_ESP
 
             bool open(httpd_req_t* request)
             {
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                    D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WS_HANDLER_GET_AFTER_101_ENTER,
+                    _serverGeneration,
+                    0U,
+                    request == nullptr ? -1 : httpd_req_to_sockfd(request),
+                    0U);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                    D2B_RUNTIME_EVIDENCE::BreadcrumbStage::ORIGIN_CHECK_BEGIN,
+                    _serverGeneration,
+                    0U,
+                    request == nullptr ? -1 : httpd_req_to_sockfd(request),
+                    0U);
                 if (!originAllowed(request))
                 {
                     ESP_LOGW(kTag, "rejected WebSocket origin");
                     return false;
                 }
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                    D2B_RUNTIME_EVIDENCE::BreadcrumbStage::ORIGIN_CHECK_OK,
+                    _serverGeneration,
+                    0U,
+                    request == nullptr ? -1 : httpd_req_to_sockfd(request),
+                    0U);
 
                 const int socket = httpd_req_to_sockfd(request);
                 if (_owner.active)
@@ -93,6 +111,16 @@ namespace D2B_ESP
                 _violations = 0;
                 _buffer.reset();
                 D2B::OpenSession(_session);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::OWNER_PUBLISHED,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     0U);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::PIPELINE_OPEN_ENTER,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     0U);
                 if (!D2B_PIPELINE::Open(PipelineOwner(_owner)))
                 {
                     D2B::CloseSession(_session);
@@ -102,8 +130,29 @@ namespace D2B_ESP
                     _owner.active = false;
                     return false;
                 }
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::PIPELINE_OPEN_OK,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     0U);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                    D2B_RUNTIME_EVIDENCE::BreadcrumbStage::CONNECT_EVIDENCE_ENTER,
+                    _serverGeneration,
+                    _owner.generation,
+                    socket,
+                    0U);
                 D2B_RUNTIME_EVIDENCE::LogWebSocketConnect(PipelineOwner(_owner));
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::CONNECT_EVIDENCE_OK,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     0U);
                 ESP_LOGI(kTag, "WebSocket owner opened, generation=%lu", static_cast<unsigned long>(_owner.generation));
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::OPEN_HANDLER_RETURN,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     0U);
                 return true;
             }
 
@@ -113,10 +162,21 @@ namespace D2B_ESP
                 if (!matches(request->handle, socket))
                     return ESP_FAIL;
 
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WS_FRAME_HANDLER_ENTER,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
+
                 httpd_ws_frame_t frame = {};
                 esp_err_t result = httpd_ws_recv_frame(request, &frame, 0);
                 if (result != ESP_OK)
                     return result;
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::FRAME_HEADER_READ_OK,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
 
                 D2B::ClientFrameType type;
                 if (frame.type == HTTPD_WS_TYPE_TEXT)
@@ -149,6 +209,11 @@ namespace D2B_ESP
                 result = httpd_ws_recv_frame(request, &frame, _buffer.remaining());
                 if (result != ESP_OK)
                     return result;
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::FRAME_PAYLOAD_READ_OK,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
 
                 const D2B::ReassemblyResult reassembly =
                     _buffer.accept(type, frame.final, frame.payload, frame.len);
@@ -156,18 +221,52 @@ namespace D2B_ESP
                     return ESP_OK;
                 if (reassembly != D2B::ReassemblyResult::Complete)
                     return protocolViolation(request, D2B::ErrorCode::InvalidMessage);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::REASSEMBLY_COMPLETE,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
 
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::CONTROL_PARSE_ENTER,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
                 const D2B::ParseResult parsed = D2B::ParseClientMessage(_buffer.data(), _buffer.size());
                 _buffer.reset();
                 if (!parsed.ok())
                     return protocolViolation(request, parsed.error);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::CONTROL_PARSE_OK,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
+                if (parsed.message.type == D2B::ClientMessageType::Hello)
+                    D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::HELLO_RECOGNIZED,
+                                                         _serverGeneration,
+                                                         _owner.generation,
+                                                         socket,
+                                                         _session.streamId);
 
                 if (D2B_PIPELINE::StopPending(PipelineOwner(_owner)))
                     return protocolViolation(request, D2B::ErrorCode::InvalidState);
 
                 D2B::Session proposedSession = _session;
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::CONTROL_HANDLE_ENTER,
+                                                     _serverGeneration,
+                                                     _owner.generation,
+                                                     socket,
+                                                     _session.streamId);
                 D2B::ControlResponse response =
                     D2B::HandleClientMessage(proposedSession, parsed.message, _streamIdCounter);
+                const bool successfulWelcome = parsed.message.type == D2B::ClientMessageType::Hello && response.ok() &&
+                                               proposedSession.state == D2B::ControlState::Ready;
+                if (successfulWelcome)
+                    D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WELCOME_BUILT,
+                                                         _serverGeneration,
+                                                         _owner.generation,
+                                                         socket,
+                                                         proposedSession.streamId);
                 const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
                 const std::uint32_t previousStreamId = _session.streamId;
                 const bool isOrderlyStop = wasStreaming && response.ok() &&
@@ -183,9 +282,22 @@ namespace D2B_ESP
                 }
                 else
                 {
+                    if (successfulWelcome)
+                        D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                            D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WELCOME_SEND_ENTER,
+                            _serverGeneration,
+                            _owner.generation,
+                            socket,
+                            proposedSession.streamId);
                     result = sendText(request, response.data, response.size);
                     if (result != ESP_OK)
                         return result;
+                    if (successfulWelcome)
+                        D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WELCOME_SEND_OK,
+                                                             _serverGeneration,
+                                                             _owner.generation,
+                                                             socket,
+                                                             proposedSession.streamId);
                 }
 
                 const bool isStreaming = proposedSession.state == D2B::ControlState::Streaming;
@@ -203,6 +315,13 @@ namespace D2B_ESP
                 else
                 {
                     _session = proposedSession;
+                    if (successfulWelcome)
+                        D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                            D2B_RUNTIME_EVIDENCE::BreadcrumbStage::SESSION_READY_COMMIT,
+                            _serverGeneration,
+                            _owner.generation,
+                            socket,
+                            _session.streamId);
                 }
                 if (response.error != D2B::ErrorCode::None)
                 {
@@ -214,6 +333,12 @@ namespace D2B_ESP
                 {
                     _violations = 0;
                 }
+                if (response.error == D2B::ErrorCode::None)
+                    D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WS_RECEIVE_RETURN,
+                                                         _serverGeneration,
+                                                         _owner.generation,
+                                                         socket,
+                                                         _session.streamId);
                 return ESP_OK;
             }
 
@@ -225,6 +350,11 @@ namespace D2B_ESP
                     return;
                 const std::uint32_t generation = _owner.generation;
                 const D2B_PIPELINE::OwnerKey owner = PipelineOwner(_owner);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WS_CLOSE_ENTER,
+                                                     _serverGeneration,
+                                                     generation,
+                                                     socket,
+                                                     _session.streamId);
                 D2B_PIPELINE::Close(owner, reason);
                 D2B::CloseSession(_session);
                 _buffer.reset();
@@ -234,7 +364,18 @@ namespace D2B_ESP
                 _owner.active = false;
                 _violations = 0;
                 D2B_RUNTIME_EVIDENCE::LogWebSocketDisconnect(owner, reason);
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::WS_CLOSE_COMPLETE,
+                                                     _serverGeneration,
+                                                     generation,
+                                                     socket,
+                                                     0U);
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
+                D2B_RUNTIME_EVIDENCE::MarkHttpdStage(
+                    D2B_RUNTIME_EVIDENCE::BreadcrumbStage::NORMAL_LIFECYCLE_COMPLETE,
+                    _serverGeneration,
+                    generation,
+                    socket,
+                    0U);
             }
 
             void sanityCleanupAfterServerStopped(httpd_handle_t server)

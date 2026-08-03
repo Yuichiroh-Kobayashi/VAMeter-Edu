@@ -111,6 +111,23 @@ namespace RUNTIME_EVIDENCE
         std::uint32_t reset_reason_raw;
         std::uint32_t boot_identity;
         std::uint32_t rtc_boot_counter;
+        std::uint32_t prior_valid;
+        std::uint32_t prior_stage;
+        std::uint32_t prior_sequence;
+        std::uint32_t prior_server_generation;
+        std::uint32_t prior_websocket_generation;
+        std::int32_t prior_socket;
+        std::uint32_t prior_stream_id;
+        std::uint32_t prior_configured_httpd_stack_bytes;
+        std::uint32_t prior_httpd_stack_high_water_raw;
+        std::uint32_t prior_httpd_stack_high_water_bytes;
+        std::uint32_t prior_httpd_stack_sample_valid;
+        std::uint32_t prior_internal_heap_free;
+        std::uint32_t prior_internal_heap_min;
+        std::uint32_t prior_internal_heap_largest;
+        std::uint32_t prior_reset_reason_code;
+        std::uint32_t prior_reset_reason_raw;
+        std::uint32_t prior_checksum;
     };
 
     const char* EventToken(Event event);

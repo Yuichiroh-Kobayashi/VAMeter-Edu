@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "libs/runtime_evidence/runtime_evidence.h"
+#include "d2b_reset_breadcrumb.h"
 
 namespace D2B_PIPELINE
 {
@@ -17,6 +18,20 @@ namespace D2B_PRODUCER
 
 namespace D2B_RUNTIME_EVIDENCE
 {
+    using BreadcrumbStage = D2B_RESET_BREADCRUMB_ADAPTER::Stage;
+
+    void MarkApplicationStage(BreadcrumbStage stage,
+                              std::uint32_t serverGeneration,
+                              std::uint32_t websocketGeneration = 0U,
+                              std::int32_t socket = -1,
+                              std::uint32_t streamId = 0U);
+    void MarkHttpdStage(BreadcrumbStage stage,
+                        std::uint32_t serverGeneration,
+                        std::uint32_t websocketGeneration,
+                        std::int32_t socket,
+                        std::uint32_t streamId);
+    void ReplayPriorBreadcrumbSnapshot();
+
     void SetServerGeneration(std::uint32_t generation);
 
     void LogServerRequest(RUNTIME_EVIDENCE::Event event,

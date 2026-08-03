@@ -1,4 +1,5 @@
 #include "d2b_runtime_evidence.h"
+#include "d2b_reset_breadcrumb.h"
 
 #include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
@@ -128,6 +129,28 @@ namespace D2B_RUNTIME_EVIDENCE
                                   pipeline.streamId));
         }
     } // namespace
+
+    void MarkApplicationStage(BreadcrumbStage stage,
+                              std::uint32_t serverGeneration,
+                              std::uint32_t websocketGeneration,
+                              std::int32_t socket,
+                              std::uint32_t streamId)
+    {
+        D2B_RESET_BREADCRUMB_ADAPTER::MarkApplicationStage(
+            stage, serverGeneration, websocketGeneration, socket, streamId);
+    }
+
+    void MarkHttpdStage(BreadcrumbStage stage,
+                        std::uint32_t serverGeneration,
+                        std::uint32_t websocketGeneration,
+                        std::int32_t socket,
+                        std::uint32_t streamId)
+    {
+        D2B_RESET_BREADCRUMB_ADAPTER::MarkHttpdStage(
+            stage, serverGeneration, websocketGeneration, socket, streamId);
+    }
+
+    void ReplayPriorBreadcrumbSnapshot() { D2B_RESET_BREADCRUMB_ADAPTER::ReplayPriorSnapshot(); }
 
     void SetServerGeneration(std::uint32_t generation) { _serverGeneration = generation; }
 
@@ -354,6 +377,9 @@ namespace D2B_RUNTIME_EVIDENCE
         const esp_reset_reason_t resetReason = esp_reset_reason();
         const std::uint32_t rawResetReason = static_cast<std::uint32_t>(esp_rom_get_reset_reason(0));
         const std::uint32_t identity = esp_random();
+        D2B_RESET_BREADCRUMB_ADAPTER::BeginBoot(static_cast<std::uint32_t>(resetReason), rawResetReason);
+        D2B_RESET_BREADCRUMB_ADAPTER::Record prior = {};
+        const bool havePrior = D2B_RESET_BREADCRUMB_ADAPTER::ReadPriorSnapshot(prior);
         RUNTIME_EVIDENCE::BootResource resource = {};
         resource.resource = EmptyResource(RUNTIME_EVIDENCE::Event::Boot,
                                            RUNTIME_EVIDENCE::Reason::Boot,
@@ -367,6 +393,27 @@ namespace D2B_RUNTIME_EVIDENCE
         resource.reset_reason_raw = rawResetReason;
         resource.boot_identity = identity;
         resource.rtc_boot_counter = _bootCounter;
+        resource.prior_valid = havePrior ? 1U : 0U;
+        resource.prior_stage = havePrior ? prior.stage : 0U;
+        resource.prior_sequence = havePrior ? prior.sequence : 0U;
+        resource.prior_server_generation = havePrior ? prior.server_generation : 0U;
+        resource.prior_websocket_generation = havePrior ? prior.websocket_generation : 0U;
+        resource.prior_socket = havePrior ? prior.socket : -1;
+        resource.prior_stream_id = havePrior ? prior.stream_id : 0U;
+        resource.prior_configured_httpd_stack_bytes =
+            havePrior ? prior.configured_httpd_stack_bytes : 0U;
+        resource.prior_httpd_stack_high_water_raw =
+            havePrior ? prior.httpd_stack_high_water_raw : D2B_RESET_BREADCRUMB::kUnmeasuredStack;
+        resource.prior_httpd_stack_high_water_bytes =
+            havePrior ? prior.httpd_stack_high_water_bytes : D2B_RESET_BREADCRUMB::kUnmeasuredStack;
+        resource.prior_httpd_stack_sample_valid = havePrior ? prior.httpd_stack_sample_valid : 0U;
+        resource.prior_internal_heap_free = havePrior ? prior.internal_heap_free : 0U;
+        resource.prior_internal_heap_min = havePrior ? prior.internal_heap_min : 0U;
+        resource.prior_internal_heap_largest = havePrior ? prior.internal_heap_largest : 0U;
+        resource.prior_reset_reason_code = havePrior ? prior.reset_reason_code : 0U;
+        resource.prior_reset_reason_raw = havePrior ? prior.reset_reason_raw : 0U;
+        resource.prior_checksum = havePrior ? prior.checksum : 0U;
         EmitBoot(resource);
+        D2B_RESET_BREADCRUMB_ADAPTER::MarkBootReported();
     }
 } // namespace D2B_RUNTIME_EVIDENCE

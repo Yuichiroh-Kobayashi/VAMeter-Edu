@@ -44,3 +44,6 @@ idf_component_register(
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LOG_LOCAL_LEVEL=ESP_LOG_INFO)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    VAMETER_D2B_HTTPD_STACK_SIZE=${VAMETER_D2B_HTTPD_STACK_SIZE}
+)

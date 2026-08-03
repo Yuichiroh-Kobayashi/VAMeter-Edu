@@ -20,8 +20,22 @@
 #include <FS.h>
 #include <vfs_api.h>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <new>
+#include <type_traits>
+
+#ifndef VAMETER_D2B_HTTPD_STACK_SIZE
+#define VAMETER_D2B_HTTPD_STACK_SIZE 4096
+#endif
+
+using HttpdStackSizeType = decltype(((PsychicHttpServer*)nullptr)->config.stack_size);
+static_assert(std::is_integral<HttpdStackSizeType>::value, "PsychicHttp stack_size must remain integral");
+static_assert(VAMETER_D2B_HTTPD_STACK_SIZE >= 4096, "D2B HTTPD stack must be at least 4096 bytes");
+static_assert(VAMETER_D2B_HTTPD_STACK_SIZE <= 16384, "D2B HTTPD stack exceeds supported bound");
+static_assert(static_cast<unsigned long long>(VAMETER_D2B_HTTPD_STACK_SIZE) <=
+                  static_cast<unsigned long long>(std::numeric_limits<HttpdStackSizeType>::max()),
+              "D2B HTTPD stack does not fit PsychicHttp config.stack_size");
 
 // class VFS_t : public FS
 // {
@@ -178,6 +192,7 @@ namespace
         }
 
         ownedServer->server = nullptr;
+        ownedServer->config.stack_size = static_cast<HttpdStackSizeType>(VAMETER_D2B_HTTPD_STACK_SIZE);
         const esp_err_t listenResult = ownedServer->listen(80);
         if (listenResult != ESP_OK)
         {
@@ -565,6 +580,9 @@ HELL:
         return ownedStart;
     }
 
+    D2B_RUNTIME_EVIDENCE::MarkApplicationStage(D2B_RUNTIME_EVIDENCE::BreadcrumbStage::SERVER_STARTED,
+                                               _http_server_owner.generation());
+    D2B_RUNTIME_EVIDENCE::ReplayPriorBreadcrumbSnapshot();
     _web_server_page_loading();
     _web_server_api_loading();
     D2B_ESP::SetServerGeneration(_http_server_owner.generation());
