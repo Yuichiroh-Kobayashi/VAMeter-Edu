@@ -2,49 +2,80 @@
 
 namespace WEB_SERVER_OWNER
 {
+    namespace
+    {
+        ApModeState QueryApMode(const ApOperationCallbacks& callbacks)
+        {
+            if (callbacks.queryApMode == nullptr)
+                return ApModeState::Unknown;
+
+            const ApModeState mode = callbacks.queryApMode(callbacks.context);
+            if (mode == ApModeState::Disabled || mode == ApModeState::Enabled)
+                return mode;
+            return ApModeState::Unknown;
+        }
+    } // namespace
+
     ApOperation::ApOperation() : _state(ApState::Inactive) {}
+
+    bool ApOperation::reconcileStartPreflight(const ApOperationCallbacks& callbacks)
+    {
+        const ApModeState mode = QueryApMode(callbacks);
+        if (mode == ApModeState::Disabled)
+        {
+            _state = ApState::Inactive;
+            return true;
+        }
+
+        _state = ApState::StopRetryRequired;
+        return false;
+    }
 
     ApStartResult ApOperation::start(const ApOperationCallbacks& callbacks)
     {
-        if (_state != ApState::Inactive)
+        if (!reconcileStartPreflight(callbacks))
             return ApStartResult::StopRetryRequired;
 
-        // These callbacks are required before any Wi-Fi side effect.  A
-        // missing callback is therefore a bounded, clean failure.
-        if (callbacks.isStaConnected == nullptr || callbacks.startAp == nullptr)
-            return ApStartResult::StartFailed;
-
-        const bool staConnected = callbacks.isStaConnected(callbacks.context);
-        if (staConnected)
+        if (callbacks.isStaConnected == nullptr)
         {
-            if (callbacks.disconnectSta == nullptr || !callbacks.disconnectSta(callbacks.context))
-                return ApStartResult::StaDisconnectFailed;
+            _state = ApState::Inactive;
+            return ApStartResult::StartFailed;
+        }
+        if (callbacks.startAp == nullptr)
+        {
+            _state = ApState::Inactive;
+            return ApStartResult::StartFailed;
         }
 
-        if (callbacks.startAp(callbacks.context))
+        const bool staConnected = callbacks.isStaConnected(callbacks.context);
+        if (staConnected && (callbacks.disconnectSta == nullptr || !callbacks.disconnectSta(callbacks.context)))
+        {
+            _state = ApState::Inactive;
+            return ApStartResult::StaDisconnectFailed;
+        }
+
+        const bool startSucceeded = callbacks.startAp(callbacks.context);
+        const ApModeState postStartMode = QueryApMode(callbacks);
+        if (startSucceeded && postStartMode == ApModeState::Enabled)
         {
             _state = ApState::Active;
             return ApStartResult::Started;
         }
 
-        // softAP() may leave a partial AP interface behind.  Confirm the
-        // state before deciding whether cleanup is needed.
-        if (callbacks.isApStarted == nullptr)
-        {
-            _state = ApState::StopRetryRequired;
-            return ApStartResult::StopRetryRequired;
-        }
-        if (!callbacks.isApStarted(callbacks.context))
+        if (!startSucceeded && postStartMode == ApModeState::Disabled)
         {
             _state = ApState::Inactive;
             return ApStartResult::StartFailed;
         }
-        if (callbacks.stopAp == nullptr)
+
+        if (callbacks.stopAp == nullptr || !callbacks.stopAp(callbacks.context))
         {
             _state = ApState::StopRetryRequired;
             return ApStartResult::StopRetryRequired;
         }
-        if (callbacks.stopAp(callbacks.context))
+
+        const ApModeState postCleanupMode = QueryApMode(callbacks);
+        if (postCleanupMode == ApModeState::Disabled)
         {
             _state = ApState::Inactive;
             return ApStartResult::StartFailed;
@@ -56,27 +87,28 @@ namespace WEB_SERVER_OWNER
 
     ApStopResult ApOperation::stop(const ApOperationCallbacks& callbacks)
     {
-        if (_state == ApState::Inactive)
-            return ApStopResult::AlreadyStopped;
-
-        if (callbacks.isApStarted == nullptr)
-        {
-            _state = ApState::StopRetryRequired;
-            return ApStopResult::StopFailed;
-        }
-        if (!callbacks.isApStarted(callbacks.context))
+        const ApModeState preStopMode = QueryApMode(callbacks);
+        if (preStopMode == ApModeState::Disabled)
         {
             _state = ApState::Inactive;
             return ApStopResult::AlreadyStopped;
         }
+
         if (callbacks.stopAp == nullptr || !callbacks.stopAp(callbacks.context))
         {
             _state = ApState::StopRetryRequired;
             return ApStopResult::StopFailed;
         }
 
-        _state = ApState::Inactive;
-        return ApStopResult::Stopped;
+        const ApModeState postStopMode = QueryApMode(callbacks);
+        if (postStopMode == ApModeState::Disabled)
+        {
+            _state = ApState::Inactive;
+            return ApStopResult::Stopped;
+        }
+
+        _state = ApState::StopRetryRequired;
+        return ApStopResult::StopFailed;
     }
 
     ApState ApOperation::state() const { return _state; }

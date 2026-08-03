@@ -37,9 +37,9 @@ private:
 
     std::string _get_mac();
     std::string _get_ip();
+    bool _ap_start_preflight();
     WEB_SERVER_OWNER::ApStartResult _start_ap_mode();
     WEB_SERVER_OWNER::ApStopResult _stop_ap_mode();
-    bool _ap_stop_retry_required() const;
     std::vector<std::string> _get_wifi_list();
 
     WEB_SERVER_OWNER::ApOperation _ap_operation;

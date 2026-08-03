@@ -501,10 +501,10 @@ WEB_SERVER_OWNER::StartResult HAL_VAMeter::startWebServer(OnLogPageRenderCallbac
                                                           bool autoWifiMode,
                                                           WebServerReason reason)
 {
-    // A pending AP cleanup is the first fail-closed gate.  Do not acquire the
-    // HTTPD owner, connect Wi-Fi, or publish any server side effect while it
-    // is pending.
-    if (_ap_stop_retry_required())
+    // Reconcile the synchronous AP mode before any owner, STA, AP, or HTTPD
+    // side effect.  Retained or unknown AP state is a fail-closed recovery
+    // result even when the internal owner state is inactive.
+    if (!_ap_start_preflight())
     {
         spdlog::error("web server start rejected: AP stop retry required");
         return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
@@ -688,9 +688,9 @@ namespace
 
 bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
 {
-    // Keep a pending AP cleanup as a hard boundary.  In particular, do not
-    // validate/publish a new selection or allocate/listen an HTTPD wrapper.
-    if (_ap_stop_retry_required())
+    // Reconcile the synchronous AP mode before validation, selection
+    // publication, owner acquisition, AP start, or HTTPD allocation.
+    if (!_ap_start_preflight())
     {
         spdlog::error("download server start rejected: AP stop retry required");
         return false;

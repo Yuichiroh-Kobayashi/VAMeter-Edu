@@ -59,7 +59,27 @@ namespace
         return hal != nullptr && hal->disconnectWifi();
     }
 
-    bool IsApStartedForAp(void*) { return WiFi.AP.started(); }
+    WEB_SERVER_OWNER::ApModeState QueryApModeForAp(void*)
+    {
+        wifi_mode_t mode = WIFI_MODE_NULL;
+        const esp_err_t result = esp_wifi_get_mode(&mode);
+        if (result == ESP_ERR_WIFI_NOT_INIT)
+            return WEB_SERVER_OWNER::ApModeState::Disabled;
+        if (result != ESP_OK)
+            return WEB_SERVER_OWNER::ApModeState::Unknown;
+
+        switch (mode)
+        {
+        case WIFI_MODE_AP:
+        case WIFI_MODE_APSTA:
+            return WEB_SERVER_OWNER::ApModeState::Enabled;
+        case WIFI_MODE_NULL:
+        case WIFI_MODE_STA:
+            return WEB_SERVER_OWNER::ApModeState::Disabled;
+        default:
+            return WEB_SERVER_OWNER::ApModeState::Unknown;
+        }
+    }
 
     bool StartApForAp(void* context)
     {
@@ -154,13 +174,26 @@ std::string HAL_VAMeter::_get_ip()
     return ip;
 }
 
+bool HAL_VAMeter::_ap_start_preflight()
+{
+    const WEB_SERVER_OWNER::ApOperationCallbacks callbacks = {
+        this,
+        IsStaConnectedForAp,
+        DisconnectStaForAp,
+        QueryApModeForAp,
+        StartApForAp,
+        StopApForAp,
+    };
+    return _ap_operation.reconcileStartPreflight(callbacks);
+}
+
 WEB_SERVER_OWNER::ApStartResult HAL_VAMeter::_start_ap_mode()
 {
     const WEB_SERVER_OWNER::ApOperationCallbacks callbacks = {
         this,
         IsStaConnectedForAp,
         DisconnectStaForAp,
-        IsApStartedForAp,
+        QueryApModeForAp,
         StartApForAp,
         StopApForAp,
     };
@@ -174,10 +207,10 @@ WEB_SERVER_OWNER::ApStartResult HAL_VAMeter::_start_ap_mode()
         spdlog::error("AP start failed: WiFi.disconnect=false");
         break;
     case WEB_SERVER_OWNER::ApStartResult::StartFailed:
-        spdlog::error("AP start failed: WiFi.softAP=false");
+        spdlog::error("AP start failed: synchronized AP mode reconciliation failed");
         break;
     case WEB_SERVER_OWNER::ApStartResult::StopRetryRequired:
-        spdlog::critical("AP start cleanup failed: WiFi.softAPdisconnect(true)=false; stop retry required");
+        spdlog::critical("AP start cleanup failed: synchronized AP mode did not reach Disabled; stop retry required");
         break;
     }
     return result;
@@ -189,7 +222,7 @@ WEB_SERVER_OWNER::ApStopResult HAL_VAMeter::_stop_ap_mode()
         this,
         IsStaConnectedForAp,
         DisconnectStaForAp,
-        IsApStartedForAp,
+        QueryApModeForAp,
         StartApForAp,
         StopApForAp,
     };
@@ -203,13 +236,11 @@ WEB_SERVER_OWNER::ApStopResult HAL_VAMeter::_stop_ap_mode()
         spdlog::info("ap mode already stopped");
         break;
     case WEB_SERVER_OWNER::ApStopResult::StopFailed:
-        spdlog::error("AP stop failed: WiFi.softAPdisconnect(true)=false; stop retry required");
+        spdlog::error("AP stop failed: synchronized AP mode did not reach Disabled; stop retry required");
         break;
     }
     return result;
 }
-
-bool HAL_VAMeter::_ap_stop_retry_required() const { return _ap_operation.stopRetryRequired(); }
 
 uint8_t HAL_VAMeter::getApStaNum() { return WiFi.softAPgetStationNum(); }
 

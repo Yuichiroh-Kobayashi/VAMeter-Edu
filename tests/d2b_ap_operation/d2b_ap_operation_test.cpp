@@ -23,16 +23,23 @@ namespace
     {
         bool staConnected = false;
         bool disconnectResult = true;
-        bool apStarted = false;
+        WEB_SERVER_OWNER::ApModeState mode = WEB_SERVER_OWNER::ApModeState::Disabled;
+        WEB_SERVER_OWNER::ApModeState modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
+        WEB_SERVER_OWNER::ApModeState modeAfterStop = WEB_SERVER_OWNER::ApModeState::Disabled;
         bool startResult = true;
         bool stopResult = true;
+        bool asynchronousEventBit = false;
+        bool updateEventOnStart = true;
+        bool updateEventOnStop = true;
+        bool eventAfterStart = true;
+        bool eventAfterStop = false;
         unsigned staStateCalls = 0;
         unsigned disconnectCalls = 0;
-        unsigned apStateCalls = 0;
+        unsigned modeQueryCalls = 0;
         unsigned startCalls = 0;
         unsigned stopCalls = 0;
         unsigned eventCount = 0;
-        char events[16] = {};
+        char events[64] = {};
 
         void event(char value)
         {
@@ -44,7 +51,7 @@ namespace
         {
             staStateCalls = 0;
             disconnectCalls = 0;
-            apStateCalls = 0;
+            modeQueryCalls = 0;
             startCalls = 0;
             stopCalls = 0;
             eventCount = 0;
@@ -66,12 +73,12 @@ namespace
             return fake->disconnectResult;
         }
 
-        static bool IsApStarted(void* context)
+        static WEB_SERVER_OWNER::ApModeState QueryApMode(void* context)
         {
             FakeAp* fake = static_cast<FakeAp*>(context);
-            ++fake->apStateCalls;
-            fake->event('p');
-            return fake->apStarted;
+            ++fake->modeQueryCalls;
+            fake->event('q');
+            return fake->mode;
         }
 
         static bool StartAp(void* context)
@@ -79,8 +86,9 @@ namespace
             FakeAp* fake = static_cast<FakeAp*>(context);
             ++fake->startCalls;
             fake->event('a');
-            if (fake->startResult)
-                fake->apStarted = true;
+            fake->mode = fake->modeAfterStart;
+            if (fake->updateEventOnStart)
+                fake->asynchronousEventBit = fake->eventAfterStart;
             return fake->startResult;
         }
 
@@ -90,7 +98,9 @@ namespace
             ++fake->stopCalls;
             fake->event('x');
             if (fake->stopResult)
-                fake->apStarted = false;
+                fake->mode = fake->modeAfterStop;
+            if (fake->updateEventOnStop)
+                fake->asynchronousEventBit = fake->eventAfterStop;
             return fake->stopResult;
         }
 
@@ -100,7 +110,7 @@ namespace
                 this,
                 IsStaConnected,
                 DisconnectSta,
-                IsApStarted,
+                QueryApMode,
                 StartAp,
                 StopAp,
             };
@@ -130,8 +140,9 @@ namespace
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
                "AP start success result");
         Expect(operation.state() == WEB_SERVER_OWNER::ApState::Active && fake.startCalls == 1 &&
-                   fake.staStateCalls == 1 && fake.disconnectCalls == 0 && EventsEqual(fake, "ca"),
-               "AP start success enters active state and calls callbacks once");
+                   fake.modeQueryCalls == 2 && fake.staStateCalls == 1 && fake.disconnectCalls == 0 &&
+                   fake.stopCalls == 0 && EventsEqual(fake, "qcaq"),
+               "AP start success enters active state and uses synchronous mode");
     }
 
     void TestStaDisconnectFailure()
@@ -143,7 +154,7 @@ namespace
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StaDisconnectFailed,
                "STA disconnect failure result");
         Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.startCalls == 0 &&
-                   EventsEqual(fake, "cd"),
+                   fake.modeQueryCalls == 1 && EventsEqual(fake, "qcd"),
                "STA disconnect failure does not attempt AP start");
     }
 
@@ -151,13 +162,14 @@ namespace
     {
         FakeAp fake;
         fake.startResult = false;
-        fake.apStarted = true;
+        fake.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
         fake.stopResult = true;
+        fake.modeAfterStop = WEB_SERVER_OWNER::ApModeState::Disabled;
         WEB_SERVER_OWNER::ApOperation operation;
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StartFailed,
                "AP start failure with cleanup success result");
-        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.apStateCalls == 1 &&
-                   fake.stopCalls == 1 && EventsEqual(fake, "capx"),
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.modeQueryCalls == 3 &&
+                   fake.stopCalls == 1 && EventsEqual(fake, "qcaqxq"),
                "AP start failure confirms partial AP and cleans it up successfully");
     }
 
@@ -165,30 +177,31 @@ namespace
     {
         FakeAp fake;
         fake.startResult = false;
-        fake.apStarted = true;
+        fake.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
         fake.stopResult = false;
         WEB_SERVER_OWNER::ApOperation operation;
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired,
                "partial AP start cleanup failure result");
-        Expect(operation.stopRetryRequired() && fake.stopCalls == 1 && EventsEqual(fake, "capx"),
+        Expect(operation.stopRetryRequired() && fake.modeQueryCalls == 2 && fake.stopCalls == 1 &&
+                   EventsEqual(fake, "qcaqx"),
                "partial AP cleanup failure retains retry state");
     }
 
-    void TestPendingStartRejectedWithoutCallbacks()
+    void TestPendingStartReconcilesStaleEnabled()
     {
         FakeAp fake;
         fake.startResult = false;
-        fake.apStarted = true;
+        fake.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
         fake.stopResult = false;
         WEB_SERVER_OWNER::ApOperation operation;
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired,
                "setup AP retry state");
         fake.resetCalls();
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired,
-               "pending AP start is rejected");
-        Expect(fake.eventCount == 0 && fake.staStateCalls == 0 && fake.disconnectCalls == 0 &&
-                   fake.startCalls == 0 && fake.stopCalls == 0,
-               "pending AP start has no callback side effects");
+               "pending AP start is rejected by synchronous mode");
+        Expect(fake.modeQueryCalls == 1 && fake.staStateCalls == 0 && fake.disconnectCalls == 0 &&
+                   fake.startCalls == 0 && fake.stopCalls == 0 && EventsEqual(fake, "q"),
+               "pending AP start has no side-effect callbacks");
     }
 
     void TestActiveApStopSuccess()
@@ -200,9 +213,10 @@ namespace
         fake.resetCalls();
         Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped,
                "active AP stop success");
-        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.apStateCalls == 1 &&
-                   fake.stopCalls == 1 && EventsEqual(fake, "px"),
-               "active AP stop clears state after one stop call");
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.modeQueryCalls == 2 &&
+                   fake.stopCalls == 1 && fake.staStateCalls == 0 && fake.disconnectCalls == 0 &&
+                   EventsEqual(fake, "qxq"),
+               "active AP stop clears state after one bounded stop call");
     }
 
     void TestApStopFailureRetainsRetry()
@@ -215,7 +229,8 @@ namespace
         fake.resetCalls();
         Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed,
                "AP stop failure result");
-        Expect(operation.stopRetryRequired() && fake.stopCalls == 1 && EventsEqual(fake, "px"),
+        Expect(operation.stopRetryRequired() && fake.modeQueryCalls == 1 && fake.stopCalls == 1 &&
+                   EventsEqual(fake, "qx"),
                "AP stop failure retains retry state");
     }
 
@@ -227,15 +242,19 @@ namespace
                "retry sequence setup");
         fake.stopResult = false;
         fake.resetCalls();
-        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed && fake.stopCalls == 1,
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed &&
+                   fake.stopCalls == 1,
                "first AP stop retry fails once");
-        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed && fake.stopCalls == 2,
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed &&
+                   fake.stopCalls == 2,
                "second AP stop retry fails once");
         fake.stopResult = true;
-        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped && fake.stopCalls == 3,
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped &&
+                   fake.stopCalls == 3,
                "third AP stop retry succeeds once");
-        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.apStateCalls == 3,
-               "false false true retry becomes inactive only after success");
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive,
+               "false false true retry becomes inactive only after synchronous Disabled");
+        Expect(fake.modeQueryCalls == 4, "false false true retry mode query count");
     }
 
     void TestAlreadyStoppedDoesNotTouchSta()
@@ -244,14 +263,14 @@ namespace
         WEB_SERVER_OWNER::ApOperation operation;
         Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
                "already-stopped path setup starts AP");
-        fake.apStarted = false;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Disabled;
         fake.resetCalls();
         Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::AlreadyStopped,
                "externally stopped AP is already stopped");
-        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.apStateCalls == 1 &&
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.modeQueryCalls == 1 &&
                    fake.stopCalls == 0 && fake.staStateCalls == 0 && fake.disconnectCalls == 0 &&
-                   EventsEqual(fake, "p"),
-               "already-stopped path observes AP state once without touching STA");
+                   EventsEqual(fake, "q"),
+               "already-stopped path observes synchronous mode without touching STA");
     }
 
     void TestCallbackOrder()
@@ -260,17 +279,17 @@ namespace
         connected.staConnected = true;
         WEB_SERVER_OWNER::ApOperation operation;
         Expect(operation.start(connected.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started &&
-                   EventsEqual(connected, "cda"),
-               "connected AP start callback order is STA-state, disconnect, AP-start");
+                   EventsEqual(connected, "qcdaq"),
+               "connected AP start callback order is mode, STA-state, disconnect, AP-start, mode");
 
         FakeAp failed;
         failed.startResult = false;
-        failed.apStarted = true;
+        failed.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
         failed.stopResult = true;
         WEB_SERVER_OWNER::ApOperation failedOperation;
         Expect(failedOperation.start(failed.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StartFailed &&
-                   EventsEqual(failed, "capx"),
-               "failed AP start cleanup callback order is STA-state, AP-start, AP-state, AP-stop");
+                   EventsEqual(failed, "qcaqxq"),
+               "failed AP start cleanup callback order is bounded and mode-based");
 
         FakeAp stopped;
         WEB_SERVER_OWNER::ApOperation stoppedOperation;
@@ -278,8 +297,8 @@ namespace
                "stop callback order setup");
         stopped.resetCalls();
         Expect(stoppedOperation.stop(stopped.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped &&
-                   EventsEqual(stopped, "px"),
-               "AP stop callback order is AP-state, AP-stop");
+                   EventsEqual(stopped, "qxq"),
+               "AP stop callback order is mode, AP-stop, mode");
     }
 
     void TestApStartFailureUiMapping()
@@ -396,7 +415,8 @@ namespace
         ap.stopResult = true;
         const WEB_SERVER_OWNER::ApStopResult apResult = operation.stop(ap.callbacks());
         Expect(serverResult == WEB_SERVER_OWNER::StopResult::AlreadyStopped &&
-                   WEB_SERVER_OWNER::IsStopSuccessful(serverResult) && apResult == WEB_SERVER_OWNER::ApStopResult::Stopped &&
+                   WEB_SERVER_OWNER::IsStopSuccessful(serverResult) &&
+                   apResult == WEB_SERVER_OWNER::ApStopResult::Stopped &&
                    operation.state() == WEB_SERVER_OWNER::ApState::Inactive,
                "HTTPD already-stopped path retries pending AP and succeeds");
     }
@@ -411,10 +431,11 @@ namespace
         Expect(operation.stop(ap.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed,
                "system gate AP retry setup");
         ap.resetCalls();
-        const WEB_SERVER_OWNER::StartResult result = operation.stopRetryRequired()
-                                                          ? WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry
-                                                          : WEB_SERVER_OWNER::StartResult::Started;
-        Expect(result == WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry && ap.eventCount == 0,
+        const bool proceed = operation.reconcileStartPreflight(ap.callbacks());
+        const WEB_SERVER_OWNER::StartResult result =
+            proceed ? WEB_SERVER_OWNER::StartResult::Started : WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        Expect(result == WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry && ap.modeQueryCalls == 1 &&
+                   ap.staStateCalls == 0 && ap.startCalls == 0 && ap.stopCalls == 0,
                "retained AP blocks System start before side effects");
     }
 
@@ -430,11 +451,224 @@ namespace
         const std::string existingSelection = "REC-001.csv";
         std::string selection = existingSelection;
         ap.resetCalls();
-        const bool started = !operation.stopRetryRequired();
+        const bool started = operation.reconcileStartPreflight(ap.callbacks());
         if (started)
             selection = "REC-002.csv";
-        Expect(!started && selection == existingSelection && ap.eventCount == 0,
+        Expect(!started && selection == existingSelection && ap.modeQueryCalls == 1 && ap.startCalls == 0 &&
+                   ap.stopCalls == 0,
                "retained AP blocks Download start and preserves selection");
+    }
+
+    void TestDelayedApStartCleanup()
+    {
+        FakeAp fake;
+        fake.startResult = true;
+        fake.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Disabled;
+        fake.asynchronousEventBit = false;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StartFailed,
+               "delayed AP_START is reconciled as partial cleanup");
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.startCalls == 1 &&
+                   fake.stopCalls == 1 && fake.modeQueryCalls == 3 && !fake.asynchronousEventBit,
+               "delayed AP_START cleanup is bounded and event-independent");
+    }
+
+    void TestDelayedApStop()
+    {
+        FakeAp fake;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
+               "delayed AP_STOP setup");
+        fake.modeAfterStop = WEB_SERVER_OWNER::ApModeState::Enabled;
+        fake.resetCalls();
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed,
+               "delayed AP_STOP does not claim stopped");
+        Expect(operation.stopRetryRequired() && fake.stopCalls == 1 && fake.modeQueryCalls == 2,
+               "delayed AP_STOP has one bounded stop attempt");
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Disabled;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::AlreadyStopped &&
+                   fake.stopCalls == 1,
+               "delayed AP_STOP retry observes Disabled without duplicate stop");
+    }
+
+    void TestInactiveEnabledStartReject()
+    {
+        FakeAp fake;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Enabled;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(!operation.reconcileStartPreflight(fake.callbacks()), "Inactive+Enabled preflight rejects");
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::StopRetryRequired &&
+                   operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired,
+               "Inactive+Enabled start remains fail-closed");
+        Expect(fake.modeQueryCalls == 2 && fake.startCalls == 0 && fake.stopCalls == 0,
+               "Inactive+Enabled start has no AP side effects");
+    }
+
+    void TestInactiveEnabledStopCleanup()
+    {
+        FakeAp fake;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Enabled;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped,
+               "Inactive+Enabled stop performs explicit cleanup");
+        Expect(operation.state() == WEB_SERVER_OWNER::ApState::Inactive && fake.stopCalls == 1 &&
+                   fake.modeQueryCalls == 2,
+               "Inactive+Enabled stop confirms Disabled postcondition");
+    }
+
+    void TestUnknownPreStart()
+    {
+        FakeAp fake;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Unknown;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired,
+               "Unknown pre-start is fail-closed");
+        Expect(operation.stopRetryRequired() && fake.modeQueryCalls == 1 && fake.startCalls == 0 &&
+                   fake.stopCalls == 0,
+               "Unknown pre-start has no side effects");
+    }
+
+    void TestUnknownStopBoundedAttempt()
+    {
+        FakeAp fake;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Unknown;
+        fake.stopResult = false;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed,
+               "Unknown stop attempts one cleanup");
+        Expect(operation.stopRetryRequired() && fake.stopCalls == 1 && fake.modeQueryCalls == 1,
+               "Unknown stop failure is bounded");
+        fake.stopResult = true;
+        fake.modeAfterStop = WEB_SERVER_OWNER::ApModeState::Unknown;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed &&
+                   fake.stopCalls == 2 && fake.modeQueryCalls == 3,
+               "Unknown stop success callback still requires Disabled postcondition");
+    }
+
+    void TestStopTruePostEnabledFailure()
+    {
+        FakeAp fake;
+        fake.mode = WEB_SERVER_OWNER::ApModeState::Enabled;
+        fake.modeAfterStop = WEB_SERVER_OWNER::ApModeState::Enabled;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::StopFailed,
+               "stop true with post Enabled fails closed");
+        Expect(operation.stopRetryRequired() && fake.stopCalls == 1 && fake.modeQueryCalls == 2,
+               "stop true with post Enabled retains retry");
+    }
+
+    void TestImmediateStartAfterStopIgnoresStaleEvent()
+    {
+        FakeAp fake;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
+               "immediate start setup");
+        fake.modeAfterStop = WEB_SERVER_OWNER::ApModeState::Disabled;
+        fake.asynchronousEventBit = true;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped,
+               "immediate stop setup");
+        Expect(fake.asynchronousEventBit == false, "fake event may settle independently");
+        fake.asynchronousEventBit = true;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
+               "stale AP event does not block immediate start");
+        Expect(fake.startCalls == 2 && fake.stopCalls == 1 && fake.modeQueryCalls == 6,
+               "stop then start uses synchronous mode transitions only");
+    }
+
+    void TestApstaStopDoesNotDisconnectSta()
+    {
+        FakeAp fake;
+        fake.staConnected = false;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
+               "APSTA stop setup");
+        fake.staConnected = true;
+        const unsigned staStateCallsBeforeStop = fake.staStateCalls;
+        const unsigned disconnectCallsBeforeStop = fake.disconnectCalls;
+        Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped,
+               "APSTA stop succeeds");
+        Expect(fake.staStateCalls == staStateCallsBeforeStop && fake.disconnectCalls == disconnectCallsBeforeStop,
+               "AP stop never disconnects STA");
+    }
+
+    void TestSynchronousModeIgnoresIndependentEventBit()
+    {
+        FakeAp startedWithStaleEvent;
+        startedWithStaleEvent.eventAfterStart = false;
+        WEB_SERVER_OWNER::ApOperation startedOperation;
+        Expect(startedOperation.start(startedWithStaleEvent.callbacks()) ==
+                   WEB_SERVER_OWNER::ApStartResult::Started &&
+                   startedWithStaleEvent.mode == WEB_SERVER_OWNER::ApModeState::Enabled &&
+                   !startedWithStaleEvent.asynchronousEventBit,
+               "start uses Enabled mode even when AP_START event bit is stale false");
+
+        FakeAp failedWithStaleEvent;
+        failedWithStaleEvent.startResult = false;
+        failedWithStaleEvent.modeAfterStart = WEB_SERVER_OWNER::ApModeState::Enabled;
+        failedWithStaleEvent.eventAfterStart = false;
+        failedWithStaleEvent.eventAfterStop = false;
+        WEB_SERVER_OWNER::ApOperation failedOperation;
+        Expect(failedOperation.start(failedWithStaleEvent.callbacks()) ==
+                   WEB_SERVER_OWNER::ApStartResult::StartFailed &&
+                   failedWithStaleEvent.stopCalls == 1 && !failedWithStaleEvent.asynchronousEventBit,
+               "start cleanup uses Enabled mode even when AP_START event bit is stale false");
+
+        FakeAp stoppedWithStaleEvent;
+        stoppedWithStaleEvent.eventAfterStop = true;
+        WEB_SERVER_OWNER::ApOperation stoppedOperation;
+        Expect(stoppedOperation.start(stoppedWithStaleEvent.callbacks()) ==
+                   WEB_SERVER_OWNER::ApStartResult::Started &&
+                   stoppedOperation.stop(stoppedWithStaleEvent.callbacks()) ==
+                       WEB_SERVER_OWNER::ApStopResult::Stopped &&
+                   stoppedWithStaleEvent.mode == WEB_SERVER_OWNER::ApModeState::Disabled &&
+                   stoppedWithStaleEvent.asynchronousEventBit,
+               "stop uses Disabled mode even when AP_STOP event bit is stale true");
+    }
+
+    void TestMissingCallbacksAreBounded()
+    {
+        FakeAp fake;
+        WEB_SERVER_OWNER::ApOperationCallbacks missingQuery = fake.callbacks();
+        missingQuery.queryApMode = nullptr;
+        WEB_SERVER_OWNER::ApOperation operation;
+        Expect(operation.start(missingQuery) == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired &&
+                   fake.startCalls == 0,
+               "missing mode query is Unknown before start side effects");
+
+        FakeAp missingStopFake;
+        WEB_SERVER_OWNER::ApOperationCallbacks missingStop = missingStopFake.callbacks();
+        missingStop.stopAp = nullptr;
+        missingStopFake.mode = WEB_SERVER_OWNER::ApModeState::Enabled;
+        WEB_SERVER_OWNER::ApOperation missingStopOperation;
+        Expect(missingStopOperation.stop(missingStop) == WEB_SERVER_OWNER::ApStopResult::StopFailed &&
+                   missingStopFake.stopCalls == 0,
+               "missing stop callback is bounded");
+
+        FakeAp missingDisconnectFake;
+        WEB_SERVER_OWNER::ApOperationCallbacks missingDisconnect = missingDisconnectFake.callbacks();
+        missingDisconnectFake.staConnected = true;
+        missingDisconnect.disconnectSta = nullptr;
+        WEB_SERVER_OWNER::ApOperation missingDisconnectOperation;
+        Expect(missingDisconnectOperation.start(missingDisconnect) ==
+                   WEB_SERVER_OWNER::ApStartResult::StaDisconnectFailed &&
+                   missingDisconnectFake.startCalls == 0,
+               "missing STA disconnect callback is bounded");
+    }
+
+    void TestOneHundredCleanCycles()
+    {
+        FakeAp fake;
+        WEB_SERVER_OWNER::ApOperation operation;
+        for (unsigned cycle = 0; cycle < 100; ++cycle)
+        {
+            Expect(operation.start(fake.callbacks()) == WEB_SERVER_OWNER::ApStartResult::Started,
+                   "100-cycle start remains clean");
+            Expect(operation.stop(fake.callbacks()) == WEB_SERVER_OWNER::ApStopResult::Stopped,
+                   "100-cycle stop remains clean");
+        }
+        Expect(fake.startCalls == 100 && fake.stopCalls == 100 && fake.staStateCalls == 100 &&
+                   fake.disconnectCalls == 0 && fake.modeQueryCalls == 400,
+               "100 cycles have exact callback counts");
     }
 } // namespace
 
@@ -444,7 +678,7 @@ int main()
     TestStaDisconnectFailure();
     TestApStartFailureCleanupSuccess();
     TestApStartFailureRetainsCleanupRetry();
-    TestPendingStartRejectedWithoutCallbacks();
+    TestPendingStartReconcilesStaleEnabled();
     TestActiveApStopSuccess();
     TestApStopFailureRetainsRetry();
     TestApStopFalseFalseTrueRetry();
@@ -457,6 +691,18 @@ int main()
     TestAlreadyStoppedHttpdRetriesPendingAp();
     TestRetainedApBlocksSystemStart();
     TestRetainedApBlocksDownloadSelection();
-    std::cout << "PASS: D2B AP operation result propagation (17 cases)\n";
+    TestDelayedApStartCleanup();
+    TestDelayedApStop();
+    TestInactiveEnabledStartReject();
+    TestInactiveEnabledStopCleanup();
+    TestUnknownPreStart();
+    TestUnknownStopBoundedAttempt();
+    TestStopTruePostEnabledFailure();
+    TestImmediateStartAfterStopIgnoresStaleEvent();
+    TestApstaStopDoesNotDisconnectSta();
+    TestSynchronousModeIgnoresIndependentEventBit();
+    TestMissingCallbacksAreBounded();
+    TestOneHundredCleanCycles();
+    std::cout << "PASS: D2B AP operation reconciliation (29 cases, including 17 regressions)\n";
     return 0;
 }
