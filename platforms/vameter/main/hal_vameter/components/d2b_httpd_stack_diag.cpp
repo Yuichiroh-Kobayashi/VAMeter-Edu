@@ -23,6 +23,7 @@ namespace D2B_HTTPD_STACK_DIAG
 
         std::uint32_t _resetReasonNormalized = 0U;
         std::uint32_t _resetReasonRaw = 0U;
+        std::uint32_t _configuredStackBytes = 0U;
         unsigned _currentSlot = 0U;
         bool _haveCurrent = false;
         bool _havePrior = false;
@@ -34,7 +35,7 @@ namespace D2B_HTTPD_STACK_DIAG
             destination.sequence = source.sequence;
             destination.valid_marker = source.valid_marker;
             destination.last_stage = source.last_stage;
-            destination.configured_stack_bytes = source.configured_stack_bytes;
+            destination.actual_configured_stack_bytes = source.actual_configured_stack_bytes;
             destination.last_raw_high_water = source.last_raw_high_water;
             destination.last_normalized_bytes = source.last_normalized_bytes;
             destination.minimum_observed_bytes = source.minimum_observed_bytes;
@@ -63,7 +64,7 @@ namespace D2B_HTTPD_STACK_DIAG
             target.version = source.version;
             target.sequence = source.sequence;
             target.last_stage = source.last_stage;
-            target.configured_stack_bytes = source.configured_stack_bytes;
+            target.actual_configured_stack_bytes = source.actual_configured_stack_bytes;
             target.last_raw_high_water = source.last_raw_high_water;
             target.last_normalized_bytes = source.last_normalized_bytes;
             target.minimum_observed_bytes = source.minimum_observed_bytes;
@@ -105,6 +106,7 @@ namespace D2B_HTTPD_STACK_DIAG
         _haveCurrent = _havePrior;
         _resetReasonNormalized = resetReasonNormalized;
         _resetReasonRaw = resetReasonRaw;
+        _configuredStackBytes = 0U;
         HTTPD_STACK_DIAG::Reset(_state);
     }
 
@@ -113,7 +115,8 @@ namespace D2B_HTTPD_STACK_DIAG
         ESP_LOGI(kTag,
                  "HTTPD_STACK_DIAG_PRIOR current_reset_reason=%lu current_reset_reason_raw=%lu prior_valid=%u "
                  "prior_disposition=%s prior_stage=%s prior_raw_high_water=%lu prior_normalized_bytes=%lu "
-                 "prior_minimum_bytes=%lu prior_configured=%lu prior_generation=%lu prior_stream_id=%lu",
+                 "prior_minimum_bytes=%lu prior_actual_configured_stack_bytes=%lu prior_generation=%lu "
+                 "prior_stream_id=%lu",
                  static_cast<unsigned long>(_resetReasonNormalized),
                  static_cast<unsigned long>(_resetReasonRaw),
                  _havePrior ? 1U : 0U,
@@ -122,16 +125,24 @@ namespace D2B_HTTPD_STACK_DIAG
                  static_cast<unsigned long>(_havePrior ? _prior.last_raw_high_water : HTTPD_STACK_DIAG::kUnmeasured),
                  static_cast<unsigned long>(_havePrior ? _prior.last_normalized_bytes : HTTPD_STACK_DIAG::kUnmeasured),
                  static_cast<unsigned long>(_havePrior ? _prior.minimum_observed_bytes : HTTPD_STACK_DIAG::kUnmeasured),
-                 static_cast<unsigned long>(_havePrior ? _prior.configured_stack_bytes : 0U),
+                 static_cast<unsigned long>(_havePrior ? _prior.actual_configured_stack_bytes : 0U),
                  static_cast<unsigned long>(_havePrior ? _prior.generation : 0U),
                  static_cast<unsigned long>(_havePrior ? _prior.stream_id : 0U));
+    }
+
+    void SetConfiguredStackBytes(std::uint32_t actualStackBytes)
+    {
+        _configuredStackBytes = actualStackBytes;
+        HTTPD_STACK_DIAG::SetConfiguredStackBytes(_state, actualStackBytes);
     }
 
     void LogConfiguredStack()
     {
         ESP_LOGI(kTag,
-                 "HTTPD_STACK_DIAG_START configured_httpd_stack_bytes=%lu state_bytes=%lu rtc_bytes=%lu",
-                 static_cast<unsigned long>(HTTPD_STACK_DIAG::kConfiguredStackBytes),
+                 "HTTPD_STACK_DIAG_START expected_httpd_stack_bytes=%lu actual_httpd_stack_bytes=%lu "
+                 "state_bytes=%lu rtc_bytes=%lu",
+                 static_cast<unsigned long>(HTTPD_STACK_DIAG::kExpectedStackBytes),
+                 static_cast<unsigned long>(_configuredStackBytes),
                  static_cast<unsigned long>(StaticStateBytes()),
                  static_cast<unsigned long>(RtcStateBytes()));
     }
@@ -146,7 +157,7 @@ namespace D2B_HTTPD_STACK_DIAG
                                  stage,
                                  static_cast<std::uint32_t>(raw),
                                  static_cast<std::uint32_t>(sizeof(StackType_t)),
-                                 HTTPD_STACK_DIAG::kConfiguredStackBytes,
+                                 _configuredStackBytes,
                                  taskIdentity,
                                  generation,
                                  streamId);
@@ -163,34 +174,44 @@ namespace D2B_HTTPD_STACK_DIAG
             const Stage stage = static_cast<Stage>(index + 1U);
             ESP_LOGI(kTag,
                      "HTTPD_STACK_DIAG stage=%s raw_high_water=%lu normalized_bytes=%lu "
-                     "configured_stack_bytes=%lu minimum_observed_bytes=%lu httpd_task=0x%08lx "
+                     "actual_configured_stack_bytes=%lu minimum_observed_bytes=%lu httpd_task=0x%08lx "
                      "generation=%lu stream_id=%lu",
                      HTTPD_STACK_DIAG::StageName(stage),
                      static_cast<unsigned long>(sample.raw_high_water),
                      static_cast<unsigned long>(sample.normalized_bytes),
-                     static_cast<unsigned long>(sample.configured_stack_bytes),
+                     static_cast<unsigned long>(sample.actual_configured_stack_bytes),
                      static_cast<unsigned long>(sample.minimum_observed_bytes),
                      static_cast<unsigned long>(sample.httpd_task_identity),
                      static_cast<unsigned long>(sample.generation),
                      static_cast<unsigned long>(sample.stream_id));
         }
+        const bool measurementConsistent = HTTPD_STACK_DIAG::MeasurementConsistent(_state);
+        const bool requiredStagesComplete = HTTPD_STACK_DIAG::RequiredStagesComplete(_state);
         ESP_LOGI(kTag,
-                 "HTTPD_STACK_DIAG_SUMMARY configured=%lu minimum_bytes=%lu minimum_stage=%s "
-                 "updates=%lu task_identity_mismatch=%lu configured_mismatch=%lu acceptance_usable=%u",
-                 static_cast<unsigned long>(HTTPD_STACK_DIAG::kConfiguredStackBytes),
+                 "HTTPD_STACK_DIAG_SUMMARY expected_stack_bytes=%lu actual_stack_bytes=%lu minimum_bytes=%lu "
+                 "minimum_first_observed_stage=%s updates=%lu observed_stage_mask=0x%08lx "
+                 "required_stage_mask=0x%08lx required_stages_complete=%u task_identity_mismatch=%lu "
+                 "configured_mismatch=%lu lifecycle_mismatch=%lu measurement_consistent=%u acceptance_usable=%u",
+                 static_cast<unsigned long>(HTTPD_STACK_DIAG::kExpectedStackBytes),
+                 static_cast<unsigned long>(_state.actual_configured_stack_bytes),
                  static_cast<unsigned long>(_state.global_minimum_bytes),
-                 HTTPD_STACK_DIAG::StageName(_state.global_minimum_stage),
+                 HTTPD_STACK_DIAG::StageName(_state.minimum_first_observed_stage),
                  static_cast<unsigned long>(_state.update_count),
+                 static_cast<unsigned long>(_state.observed_stage_mask),
+                 static_cast<unsigned long>(HTTPD_STACK_DIAG::RequiredStageMask()),
+                 requiredStagesComplete ? 1U : 0U,
                  static_cast<unsigned long>(_state.task_identity_mismatch),
                  static_cast<unsigned long>(_state.configured_stack_mismatch),
+                 static_cast<unsigned long>(_state.lifecycle_mismatch),
+                 measurementConsistent ? 1U : 0U,
                  HTTPD_STACK_DIAG::UsableForAcceptance(_state) ? 1U : 0U);
     }
 
     std::size_t StaticStateBytes()
     {
         return sizeof(_state) + sizeof(_prior) + sizeof(_current) + sizeof(_scratch) +
-               sizeof(_resetReasonNormalized) + sizeof(_resetReasonRaw) + sizeof(_currentSlot) + sizeof(_haveCurrent) +
-               sizeof(_havePrior);
+               sizeof(_resetReasonNormalized) + sizeof(_resetReasonRaw) + sizeof(_configuredStackBytes) +
+               sizeof(_currentSlot) + sizeof(_haveCurrent) + sizeof(_havePrior);
     }
 
     std::size_t RtcStateBytes() { return sizeof(_slots); }

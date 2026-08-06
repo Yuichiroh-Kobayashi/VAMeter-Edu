@@ -5,10 +5,10 @@
 
 namespace HTTPD_STACK_DIAG
 {
-    static const std::uint32_t kConfiguredStackBytes = 4096U;
+    static const std::uint32_t kExpectedStackBytes = 4096U;
     static const std::uint32_t kUnmeasured = 0xFFFFFFFFU;
     static const std::uint32_t kBreadcrumbMagic = 0x48345344U;
-    static const std::uint32_t kBreadcrumbVersion = 1U;
+    static const std::uint32_t kBreadcrumbVersion = 2U;
     static const std::uint32_t kValidMarker = 0xD2B4096DU;
     static const std::uint32_t kInvalidMarker = 0U;
 
@@ -38,13 +38,14 @@ namespace HTTPD_STACK_DIAG
     };
 
     static const std::size_t kStageCount = static_cast<std::size_t>(Stage::COUNT) - 1U;
+    static_assert(kStageCount > 0U && kStageCount < 32U, "stage mask must fit uint32_t");
 
     struct Sample
     {
         std::uint32_t initialized;
         std::uint32_t raw_high_water;
         std::uint32_t normalized_bytes;
-        std::uint32_t configured_stack_bytes;
+        std::uint32_t actual_configured_stack_bytes;
         std::uint32_t minimum_observed_bytes;
         std::uint32_t httpd_task_identity;
         std::uint32_t generation;
@@ -55,10 +56,14 @@ namespace HTTPD_STACK_DIAG
     {
         Sample stages[kStageCount];
         std::uint32_t global_minimum_bytes;
-        std::uint32_t global_minimum_stage;
+        std::uint32_t minimum_first_observed_stage;
         std::uint32_t httpd_task_identity;
+        std::uint32_t actual_configured_stack_bytes;
+        std::uint32_t observed_stage_mask;
         std::uint32_t task_identity_mismatch;
         std::uint32_t configured_stack_mismatch;
+        std::uint32_t lifecycle_mismatch;
+        std::uint32_t configured_stack_set_count;
         std::uint32_t update_count;
     };
 
@@ -69,7 +74,7 @@ namespace HTTPD_STACK_DIAG
         std::uint32_t sequence;
         std::uint32_t valid_marker;
         std::uint32_t last_stage;
-        std::uint32_t configured_stack_bytes;
+        std::uint32_t actual_configured_stack_bytes;
         std::uint32_t last_raw_high_water;
         std::uint32_t last_normalized_bytes;
         std::uint32_t minimum_observed_bytes;
@@ -87,9 +92,12 @@ namespace HTTPD_STACK_DIAG
     const char* StageName(std::uint32_t stage);
     bool IsStage(Stage stage);
     std::size_t StageIndex(Stage stage);
+    std::uint32_t StageBit(Stage stage);
+    std::uint32_t RequiredStageMask();
 
     std::uint32_t NormalizeHighWater(std::uint32_t raw, std::uint32_t unitBytes);
     void Reset(State& state);
+    void SetConfiguredStackBytes(State& state, std::uint32_t actualStackBytes);
     void Update(State& state,
                 Stage stage,
                 std::uint32_t rawHighWater,
@@ -98,6 +106,8 @@ namespace HTTPD_STACK_DIAG
                 std::uint32_t taskIdentity,
                 std::uint32_t generation,
                 std::uint32_t streamId);
+    bool MeasurementConsistent(const State& state);
+    bool RequiredStagesComplete(const State& state);
     bool UsableForAcceptance(const State& state);
 
     Breadcrumb EmptyBreadcrumb();

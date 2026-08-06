@@ -74,6 +74,14 @@ namespace HTTPD_STACK_DIAG
         return IsStage(stage) ? static_cast<std::size_t>(static_cast<std::uint32_t>(stage) - 1U) : kStageCount;
     }
 
+    std::uint32_t StageBit(Stage stage)
+    {
+        const std::size_t index = StageIndex(stage);
+        return index < kStageCount ? (1U << index) : 0U;
+    }
+
+    std::uint32_t RequiredStageMask() { return (1U << kStageCount) - 1U; }
+
     std::uint32_t NormalizeHighWater(std::uint32_t raw, std::uint32_t unitBytes)
     {
         if (raw == 0U || unitBytes == 0U)
@@ -86,9 +94,21 @@ namespace HTTPD_STACK_DIAG
     {
         state = {};
         state.global_minimum_bytes = kUnmeasured;
-        state.global_minimum_stage = static_cast<std::uint32_t>(Stage::NONE);
+        state.minimum_first_observed_stage = static_cast<std::uint32_t>(Stage::NONE);
         for (std::size_t index = 0U; index < kStageCount; ++index)
             state.stages[index].minimum_observed_bytes = kUnmeasured;
+    }
+
+    void SetConfiguredStackBytes(State& state, std::uint32_t actualStackBytes)
+    {
+        ++state.configured_stack_set_count;
+        if (state.configured_stack_set_count != 1U)
+            state.lifecycle_mismatch = 1U;
+        if (actualStackBytes == 0U || actualStackBytes != kExpectedStackBytes)
+            state.configured_stack_mismatch = 1U;
+        if (state.actual_configured_stack_bytes != 0U && state.actual_configured_stack_bytes != actualStackBytes)
+            state.configured_stack_mismatch = 1U;
+        state.actual_configured_stack_bytes = actualStackBytes;
     }
 
     void Update(State& state,
@@ -109,30 +129,45 @@ namespace HTTPD_STACK_DIAG
             sample.minimum_observed_bytes = bytes;
         sample.raw_high_water = rawHighWater;
         sample.normalized_bytes = bytes;
-        sample.configured_stack_bytes = configuredStackBytes;
+        sample.actual_configured_stack_bytes = configuredStackBytes;
         sample.httpd_task_identity = taskIdentity;
         sample.generation = generation;
         sample.stream_id = streamId;
         sample.initialized = 1U;
+        state.observed_stage_mask |= StageBit(stage);
 
         if (state.httpd_task_identity == 0U)
             state.httpd_task_identity = taskIdentity;
         else if (taskIdentity == 0U || state.httpd_task_identity != taskIdentity)
             state.task_identity_mismatch = 1U;
-        if (configuredStackBytes != kConfiguredStackBytes)
+        if (state.configured_stack_set_count != 1U || configuredStackBytes == 0U ||
+            configuredStackBytes != kExpectedStackBytes || configuredStackBytes != state.actual_configured_stack_bytes)
             state.configured_stack_mismatch = 1U;
         if (bytes < state.global_minimum_bytes)
         {
             state.global_minimum_bytes = bytes;
-            state.global_minimum_stage = static_cast<std::uint32_t>(stage);
+            state.minimum_first_observed_stage = static_cast<std::uint32_t>(stage);
         }
         ++state.update_count;
     }
 
-    bool UsableForAcceptance(const State& state)
+    bool MeasurementConsistent(const State& state)
     {
         return state.update_count != 0U && state.global_minimum_bytes != 0U && state.global_minimum_bytes != kUnmeasured &&
-               state.task_identity_mismatch == 0U && state.configured_stack_mismatch == 0U;
+               state.configured_stack_set_count == 1U && state.actual_configured_stack_bytes == kExpectedStackBytes &&
+               state.task_identity_mismatch == 0U && state.configured_stack_mismatch == 0U &&
+               state.lifecycle_mismatch == 0U;
+    }
+
+    bool RequiredStagesComplete(const State& state)
+    {
+        const std::uint32_t required = RequiredStageMask();
+        return (state.observed_stage_mask & required) == required;
+    }
+
+    bool UsableForAcceptance(const State& state)
+    {
+        return MeasurementConsistent(state) && RequiredStagesComplete(state);
     }
 
     Breadcrumb EmptyBreadcrumb()
@@ -142,7 +177,7 @@ namespace HTTPD_STACK_DIAG
         value.version = kBreadcrumbVersion;
         value.valid_marker = kInvalidMarker;
         value.last_stage = static_cast<std::uint32_t>(Stage::NONE);
-        value.configured_stack_bytes = kConfiguredStackBytes;
+        value.actual_configured_stack_bytes = 0U;
         value.last_raw_high_water = kUnmeasured;
         value.last_normalized_bytes = kUnmeasured;
         value.minimum_observed_bytes = kUnmeasured;
@@ -162,13 +197,15 @@ namespace HTTPD_STACK_DIAG
         if (index < kStageCount && state.stages[index].initialized != 0U)
         {
             const Sample& sample = state.stages[index];
-            value.configured_stack_bytes = sample.configured_stack_bytes;
+            value.actual_configured_stack_bytes = sample.actual_configured_stack_bytes;
             value.last_raw_high_water = sample.raw_high_water;
             value.last_normalized_bytes = sample.normalized_bytes;
             value.httpd_task_identity = sample.httpd_task_identity;
             value.generation = sample.generation;
             value.stream_id = sample.stream_id;
         }
+        else
+            value.actual_configured_stack_bytes = state.actual_configured_stack_bytes;
         value.minimum_observed_bytes = state.global_minimum_bytes;
         value.reset_reason_normalized = resetReasonNormalized;
         value.reset_reason_raw = resetReasonRaw;
@@ -183,7 +220,7 @@ namespace HTTPD_STACK_DIAG
         crc = CrcWord(crc, value.version);
         crc = CrcWord(crc, value.sequence);
         crc = CrcWord(crc, value.last_stage);
-        crc = CrcWord(crc, value.configured_stack_bytes);
+        crc = CrcWord(crc, value.actual_configured_stack_bytes);
         crc = CrcWord(crc, value.last_raw_high_water);
         crc = CrcWord(crc, value.last_normalized_bytes);
         crc = CrcWord(crc, value.minimum_observed_bytes);

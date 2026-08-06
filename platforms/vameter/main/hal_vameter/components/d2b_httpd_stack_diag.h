@@ -11,6 +11,7 @@ namespace D2B_HTTPD_STACK_DIAG
 
     void BootInitialize(std::uint32_t resetReasonNormalized, std::uint32_t resetReasonRaw);
     void LogBootPrior();
+    void SetConfiguredStackBytes(std::uint32_t actualStackBytes);
     void LogConfiguredStack();
 
     // This is the only hot-path entry point.  It samples and stores fixed-width

@@ -212,7 +212,6 @@ namespace D2B_ESP
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
                 D2B_HTTPD_STACK_DIAG::Capture(
                     D2B_HTTPD_STACK_DIAG::Stage::WS_CLOSE_COMPLETE, generation, streamId);
-                D2B_HTTPD_STACK_DIAG::EmitSnapshot();
             }
 
             void sanityCleanupAfterServerStopped(httpd_handle_t server)
@@ -526,9 +525,15 @@ namespace D2B_ESP
                                              uptime);
             if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(response))
                 return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "status unavailable");
-            const esp_err_t result = SendJson(request, response);
+            return SendJson(request, response);
+        }
+
+        esp_err_t HttpdStackDiagHandler(httpd_req_t* request)
+        {
             D2B_HTTPD_STACK_DIAG::EmitSnapshot();
-            return result;
+            httpd_resp_set_type(request, "text/plain; charset=utf-8");
+            httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+            return httpd_resp_send(request, "HTTPD_STACK_DIAG_DUMPED\n", HTTPD_RESP_USE_STRLEN);
         }
 
         esp_err_t StreamHandler(httpd_req_t* request)
@@ -565,6 +570,7 @@ namespace D2B_ESP
             MakeUri("/d2b/v0/capabilities", CapabilitiesHandler, false),
             MakeUri("/d2b/v0/status", StatusHandler, false),
             MakeUri("/d2b/v0/stream", StreamHandler, true),
+            MakeUri("/d2b/v0/diag/httpd-stack", HttpdStackDiagHandler, false),
         };
         std::size_t registered = 0;
         for (; registered < sizeof(routes) / sizeof(routes[0]); ++registered)

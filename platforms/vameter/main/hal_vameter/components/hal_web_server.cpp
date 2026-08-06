@@ -176,6 +176,8 @@ namespace
         {
             ownedServer->onClose(
                 [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
+            const std::uint32_t actualStackBytes = static_cast<std::uint32_t>(ownedServer->config.stack_size);
+            D2B_HTTPD_STACK_DIAG::SetConfiguredStackBytes(actualStackBytes);
         }
 
         ownedServer->server = nullptr;
