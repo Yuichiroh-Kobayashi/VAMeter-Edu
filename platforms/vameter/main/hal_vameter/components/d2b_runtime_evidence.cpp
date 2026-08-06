@@ -1,4 +1,5 @@
 #include "d2b_runtime_evidence.h"
+#include "d2b_httpd_stack_diag.h"
 
 #include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
@@ -353,6 +354,8 @@ namespace D2B_RUNTIME_EVIDENCE
 
         const esp_reset_reason_t resetReason = esp_reset_reason();
         const std::uint32_t rawResetReason = static_cast<std::uint32_t>(esp_rom_get_reset_reason(0));
+        D2B_HTTPD_STACK_DIAG::BootInitialize(static_cast<std::uint32_t>(resetReason), rawResetReason);
+        D2B_HTTPD_STACK_DIAG::LogBootPrior();
         const std::uint32_t identity = esp_random();
         RUNTIME_EVIDENCE::BootResource resource = {};
         resource.resource = EmptyResource(RUNTIME_EVIDENCE::Event::Boot,

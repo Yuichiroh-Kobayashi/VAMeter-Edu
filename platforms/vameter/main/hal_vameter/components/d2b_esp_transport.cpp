@@ -2,6 +2,7 @@
 #include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
 #include "d2b_runtime_evidence.h"
+#include "d2b_httpd_stack_diag.h"
 
 #include "libs/d2b_vi/d2b_control.h"
 #include "libs/d2b_vi/d2b_capabilities.h"
@@ -131,6 +132,8 @@ namespace D2B_ESP
                 if (!matches(request->handle, socket))
                     return ESP_FAIL;
 
+                capture(D2B_HTTPD_STACK_DIAG::Stage::WS_FRAME_RECEIVE_ENTER, _session.streamId);
+
                 // URI handlers execute serially on the single HTTPD task, and
                 // Transport admits one active WebSocket owner. Therefore this
                 // singleton-lifetime workspace has exactly one writer and is
@@ -174,6 +177,7 @@ namespace D2B_ESP
                 result = httpd_ws_recv_frame(request, &frame, _buffer.remaining());
                 if (result != ESP_OK)
                     return result;
+                capture(D2B_HTTPD_STACK_DIAG::Stage::WS_FRAME_RECEIVE_COMPLETE, _session.streamId);
 
                 const D2B::ReassemblyResult reassembly =
                     _buffer.accept(type, frame.final, frame.payload, frame.len);
@@ -191,6 +195,9 @@ namespace D2B_ESP
                 if (!matches(server, socket))
                     return;
                 const std::uint32_t generation = _owner.generation;
+                const std::uint32_t streamId = _session.streamId;
+                D2B_HTTPD_STACK_DIAG::Capture(
+                    D2B_HTTPD_STACK_DIAG::Stage::WS_CLOSE_BEGIN, generation, streamId);
                 const D2B_PIPELINE::OwnerKey owner = PipelineOwner(_owner);
                 D2B_PIPELINE::Close(owner, reason);
                 D2B::CloseSession(_session);
@@ -203,6 +210,9 @@ namespace D2B_ESP
                 _workspace.reset();
                 D2B_RUNTIME_EVIDENCE::LogWebSocketDisconnect(owner, reason);
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
+                D2B_HTTPD_STACK_DIAG::Capture(
+                    D2B_HTTPD_STACK_DIAG::Stage::WS_CLOSE_COMPLETE, generation, streamId);
+                D2B_HTTPD_STACK_DIAG::EmitSnapshot();
             }
 
             void sanityCleanupAfterServerStopped(httpd_handle_t server)
@@ -254,11 +264,17 @@ namespace D2B_ESP
 
             unsigned connectedCount() const { return _owner.active ? 1U : 0U; }
 
+            void captureRequest() const
+            {
+                capture(D2B_HTTPD_STACK_DIAG::Stage::HTTP_REQUEST_ENTER, _session.streamId);
+            }
+
         private:
             esp_err_t processCompleteMessage(httpd_req_t* request)
             {
                 D2B::ParseClientMessageInto(_buffer.data(), _buffer.size(), _workspace.parsed);
                 _buffer.reset();
+                capture(D2B_HTTPD_STACK_DIAG::Stage::CONTROL_PARSE_COMPLETE, _session.streamId);
                 if (!_workspace.parsed.ok())
                     return protocolViolation(request, _workspace.parsed.error);
 
@@ -270,10 +286,19 @@ namespace D2B_ESP
                                              _workspace.parsed.message,
                                              _streamIdCounter,
                                              _workspace.response);
+                capture(D2B_HTTPD_STACK_DIAG::Stage::CONTROL_VALIDATE_COMPLETE,
+                        _workspace.proposedSession.streamId);
                 const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
                 const std::uint32_t previousStreamId = _session.streamId;
+                const D2B::ClientMessageType messageType = _workspace.parsed.message.type;
+                if (messageType == D2B::ClientMessageType::Hello && _workspace.response.ok())
+                    capture(D2B_HTTPD_STACK_DIAG::Stage::WELCOME_BUILD_COMPLETE,
+                            _workspace.proposedSession.streamId);
+                else if (messageType == D2B::ClientMessageType::StartStream && _workspace.response.ok())
+                    capture(D2B_HTTPD_STACK_DIAG::Stage::START_RESPONSE_BUILD_COMPLETE,
+                            _workspace.proposedSession.streamId);
                 const bool isOrderlyStop = wasStreaming && _workspace.response.ok() &&
-                                           _workspace.parsed.message.type == D2B::ClientMessageType::StopStream &&
+                                           messageType == D2B::ClientMessageType::StopStream &&
                                            _workspace.proposedSession.state == D2B::ControlState::Ready;
                 if (isOrderlyStop)
                 {
@@ -284,14 +309,28 @@ namespace D2B_ESP
                                                           _workspace.response.data,
                                                           _workspace.response.size))
                         return ESP_FAIL;
+                    capture(D2B_HTTPD_STACK_DIAG::Stage::STOP_RESPONSE_ACCEPTED, previousStreamId);
                 }
                 else
                 {
                     // httpd_ws_send_frame is synchronous for request-context
                     // sends, so the payload remains valid through its return.
+                    if (messageType == D2B::ClientMessageType::Hello && _workspace.response.ok())
+                        capture(D2B_HTTPD_STACK_DIAG::Stage::WELCOME_SEND_ENTER,
+                                _workspace.proposedSession.streamId);
                     const esp_err_t result = sendText(request, _workspace.response.data, _workspace.response.size);
                     if (result != ESP_OK)
                         return result;
+                    if (messageType == D2B::ClientMessageType::Hello && _workspace.response.ok())
+                        capture(D2B_HTTPD_STACK_DIAG::Stage::WELCOME_SEND_RETURN,
+                                _workspace.proposedSession.streamId);
+                    else if (messageType == D2B::ClientMessageType::StartStream && _workspace.response.ok())
+                        capture(D2B_HTTPD_STACK_DIAG::Stage::START_RESPONSE_SEND_RETURN,
+                                _workspace.proposedSession.streamId);
+                    else if (messageType == D2B::ClientMessageType::Ping && _workspace.response.ok())
+                        capture(wasStreaming ? D2B_HTTPD_STACK_DIAG::Stage::STREAMING_PING_RESPONSE_SEND_RETURN
+                                             : D2B_HTTPD_STACK_DIAG::Stage::READY_PING_RESPONSE_SEND_RETURN,
+                                _workspace.proposedSession.streamId);
                 }
 
                 const bool isStreaming = _workspace.proposedSession.state == D2B::ControlState::Streaming;
@@ -314,7 +353,7 @@ namespace D2B_ESP
                 }
                 if (_workspace.response.error != D2B::ErrorCode::None)
                 {
-                    if (_violations.recordFailure())
+                    if (recordViolation())
                         return ESP_FAIL;
                 }
                 else
@@ -379,8 +418,25 @@ namespace D2B_ESP
             {
                 D2B::BuildErrorResponseInto(error, _workspace.response);
                 const esp_err_t result = sendText(request, _workspace.response.data, _workspace.response.size);
-                const bool closeConnection = _violations.recordFailure();
+                const bool closeConnection = recordViolation();
                 return result == ESP_OK && !closeConnection ? ESP_OK : ESP_FAIL;
+            }
+
+            void capture(D2B_HTTPD_STACK_DIAG::Stage stage, std::uint32_t streamId) const
+            {
+                D2B_HTTPD_STACK_DIAG::Capture(stage, _owner.generation, streamId);
+            }
+
+            bool recordViolation()
+            {
+                const bool closeConnection = _violations.recordFailure();
+                D2B_HTTPD_STACK_DIAG::Stage stage = D2B_HTTPD_STACK_DIAG::Stage::VIOLATION_RESPONSE_3;
+                if (_violations.count() == 1U)
+                    stage = D2B_HTTPD_STACK_DIAG::Stage::VIOLATION_RESPONSE_1;
+                else if (_violations.count() == 2U)
+                    stage = D2B_HTTPD_STACK_DIAG::Stage::VIOLATION_RESPONSE_2;
+                capture(stage, _session.streamId);
+                return closeConnection;
             }
 
             esp_err_t sendText(httpd_req_t* request, const char* payload, std::size_t size)
@@ -426,15 +482,21 @@ namespace D2B_ESP
 
         esp_err_t IndexHandler(httpd_req_t* request)
         {
+            D2B_HTTPD_STACK_DIAG::Capture(D2B_HTTPD_STACK_DIAG::Stage::HTTP_REQUEST_ENTER, 0U, 0U);
             httpd_resp_set_type(request, "text/html; charset=utf-8");
             httpd_resp_set_hdr(request, "Cache-Control", "no-store");
             return httpd_resp_send(request, kIndex, HTTPD_RESP_USE_STRLEN);
         }
 
-        esp_err_t CapabilitiesHandler(httpd_req_t* request) { return SendJson(request, D2B::CapabilitiesJson()); }
+        esp_err_t CapabilitiesHandler(httpd_req_t* request)
+        {
+            D2B_HTTPD_STACK_DIAG::Capture(D2B_HTTPD_STACK_DIAG::Stage::HTTP_REQUEST_ENTER, 0U, 0U);
+            return SendJson(request, D2B::CapabilitiesJson());
+        }
 
         esp_err_t StatusHandler(httpd_req_t* request)
         {
+            D2B_HTTPD_STACK_DIAG::Capture(D2B_HTTPD_STACK_DIAG::Stage::HTTP_REQUEST_ENTER, 0U, 0U);
             char response[384];
             const std::uint64_t maximumSafeInteger = 9007199254740991ULL;
             const std::uint64_t rawUptime = static_cast<std::uint64_t>(esp_timer_get_time());
@@ -464,11 +526,14 @@ namespace D2B_ESP
                                              uptime);
             if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(response))
                 return httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "status unavailable");
-            return SendJson(request, response);
+            const esp_err_t result = SendJson(request, response);
+            D2B_HTTPD_STACK_DIAG::EmitSnapshot();
+            return result;
         }
 
         esp_err_t StreamHandler(httpd_req_t* request)
         {
+            GetTransport().captureRequest();
             if (request->method == HTTP_GET)
                 return GetTransport().open(request) ? ESP_OK : ESP_FAIL;
             return GetTransport().receive(request);

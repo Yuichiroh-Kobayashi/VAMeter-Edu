@@ -13,6 +13,7 @@
 #include "libs/web_server_owner/web_server_results.h"
 #include "libs/web_server_owner/web_server_transaction.h"
 #include "d2b_esp_transport.h"
+#include "d2b_httpd_stack_diag.h"
 #include "d2b_runtime_evidence.h"
 #include <mooncake.h>
 #include <Arduino.h>
@@ -242,6 +243,8 @@ namespace
                                                reason,
                                                RUNTIME_EVIDENCE::Result::Succeeded,
                                                generation);
+        if (owner == WEB_SERVER_OWNER::Owner::System)
+            D2B_HTTPD_STACK_DIAG::LogConfiguredStack();
         return WEB_SERVER_OWNER::StartResult::Started;
     }
 

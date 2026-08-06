@@ -2,6 +2,7 @@
 
 #include "d2b_vi_producer.h"
 #include "d2b_runtime_evidence.h"
+#include "d2b_httpd_stack_diag.h"
 #include "libs/d2b_vi/d2b_frame_writer.h"
 #include "libs/d2b_vi/d2b_httpd_lifecycle_state.h"
 #include "libs/d2b_vi/d2b_httpd_send_pump_state.h"
@@ -529,6 +530,11 @@ namespace D2B_PIPELINE
                     orderlyCompleted = CompleteOrderlyStop(owner, streamId, token);
                     if (!orderlyCompleted)
                         failed = true;
+                    else
+                        D2B_HTTPD_STACK_DIAG::Capture(
+                            D2B_HTTPD_STACK_DIAG::Stage::STOP_RESPONSE_COMPLETED,
+                            owner.generation,
+                            streamId);
                 }
             }
 
