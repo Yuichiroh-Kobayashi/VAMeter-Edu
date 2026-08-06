@@ -32,6 +32,9 @@
 
 namespace
 {
+    constexpr std::size_t kSystemHttpdStackSizeBytes = 8192U;
+    constexpr std::size_t kDownloadHttpdStackSizeBytes = 4096U;
+
     class OwnedPsychicHttpServer : public PsychicHttpServer
     {
     public:
@@ -178,6 +181,11 @@ namespace
         }
 
         ownedServer->server = nullptr;
+        ownedServer->config.stack_size =
+            owner == WEB_SERVER_OWNER::Owner::System
+                ? kSystemHttpdStackSizeBytes
+                : kDownloadHttpdStackSizeBytes;
+
         const esp_err_t listenResult = ownedServer->listen(80);
         if (listenResult != ESP_OK)
         {
