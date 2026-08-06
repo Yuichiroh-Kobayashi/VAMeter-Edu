@@ -43,6 +43,22 @@ namespace D2B_ESP
             D2B_PIPELINE::OwnerKey owner;
         };
 
+        struct ControlWorkspace
+        {
+            D2B::ParseResult parsed;
+            D2B::ControlResponse response;
+            D2B::Session proposedSession;
+
+            void reset()
+            {
+                parsed = {};
+                response = {};
+                proposedSession = {};
+            }
+        };
+
+        static_assert(sizeof(ControlWorkspace) <= 2304, "control workspace exceeds Plan B static DRAM budget");
+
         D2B_PIPELINE::OwnerKey PipelineOwner(const Owner& owner)
         {
             const D2B_PIPELINE::OwnerKey key = {owner.server, owner.socket, owner.generation};
@@ -59,7 +75,8 @@ namespace D2B_ESP
                   _streamIdCounter(0),
                   _generationCounter(0),
                   _serverGeneration(0),
-                  _violations(0)
+                  _violations(),
+                  _workspace()
             {
                 _owner.server = 0;
                 _owner.socket = -1;
@@ -90,7 +107,8 @@ namespace D2B_ESP
                 _owner.socket = socket;
                 _owner.generation = _generationCounter;
                 _owner.active = true;
-                _violations = 0;
+                _violations.reset();
+                _workspace.reset();
                 _buffer.reset();
                 D2B::OpenSession(_session);
                 if (!D2B_PIPELINE::Open(PipelineOwner(_owner)))
@@ -112,6 +130,13 @@ namespace D2B_ESP
                 const int socket = httpd_req_to_sockfd(request);
                 if (!matches(request->handle, socket))
                     return ESP_FAIL;
+
+                // URI handlers execute serially on the single HTTPD task, and
+                // Transport admits one active WebSocket owner. Therefore this
+                // singleton-lifetime workspace has exactly one writer and is
+                // deliberately non-reentrant; no lock or heap allocation is
+                // needed. Every invocation clears all message-dependent data.
+                _workspace.reset();
 
                 httpd_ws_frame_t frame = {};
                 esp_err_t result = httpd_ws_recv_frame(request, &frame, 0);
@@ -140,8 +165,8 @@ namespace D2B_ESP
                 if (frame.len > _buffer.remaining())
                 {
                     ESP_LOGW(kTag, "control frame exceeds bounded message buffer");
-                    const D2B::ControlResponse response = D2B::BuildErrorResponse(D2B::ErrorCode::FrameTooLarge);
-                    sendText(request, response.data, response.size);
+                    D2B::BuildErrorResponseInto(D2B::ErrorCode::FrameTooLarge, _workspace.response);
+                    sendText(request, _workspace.response.data, _workspace.response.size);
                     return ESP_FAIL;
                 }
 
@@ -156,65 +181,7 @@ namespace D2B_ESP
                     return ESP_OK;
                 if (reassembly != D2B::ReassemblyResult::Complete)
                     return protocolViolation(request, D2B::ErrorCode::InvalidMessage);
-
-                const D2B::ParseResult parsed = D2B::ParseClientMessage(_buffer.data(), _buffer.size());
-                _buffer.reset();
-                if (!parsed.ok())
-                    return protocolViolation(request, parsed.error);
-
-                if (D2B_PIPELINE::StopPending(PipelineOwner(_owner)))
-                    return protocolViolation(request, D2B::ErrorCode::InvalidState);
-
-                D2B::Session proposedSession = _session;
-                D2B::ControlResponse response =
-                    D2B::HandleClientMessage(proposedSession, parsed.message, _streamIdCounter);
-                const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
-                const std::uint32_t previousStreamId = _session.streamId;
-                const bool isOrderlyStop = wasStreaming && response.ok() &&
-                                           parsed.message.type == D2B::ClientMessageType::StopStream &&
-                                           proposedSession.state == D2B::ControlState::Ready;
-                if (isOrderlyStop)
-                {
-                    if (!D2B_PIPELINE::RequestOrderlyStop(PipelineOwner(_owner),
-                                                          previousStreamId,
-                                                          response.data,
-                                                          response.size))
-                        return ESP_FAIL;
-                }
-                else
-                {
-                    result = sendText(request, response.data, response.size);
-                    if (result != ESP_OK)
-                        return result;
-                }
-
-                const bool isStreaming = proposedSession.state == D2B::ControlState::Streaming;
-                if (!wasStreaming && isStreaming)
-                {
-                    SessionPublication publication = {this, proposedSession, PipelineOwner(_owner)};
-                    const bool pipelineStarted = D2B_PIPELINE::StartStream(PipelineOwner(_owner),
-                                                                             proposedSession.streamId,
-                                                                             &Transport::PublishSession,
-                                                                             &publication);
-                    if (D2B::DecideStreamStartDisposition(pipelineStarted) ==
-                        D2B::StreamStartDisposition::CloseConnection)
-                        return ESP_FAIL;
-                }
-                else
-                {
-                    _session = proposedSession;
-                }
-                if (response.error != D2B::ErrorCode::None)
-                {
-                    ++_violations;
-                    if (_violations >= 3)
-                        return ESP_FAIL;
-                }
-                else
-                {
-                    _violations = 0;
-                }
-                return ESP_OK;
+                return processCompleteMessage(request);
             }
 
             void close(httpd_handle_t server,
@@ -232,7 +199,8 @@ namespace D2B_ESP
                 _owner.socket = -1;
                 _owner.generation = 0;
                 _owner.active = false;
-                _violations = 0;
+                _violations.reset();
+                _workspace.reset();
                 D2B_RUNTIME_EVIDENCE::LogWebSocketDisconnect(owner, reason);
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
             }
@@ -248,7 +216,8 @@ namespace D2B_ESP
                     _owner.socket = -1;
                     _owner.generation = 0;
                     _owner.active = false;
-                    _violations = 0;
+                    _violations.reset();
+                    _workspace.reset();
                 }
                 _serverGeneration = 0;
             }
@@ -286,6 +255,75 @@ namespace D2B_ESP
             unsigned connectedCount() const { return _owner.active ? 1U : 0U; }
 
         private:
+            esp_err_t processCompleteMessage(httpd_req_t* request)
+            {
+                D2B::ParseClientMessageInto(_buffer.data(), _buffer.size(), _workspace.parsed);
+                _buffer.reset();
+                if (!_workspace.parsed.ok())
+                    return protocolViolation(request, _workspace.parsed.error);
+
+                if (D2B_PIPELINE::StopPending(PipelineOwner(_owner)))
+                    return protocolViolation(request, D2B::ErrorCode::InvalidState);
+
+                _workspace.proposedSession = _session;
+                D2B::HandleClientMessageInto(_workspace.proposedSession,
+                                             _workspace.parsed.message,
+                                             _streamIdCounter,
+                                             _workspace.response);
+                const bool wasStreaming = _session.state == D2B::ControlState::Streaming;
+                const std::uint32_t previousStreamId = _session.streamId;
+                const bool isOrderlyStop = wasStreaming && _workspace.response.ok() &&
+                                           _workspace.parsed.message.type == D2B::ClientMessageType::StopStream &&
+                                           _workspace.proposedSession.state == D2B::ControlState::Ready;
+                if (isOrderlyStop)
+                {
+                    // RequestOrderlyStop copies these bytes into pipeline-owned
+                    // storage before it returns; no workspace pointer escapes.
+                    if (!D2B_PIPELINE::RequestOrderlyStop(PipelineOwner(_owner),
+                                                          previousStreamId,
+                                                          _workspace.response.data,
+                                                          _workspace.response.size))
+                        return ESP_FAIL;
+                }
+                else
+                {
+                    // httpd_ws_send_frame is synchronous for request-context
+                    // sends, so the payload remains valid through its return.
+                    const esp_err_t result = sendText(request, _workspace.response.data, _workspace.response.size);
+                    if (result != ESP_OK)
+                        return result;
+                }
+
+                const bool isStreaming = _workspace.proposedSession.state == D2B::ControlState::Streaming;
+                if (!wasStreaming && isStreaming)
+                {
+                    SessionPublication publication = {this, _workspace.proposedSession, PipelineOwner(_owner)};
+                    // StartStream invokes PublishSession synchronously before
+                    // returning, so publication and proposedSession stay live.
+                    const bool pipelineStarted = D2B_PIPELINE::StartStream(PipelineOwner(_owner),
+                                                                             _workspace.proposedSession.streamId,
+                                                                             &Transport::PublishSession,
+                                                                             &publication);
+                    if (D2B::DecideStreamStartDisposition(pipelineStarted) ==
+                        D2B::StreamStartDisposition::CloseConnection)
+                        return ESP_FAIL;
+                }
+                else
+                {
+                    _session = _workspace.proposedSession;
+                }
+                if (_workspace.response.error != D2B::ErrorCode::None)
+                {
+                    if (_violations.recordFailure())
+                        return ESP_FAIL;
+                }
+                else
+                {
+                    _violations.reset();
+                }
+                return ESP_OK;
+            }
+
             bool matches(httpd_handle_t server, int socket) const
             {
                 return _owner.active && _owner.server == server && _owner.socket == socket && _owner.generation != 0;
@@ -339,10 +377,10 @@ namespace D2B_ESP
 
             esp_err_t protocolViolation(httpd_req_t* request, D2B::ErrorCode error)
             {
-                const D2B::ControlResponse response = D2B::BuildErrorResponse(error);
-                const esp_err_t result = sendText(request, response.data, response.size);
-                ++_violations;
-                return result == ESP_OK && _violations < 3 ? ESP_OK : ESP_FAIL;
+                D2B::BuildErrorResponseInto(error, _workspace.response);
+                const esp_err_t result = sendText(request, _workspace.response.data, _workspace.response.size);
+                const bool closeConnection = _violations.recordFailure();
+                return result == ESP_OK && !closeConnection ? ESP_OK : ESP_FAIL;
             }
 
             esp_err_t sendText(httpd_req_t* request, const char* payload, std::size_t size)
@@ -366,7 +404,8 @@ namespace D2B_ESP
             std::uint32_t _streamIdCounter;
             std::uint32_t _generationCounter;
             std::uint32_t _serverGeneration;
-            unsigned _violations;
+            D2B::ControlViolationState _violations;
+            ControlWorkspace _workspace;
             mutable char _originBuffer[192];
             mutable char _hostBuffer[128];
             std::uint8_t _receiveBuffer[D2B::kMaximumControlMessageSize];

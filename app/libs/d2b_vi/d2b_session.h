@@ -27,6 +27,14 @@ namespace D2B
 
     void OpenSession(Session& session);
     void CloseSession(Session& session);
+    void BuildErrorResponseInto(ErrorCode error, ControlResponse& output);
+    void HandleClientMessageInto(Session& session,
+                                 const ClientMessage& message,
+                                 std::uint32_t& streamIdCounter,
+                                 ControlResponse& output);
+
+    // Compatibility wrappers for host callers. The product control hot path
+    // uses the Into APIs so response storage is owned by Transport.
     ControlResponse BuildErrorResponse(ErrorCode error);
     ControlResponse HandleClientMessage(Session& session, const ClientMessage& message, std::uint32_t& streamIdCounter);
     ControlResponse BuildStatusResponse(const Session& session,

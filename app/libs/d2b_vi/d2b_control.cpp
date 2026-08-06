@@ -764,40 +764,33 @@ namespace D2B
             return ErrorCode::None;
         }
 
-        ParseResult Failure(ErrorCode error)
+        ErrorCode ValidateDocument(const Document& document, ClientMessage& output)
         {
-            ParseResult result = {};
-            result.error = error;
-            return result;
-        }
-
-        ParseResult ValidateDocument(const Document& document)
-        {
+            output = {};
             const Node& root = document.nodes[document.root];
             if (root.type != NodeType::Object)
-                return Failure(ErrorCode::InvalidMessage);
+                return ErrorCode::InvalidMessage;
             const Node* type = Find(document, root, "type");
             if (type == nullptr || type->type != NodeType::String)
-                return Failure(ErrorCode::InvalidMessage);
+                return ErrorCode::InvalidMessage;
 
-            ParseResult result = {};
             if (StringEquals(document, *type, "hello"))
             {
                 static const char* const required[] = {"type", "protocol", "versions"};
                 static const char* const optional[] = {"client_name", "authentication"};
                 if (!HasExactFields(document, root, required, 3, optional, 2))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const Node* protocol = Find(document, root, "protocol");
                 const Node* versions = Find(document, root, "versions");
                 if (protocol == nullptr || !StringEquals(document, *protocol, "d2b-stream") || versions == nullptr ||
                     versions->type != NodeType::Array || versions->count < 1 || versions->count > 16)
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 bool supportsVersion = false;
                 for (std::uint16_t item = versions->first; item != kNoIndex; item = document.items[item].next)
                 {
                     const Node& version = document.nodes[document.items[item].value];
                     if (!IsVersion(document, version))
-                        return Failure(ErrorCode::InvalidMessage);
+                        return ErrorCode::InvalidMessage;
                     if (StringEquals(document, version, "0.1"))
                         supportsVersion = true;
                     for (std::uint16_t prior = versions->first; prior != item; prior = document.items[prior].next)
@@ -805,12 +798,12 @@ namespace D2B
                         const Node& priorVersion = document.nodes[document.items[prior].value];
                         if (version.text.bytes == priorVersion.text.bytes &&
                             std::memcmp(StringValue(document, version), StringValue(document, priorVersion), version.text.bytes) == 0)
-                            return Failure(ErrorCode::InvalidMessage);
+                            return ErrorCode::InvalidMessage;
                     }
                 }
                 const Node* clientName = Find(document, root, "client_name");
                 if (clientName != nullptr && !IsString(clientName, 1, 128))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const Node* authentication = Find(document, root, "authentication");
                 if (authentication != nullptr)
                 {
@@ -819,11 +812,11 @@ namespace D2B
                     const Node* token = Find(document, *authentication, "token");
                     if (!HasExactFields(document, *authentication, authRequired, 2, nullptr, 0) || scheme == nullptr ||
                         !StringEquals(document, *scheme, "pairing-token") || !IsString(token, 1, 256) || token->text.bytes > 256)
-                        return Failure(ErrorCode::InvalidMessage);
+                        return ErrorCode::InvalidMessage;
                 }
-                result.message.type = ClientMessageType::Hello;
-                result.message.supportsVersion01 = supportsVersion;
-                return result;
+                output.type = ClientMessageType::Hello;
+                output.supportsVersion01 = supportsVersion;
+                return ErrorCode::None;
             }
 
             if (StringEquals(document, *type, "start_stream"))
@@ -831,33 +824,33 @@ namespace D2B
                 static const char* const required[] = {"type", "stream", "profile", "parameters"};
                 static const char* const optional[] = {"options"};
                 if (!HasExactFields(document, root, required, 4, optional, 1))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const Node* stream = Find(document, root, "stream");
                 const Node* profile = Find(document, root, "profile");
                 const Node* parameters = Find(document, root, "parameters");
                 if (!IsIdentifier(document, stream) || !IsIdentifier(document, profile) || parameters == nullptr)
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const Node* options = Find(document, root, "options");
                 if (options != nullptr && (options->type != NodeType::Object || options->count > 32))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const ErrorCode shape = ValidateParameterShape(document, *parameters);
                 if (shape != ErrorCode::None)
-                    return Failure(shape);
+                    return shape;
                 Profile parsedProfile;
                 if (StringEquals(document, *profile, "vi-measurement"))
                     parsedProfile = Profile::ViMeasurement;
                 else if (StringEquals(document, *profile, "pcm-audio"))
                     parsedProfile = Profile::PcmAudio;
                 else
-                    return Failure(ErrorCode::UnsupportedProfile);
+                    return ErrorCode::UnsupportedProfile;
                 const ErrorCode parametersResult = ValidateParameters(document, *parameters, parsedProfile);
                 if (parametersResult != ErrorCode::None)
-                    return Failure(parametersResult);
-                result.message.type = ClientMessageType::StartStream;
-                result.message.profile = parsedProfile;
-                if (!CopyString(document, *stream, result.message.stream, sizeof(result.message.stream)))
-                    return Failure(ErrorCode::InvalidMessage);
-                return result;
+                    return parametersResult;
+                output.type = ClientMessageType::StartStream;
+                output.profile = parsedProfile;
+                if (!CopyString(document, *stream, output.stream, sizeof(output.stream)))
+                    return ErrorCode::InvalidMessage;
+                return ErrorCode::None;
             }
 
             if (StringEquals(document, *type, "stop_stream"))
@@ -865,17 +858,17 @@ namespace D2B
                 static const char* const required[] = {"type"};
                 static const char* const optional[] = {"stream_id", "reason"};
                 if (!HasExactFields(document, root, required, 1, optional, 2))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 const Node* streamId = Find(document, root, "stream_id");
                 const Node* reason = Find(document, root, "reason");
                 if (streamId != nullptr && !IsInteger(streamId, 1, 0xffffffffULL))
-                    return Failure(ErrorCode::InvalidMessage);
+                    return ErrorCode::InvalidMessage;
                 if (reason != nullptr && !IsString(reason, 1, 256))
-                    return Failure(ErrorCode::InvalidMessage);
-                result.message.type = ClientMessageType::StopStream;
-                result.message.hasStreamId = streamId != nullptr;
-                result.message.streamId = streamId == nullptr ? 0 : static_cast<std::uint32_t>(streamId->unsignedValue);
-                return result;
+                    return ErrorCode::InvalidMessage;
+                output.type = ClientMessageType::StopStream;
+                output.hasStreamId = streamId != nullptr;
+                output.streamId = streamId == nullptr ? 0 : static_cast<std::uint32_t>(streamId->unsignedValue);
+                return ErrorCode::None;
             }
 
             if (StringEquals(document, *type, "ping"))
@@ -883,14 +876,14 @@ namespace D2B
                 static const char* const required[] = {"type", "correlation"};
                 const Node* correlation = Find(document, root, "correlation");
                 if (!HasExactFields(document, root, required, 2, nullptr, 0) || !IsString(correlation, 1, 128) ||
-                    !CopyString(document, *correlation, result.message.correlation, sizeof(result.message.correlation)))
-                    return Failure(ErrorCode::InvalidMessage);
-                result.message.type = ClientMessageType::Ping;
-                result.message.correlationBytes = correlation->text.bytes;
-                return result;
+                    !CopyString(document, *correlation, output.correlation, sizeof(output.correlation)))
+                    return ErrorCode::InvalidMessage;
+                output.type = ClientMessageType::Ping;
+                output.correlationBytes = correlation->text.bytes;
+                return ErrorCode::None;
             }
 
-            return Failure(ErrorCode::InvalidMessage);
+            return ErrorCode::InvalidMessage;
         }
     } // namespace
 
@@ -913,14 +906,29 @@ namespace D2B
         return "internal_error";
     }
 
-    ParseResult ParseClientMessage(const std::uint8_t* data, std::size_t size)
+    ErrorCode ParseClientMessageInto(const std::uint8_t* data, std::size_t size, ParseResult& output)
     {
+        output = {};
+        // The parser document is fixed-capacity BSS workspace. Product access is
+        // serialized by the single HTTPD-task Transport owner; this API is
+        // deliberately non-reentrant and performs no dynamic allocation.
         static Parser parser;
         static Document document;
         const ErrorCode parseResult = parser.parse(data, size, document);
         if (parseResult != ErrorCode::None)
-            return Failure(parseResult);
-        return ValidateDocument(document);
+        {
+            output.error = parseResult;
+            return parseResult;
+        }
+        output.error = ValidateDocument(document, output.message);
+        return output.error;
+    }
+
+    ParseResult ParseClientMessage(const std::uint8_t* data, std::size_t size)
+    {
+        ParseResult result = {};
+        (void)ParseClientMessageInto(data, size, result);
+        return result;
     }
 
     ErrorCode ValidateClientMessageState(const ClientMessage& message, ControlState state, bool ownsStream)

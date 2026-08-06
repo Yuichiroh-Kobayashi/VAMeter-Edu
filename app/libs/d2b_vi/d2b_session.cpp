@@ -142,47 +142,68 @@ namespace D2B
         session.streamId = 0;
     }
 
-    ControlResponse BuildErrorResponse(ErrorCode error)
+    void BuildErrorResponseInto(ErrorCode error, ControlResponse& output)
     {
-        ControlResponse response = {};
-        ResponseWriter writer(response);
+        output = {};
+        ResponseWriter writer(output);
         writer.append("{\"type\":\"error\",\"code\":\"");
         writer.append(ErrorCodeName(error));
         writer.append("\",\"message\":\"");
         writer.append(ErrorMessage(error));
         writer.append("\",\"recoverable\":true}");
         writer.finish();
-        if (response.error == ErrorCode::None)
-            response.error = error;
+        if (output.error == ErrorCode::None)
+            output.error = error;
+    }
+
+    ControlResponse BuildErrorResponse(ErrorCode error)
+    {
+        ControlResponse response = {};
+        BuildErrorResponseInto(error, response);
         return response;
     }
 
-    ControlResponse HandleClientMessage(Session& session, const ClientMessage& message, std::uint32_t& streamIdCounter)
+    void HandleClientMessageInto(Session& session,
+                                 const ClientMessage& message,
+                                 std::uint32_t& streamIdCounter,
+                                 ControlResponse& output)
     {
+        output = {};
         const ErrorCode stateError = ValidateClientMessageState(message, session.state, session.ownsStream);
         if (stateError != ErrorCode::None)
-            return BuildErrorResponse(stateError);
+        {
+            BuildErrorResponseInto(stateError, output);
+            return;
+        }
 
-        ControlResponse response = {};
-        ResponseWriter writer(response);
+        ResponseWriter writer(output);
         if (message.type == ClientMessageType::Hello)
         {
             if (!message.supportsVersion01)
-                return BuildErrorResponse(ErrorCode::UnsupportedVersion);
+            {
+                BuildErrorResponseInto(ErrorCode::UnsupportedVersion, output);
+                return;
+            }
             writer.append("{\"type\":\"welcome\",\"protocol\":\"d2b-stream\",\"version\":\"0.1\","
                           "\"max_control_message_size\":2048,\"max_binary_frame_size\":48,\"session_state\":\"ready\","
                           "\"server_name\":\"VAMeter-Edu\"}");
             if (writer.finish())
                 session.state = ControlState::Ready;
-            return response;
+            return;
         }
 
         if (message.type == ClientMessageType::StartStream)
         {
             if (std::strcmp(message.stream, "live-vi") != 0)
-                return BuildErrorResponse(ErrorCode::UnknownStream);
+            {
+                BuildErrorResponseInto(ErrorCode::UnknownStream, output);
+                return;
+            }
             if (message.profile != Profile::ViMeasurement)
-                return BuildErrorResponse(ErrorCode::UnsupportedProfile);
+            {
+                BuildErrorResponseInto(ErrorCode::UnsupportedProfile, output);
+                return;
+            }
             const std::uint32_t streamId = NextStreamId(streamIdCounter);
             writer.append("{\"type\":\"stream_started\",\"stream\":\"live-vi\",\"profile\":\"vi-measurement\","
                           "\"parameters\":{\"sample_format\":\"vi-f32le\",\"channel_count\":2,\"channel_mask\":3,"
@@ -195,13 +216,16 @@ namespace D2B
                 session.ownsStream = true;
                 session.streamId = streamId;
             }
-            return response;
+            return;
         }
 
         if (message.type == ClientMessageType::StopStream)
         {
             if (message.hasStreamId && message.streamId != session.streamId)
-                return BuildErrorResponse(ErrorCode::UnknownStream);
+            {
+                BuildErrorResponseInto(ErrorCode::UnknownStream, output);
+                return;
+            }
             const std::uint32_t stoppedId = session.streamId;
             writer.append("{\"type\":\"stream_stopped\",\"stream_id\":");
             writer.appendUnsigned(stoppedId);
@@ -212,13 +236,19 @@ namespace D2B
                 session.ownsStream = false;
                 session.streamId = 0;
             }
-            return response;
+            return;
         }
 
         writer.append("{\"type\":\"pong\",\"correlation\":");
         writer.appendJsonString(message.correlation, message.correlationBytes);
         writer.append("}");
         writer.finish();
+    }
+
+    ControlResponse HandleClientMessage(Session& session, const ClientMessage& message, std::uint32_t& streamIdCounter)
+    {
+        ControlResponse response = {};
+        HandleClientMessageInto(session, message, streamIdCounter, response);
         return response;
     }
 

@@ -60,7 +60,11 @@ int main(int argc, char** argv)
     if (!DecodeHex(argv[1], data))
         return 2;
 
-    const D2B::ParseResult parsed = D2B::ParseClientMessage(data.data(), data.size());
+    D2B::ParseResult parsed = {};
+    D2B::ParseClientMessageInto(data.data(), data.size(), parsed);
+    const D2B::ParseResult wrapped = D2B::ParseClientMessage(data.data(), data.size());
+    if (wrapped.error != parsed.error || std::memcmp(&wrapped.message, &parsed.message, sizeof(parsed.message)) != 0)
+        return 3;
     D2B::ErrorCode result = parsed.error;
     if (result == D2B::ErrorCode::None && argc == 4)
     {

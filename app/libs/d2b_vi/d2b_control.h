@@ -67,6 +67,10 @@ namespace D2B
         bool ok() const { return error == ErrorCode::None; }
     };
 
+    ErrorCode ParseClientMessageInto(const std::uint8_t* data, std::size_t size, ParseResult& output);
+
+    // Compatibility wrapper for host callers. The product control hot path uses
+    // ParseClientMessageInto() so the caller owns the large result storage.
     ParseResult ParseClientMessage(const std::uint8_t* data, std::size_t size);
     ErrorCode ValidateClientMessageState(const ClientMessage& message, ControlState state, bool ownsStream);
 } // namespace D2B
