@@ -7,7 +7,7 @@
 #include "../../hal/hal.h"
 #include "../utils/system/system.h"
 #include "../../assets/assets.h"
-#include "../app_files/app_files.h"
+#include "../app_settings/app_settings.h"
 #include "apps/utils/system/inputs/button/button.h"
 #include "spdlog/spdlog.h"
 #include <string>
@@ -65,10 +65,10 @@ void AppWaveform::_handle_recording_finished()
     delete _data.view;
 
     // What to do with
-    // std::vector<std::string> option_list = {" - Open", " - Upload (EzData)", " - Delete", " - Continue"};
+    // std::vector<std::string> option_list = {" - Open", " - Network", " - Delete", " - Continue"};
     std::vector<std::string> option_list;
     option_list.push_back(AssetPool::GetText().AppFiles_Option_Open);
-    option_list.push_back(AssetPool::GetText().AppFiles_Option_Upload);
+    option_list.push_back(AssetPool::GetText().AppSettings_Option_Network);
     option_list.push_back(AssetPool::GetText().AppFiles_Option_Delete);
     option_list.push_back(AssetPool::GetText().AppSettings_Option_Back);
 
@@ -94,10 +94,10 @@ void AppWaveform::_handle_recording_finished()
             VaRecordViewer::CreateAndWait(&record);
         }
 
-        // Download (QR)
+        // Network
         else if (selected_index == 1)
         {
-            _on_page_download_local(HAL::GetLatestVaRecordName());
+            AppSettings::_on_page_network();
         }
 
         // Delete
@@ -112,5 +112,3 @@ void AppWaveform::_handle_recording_finished()
     _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
 }
-
-void AppWaveform::_on_page_download_local(const std::string& recordName) { SYSTEM::UI::CreateDownloadQRPage(recordName); }

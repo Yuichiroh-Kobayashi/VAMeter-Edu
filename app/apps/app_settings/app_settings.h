@@ -33,7 +33,6 @@ namespace MOONCAKE
             void _on_page_language();
             void _on_page_startup_image();
             void _on_page_calibration();
-            void _on_page_network();
             void _on_page_ota_upgrade();
             void _on_page_about();
             void _on_page_base_test();
@@ -41,6 +40,7 @@ namespace MOONCAKE
             void _on_page_probe_mode();
 
         public:
+            static void _on_page_network();
             void onResume() override;
             void onRunning() override;
             void onDestroy() override;
