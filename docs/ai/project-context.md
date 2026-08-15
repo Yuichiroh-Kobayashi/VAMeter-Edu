@@ -44,6 +44,20 @@ In order:
 
 Do not hard-code current branch SHAs into general AI instructions. Verify current refs before any branch operation.
 
+## Active direct-browser product direction
+
+Device-hosted browser viewing is an active product direction alongside, not inside, the V-I logger integration history. The frozen G2 architecture is `O1-RX + O3`: bounded pre-parser Origin admission for the D2B WebSocket combined with a device-hosted same-origin production Viewer and a separately bounded external-development profile.
+
+The durable boundaries are:
+
+- D2B wire and measurement semantics remain separate and frozen; the G2 decision does not redefine them.
+- Origin is an admission-control gate, not authentication. P1 and P2 remain mandatory under the authoritative [Origin admission policy](../architecture/origin-admission-policy.md).
+- SystemConfig, SystemLive, and Download remain separated as defined by the [direct-browser service profiles](../architecture/direct-browser-service-profiles.md).
+- Static and runtime resource qualification remains an explicit gate under the [resource budget](../architecture/resource-budget.md).
+- Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior. They are not current product implementation or G3 authorization.
+
+G3 implementation remains unauthorized until an explicit post-review decision.
+
 ## PR #1 accepted scope
 
 PR #1 hardened classroom waveform recording and was accepted into `dev/vi-logger`.

@@ -18,13 +18,15 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - educational purpose;
   - branch and scope boundaries;
   - accepted PR #1 behavior;
-  - separate Issues #2 and #3.
+  - separate Issues #2 and #3;
+  - PostContest direct-browser product direction and evidence boundaries.
 - `recorder-and-measurement-contracts.md`
   - UI, CSV, timing, storage, lifecycle, Files/download invariants;
   - known sampling limitation.
 - `build-and-validation.md`
   - dependency setup;
   - host/desktop/device build commands;
+  - direct-browser validation hierarchy;
   - AssetPool and hardware-validation boundary.
 - `git-worktree-and-artifacts.md`
   - standard worktree model;
@@ -33,6 +35,14 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
 - `dependency-baseline.md`
   - the seven dependency revisions verified for the PR #1 merge-commit clean build;
   - mutable-ref review rules and fetch-helper limitations.
+- [`physical-validation-and-rollback.md`](physical-validation-and-rollback.md)
+  - authoritative physical candidate, device identity, flash, capture, rollback, and STOP rules.
+- [`../architecture/origin-admission-policy.md`](../architecture/origin-admission-policy.md)
+  - authoritative direct-browser Origin threat model, admission policy, and frozen O1-RX architecture.
+- [`../architecture/direct-browser-service-profiles.md`](../architecture/direct-browser-service-profiles.md)
+  - authoritative separation of SystemConfig, SystemLive, and Download route/security profiles.
+- [`../architecture/resource-budget.md`](../architecture/resource-budget.md)
+  - authoritative direct-browser static, AssetPool, and runtime resource qualification boundaries.
 
 ## Related document sets
 

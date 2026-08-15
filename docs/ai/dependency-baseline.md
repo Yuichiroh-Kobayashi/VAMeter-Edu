@@ -16,7 +16,7 @@ This document records the dependency snapshot verified during the clean build of
 
 ## Validation use
 
-After `fetch_repos.py`, validate all seven paths independently:
+Successful completion of `fetch_repos.py` is not dependency identity proof. After it, validate all seven paths independently:
 
 - the path is a real directory and not a cross-worktree symlink;
 - the origin URL matches `repos.json`;
@@ -25,3 +25,11 @@ After `fetch_repos.py`, validate all seven paths independently:
 - any difference from this verified snapshot is reviewed explicitly.
 
 `fetch_repos.py` is currently a simple clone helper. It does not validate existing repositories, is not idempotent, and does not reliably propagate individual clone failures because its subprocess calls do not use `check=True`. Making dependency acquisition idempotent or introducing an immutable lock belongs in a separate tooling PR.
+
+## ESP-IDF managed components
+
+ESP-IDF managed components are materialized per build-capable worktree from the tracked component manifests, including `idf_component.yml`, together with tracked `dependencies.lock` authority.
+
+- Do not share, copy, symlink, bind-mount, or path-substitute `managed_components` across worktrees.
+- Validate that the materialized content belongs to the exact source worktree and lock/manifest inputs used for the build.
+- A change to a component manifest or `dependencies.lock` is a dependency-authority mutation and requires separate explicit authorization. Do not perform it as an incidental build repair.

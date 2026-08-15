@@ -26,14 +26,25 @@ Prefer classroom clarity, safe failure, data preservation, and explainable measu
 ## Current development scope
 
 - Stable baseline branch: `main`.
-- Active V-I logger integration branch: `dev/vi-logger`.
+- The educational V-I logger remains an active integration stream on `dev/vi-logger`; it is not the umbrella for every current product direction.
 - PR #1, `fix(recorder): harden classroom waveform recording`, is merged into `dev/vi-logger`.
 - `dev/vi-logger` is not automatically equivalent to an approved `main` release. It also contains product/design documentation and a build-path change.
 - High-priority known issue: GitHub Issue #3, recorder sampling stalls during synchronous FAT writes.
 - Calibration persistence is separate work: GitHub Issue #2.
 - Do not begin Issue #2 or Issue #3 implementation unless the task explicitly requests it.
+- Device-hosted direct-browser viewing is a separate active product direction. G2 freezes `O1-RX + O3`; implementation and G3 work still require explicit authorization.
 
 Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
+
+## Direct-browser and physical-work gates
+
+- Before changing direct-browser behavior or Origin handling, read `docs/architecture/origin-admission-policy.md` and `docs/architecture/direct-browser-service-profiles.md`.
+- Before any resource-sensitive change, read `docs/architecture/resource-budget.md`.
+- Before any physical flash, readback, rollback, or device test, read `docs/ai/physical-validation-and-rollback.md`.
+- `O1-RX + O3` is the frozen G2 architecture. Origin is browser-origin admission control, not authentication.
+- P1 and P2 are mandatory. Never weaken the production Origin policy to make external development easier.
+- Dependency, worktree, build, evidence, physical-safety, and rollback invariants remain mandatory.
+- Internal orchestration details, agent runtime metadata, model names, thread identifiers, or reviewer metadata must never become Project or Firmware Gates.
 
 ## Environment baseline
 
@@ -65,7 +76,7 @@ Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
 - `docs/vi-logger/`: canonical V-I logger architecture, standards, operations, and validation evidence.
 - `docs/handoffs/`: dated handoff and evidence documents; these are not normative contracts by themselves.
 - `docs/ai/`: durable contracts shared by AI tools. Start with `docs/ai/README.md`.
-- Legacy files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` may be compatibility stubs; follow them to the canonical `docs/vi-logger/` document.
+- Direct-browser documents under `docs/architecture/` are authoritative for their named scope. Other legacy files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` may be compatibility stubs; follow them to the canonical `docs/vi-logger/` document.
 
 ## Pre-work checks
 

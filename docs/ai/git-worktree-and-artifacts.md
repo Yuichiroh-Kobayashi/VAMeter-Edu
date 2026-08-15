@@ -85,7 +85,9 @@ An exception must name:
 
 ## Dependencies belong to each worktree
 
-Do not link dependency directories between worktrees.
+Each build-capable worktree owns and validates its own dependency checkouts and ESP-IDF managed components. A docs-only worktree does not need dependency materialization unless its task explicitly changes scope.
+
+Do not copy, link, symlink, bind-mount, or substitute dependency or `managed_components` paths between worktrees.
 
 Reasons:
 
@@ -94,7 +96,7 @@ Reasons:
 - build output may use a different dependency revision than expected;
 - Git status and reproducibility become misleading.
 
-Fetch and verify dependencies separately in every active development worktree.
+Fetch and verify dependencies separately in every build-capable worktree. Never repair a partial checkout from another worktree.
 
 ## Data classes
 
@@ -145,6 +147,8 @@ Use:
 Distinguish:
 
 - source commit;
+- mutable build output;
+- a frozen physical-candidate package;
 - clean post-merge build;
 - exact binary flashed to a device;
 - provenance-limited legacy binary.
@@ -171,3 +175,12 @@ Use:
 Build directories are disposable, but deletion is still an explicit operation. Do not remove them merely to save space during an unrelated task.
 
 Never add measurement CSV, AssetPool, or firmware `.bin` files to Git unless the repository policy is explicitly changed.
+
+## Evidence package lifecycle
+
+- Keep source, build output, LabData, Artifacts, and Archive roots separate.
+- Freeze the exact physical-candidate bytes, metadata, and checksums outside the mutable build directory before flash.
+- A failed, incomplete, corrected, or superseded evidence package remains immutable evidence of that attempt.
+- A retry or revision gets a new non-colliding root. Do not overwrite or silently repair the earlier package.
+- Record relationships among source identity, build identity, candidate package, flashed bytes, and collected evidence; do not collapse them into one provenance claim.
+- Follow [`physical-validation-and-rollback.md`](physical-validation-and-rollback.md) for physical-candidate and rollback gates.

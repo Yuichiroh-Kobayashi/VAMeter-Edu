@@ -68,10 +68,15 @@ high-water が含まれる。これらは診断用の runtime evidence であり
 保証するものではない。active-stream trend は既存 TX task から出力し、5,000,000 us 未満
 では繰り返さない。
 
-ESP-IDF の static resource gate は、dedicated 16 KiB IRAM display を informational only として扱う。
-authoritative gate は application/bootloader/partition の successful link、`iram0_0_seg` overflow が
-ないこと、linker map における full `iram0_0_seg` remaining headroom、shared D/IRAM remaining
-capacity、および同一基準 build との差分である。これらは広範な IRAM 削減を示唆するものではない。
+ESP-IDF の static resource review は、dedicated 16 KiB IRAM display と full linker segment の両方を
+区別して記録する。G2 Track B で観測された dedicated static IRAM は 16,383 / 16,384 bytes、
+remaining 1 byte であり HOLD である。これは full `iram0_0_seg` overflow と同義ではない一方、
+production resource qualification でもない。authoritative build evidence には
+application/bootloader/partition の successful link、`iram0_0_seg` overflow がないこと、
+linker map における full `iram0_0_seg` remaining headroom、shared D/IRAM remaining capacity、
+同一基準 build との差分を含める。詳細は
+[`../architecture/resource-budget.md`](../architecture/resource-budget.md) に従い、1 byte の表示から
+IRAM 配置変更や production acceptance を推論しない。
 
 A desktop PASS does not prove:
 
@@ -112,6 +117,35 @@ A clean-build claim requires:
   - `dependencies.lock`.
 
 Do not run `idf.py fullclean`, delete user build outputs, or recreate dependencies unless the task explicitly authorizes cleanup.
+
+## Direct-browser validation hierarchy
+
+Direct-browser and Origin work must keep the following evidence layers separate:
+
+1. **Host unit/fuzz:** bounded parser state, grammar, lifecycle cleanup, deterministic adversarial corpus, and failure behavior.
+2. **Firmware build/resource:** ESP-IDF link, partition fit, IRAM/DRAM/BSS/flash deltas, heap allocation behavior, and configured task-stack impact.
+3. **Physical debug-client:** exact device/candidate identity, raw-socket request behavior, serial evidence, open/close cleanup, and failure recovery on hardware.
+4. **Browser/device qualification:** device-hosted same-origin Viewer and separately bounded development profile in the supported browsers and real device lifecycle.
+5. **Classroom/product qualification:** supported classroom workflow, usability, safety, duration/soak, and release criteria.
+
+A result at one layer does not establish a later layer. Physical work must follow
+[`physical-validation-and-rollback.md`](physical-validation-and-rollback.md).
+
+Any later O1-RX implementation validation must include, without assuming these tests have already run:
+
+- one-byte and adversarial fragmentation;
+- splits across the request line, header name, header value, and every CR/LF boundary;
+- missing and duplicate Origin;
+- comma-bearing Origin values;
+- malformed and overlong input;
+- a valid ordinary request followed by a pipelined request in the same receive block;
+- WebSocket terminator followed by first-frame bytes in the same receive block;
+- a deterministic random malformed/fuzz corpus;
+- allocation failure plus open, close, rejection, and cleanup paths.
+
+The security contract and exact accepted subset are owned by
+[`../architecture/origin-admission-policy.md`](../architecture/origin-admission-policy.md).
+Do not report any layer as run unless its evidence was actually observed.
 
 ## AssetPool
 
