@@ -120,6 +120,13 @@ namespace D2B_ESP
                 const int socket = httpd_req_to_sockfd(request);
                 if (socket < 0 || !ORIGIN_ADMISSION_ESP::AcceptedWebSocket(request->handle, socket))
                 {
+                    if (socket >= 0)
+                        D2B_RUNTIME_EVIDENCE::LogSecurityBreadcrumb(
+                            RUNTIME_EVIDENCE::Event::WebSocketConnect,
+                            RUNTIME_EVIDENCE::Reason::WebSocketRejected,
+                            RUNTIME_EVIDENCE::Result::Rejected,
+                            0,
+                            socket);
                     ESP_LOGW(kTag, "rejected WebSocket without O1-RX admission proof");
                     return false;
                 }
@@ -141,12 +148,22 @@ namespace D2B_ESP
                 _owner.socket = socket;
                 _owner.generation = _generationCounter;
                 _owner.active = true;
+                D2B_RUNTIME_EVIDENCE::LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event::WebSocketConnect,
+                                                            RUNTIME_EVIDENCE::Reason::OwnerAcquire,
+                                                            RUNTIME_EVIDENCE::Result::Accepted,
+                                                            _owner.generation,
+                                                            _owner.socket);
                 _violations.reset();
                 _workspace.reset();
                 _buffer.reset();
                 D2B::OpenSession(_session);
                 if (!D2B_PIPELINE::Open(PipelineOwner(_owner)))
                 {
+                    D2B_RUNTIME_EVIDENCE::LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event::WebSocketConnect,
+                                                                RUNTIME_EVIDENCE::Reason::WebSocketRejected,
+                                                                RUNTIME_EVIDENCE::Result::Failed,
+                                                                _owner.generation,
+                                                                _owner.socket);
                     D2B::CloseSession(_session);
                     _owner.server = 0;
                     _owner.socket = -1;

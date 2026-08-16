@@ -18,6 +18,11 @@ namespace D2B_PRODUCER
 namespace D2B_RUNTIME_EVIDENCE
 {
     void SetServerGeneration(std::uint32_t generation);
+    void LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event event,
+                               RUNTIME_EVIDENCE::Reason reason,
+                               RUNTIME_EVIDENCE::Result result,
+                               std::uint32_t generation,
+                               std::int32_t socket);
 
     void LogServerRequest(RUNTIME_EVIDENCE::Event event,
                           RUNTIME_EVIDENCE::Owner owner,

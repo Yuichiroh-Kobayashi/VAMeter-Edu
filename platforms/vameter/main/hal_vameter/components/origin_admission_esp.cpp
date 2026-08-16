@@ -1,5 +1,7 @@
 #include "origin_admission_esp.h"
 
+#include "d2b_runtime_evidence.h"
+
 #include <PsychicHttp.h>
 #include <lwip/inet.h>
 #include <lwip/sockets.h>
@@ -39,6 +41,24 @@ namespace ORIGIN_ADMISSION_ESP
         SessionContext* GetSessionContext(httpd_handle_t server, int socket)
         {
             return static_cast<SessionContext*>(httpd_sess_get_transport_ctx(server, socket));
+        }
+
+        RUNTIME_EVIDENCE::Reason RejectionReason(ORIGIN_ADMISSION::RejectReason reason)
+        {
+            switch (reason)
+            {
+            case ORIGIN_ADMISSION::RejectReason::MissingOrigin:
+            case ORIGIN_ADMISSION::RejectReason::EmptyOrigin:
+            case ORIGIN_ADMISSION::RejectReason::NullOrigin:
+            case ORIGIN_ADMISSION::RejectReason::MalformedOrigin:
+            case ORIGIN_ADMISSION::RejectReason::DuplicateOrigin:
+            case ORIGIN_ADMISSION::RejectReason::OriginComma:
+            case ORIGIN_ADMISSION::RejectReason::OriginTooLong:
+            case ORIGIN_ADMISSION::RejectReason::OriginMismatch:
+                return RUNTIME_EVIDENCE::Reason::OriginRejected;
+            default:
+                return RUNTIME_EVIDENCE::Reason::WebSocketRejected;
+            }
         }
     } // namespace
 
@@ -156,9 +176,23 @@ namespace ORIGIN_ADMISSION_ESP
             reinterpret_cast<const std::uint8_t*>(buffer),
             static_cast<std::size_t>(received));
         if (result.decision == ORIGIN_ADMISSION::Decision::Rejected)
+        {
+            D2B_RUNTIME_EVIDENCE::LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event::ServerRequest,
+                                                        RejectionReason(result.reason),
+                                                        RUNTIME_EVIDENCE::Result::Rejected,
+                                                        0,
+                                                        socket);
             return HTTPD_SOCK_ERR_FAIL;
-        if (result.decision == ORIGIN_ADMISSION::Decision::AcceptedWebSocket)
+        }
+        if (result.decision == ORIGIN_ADMISSION::Decision::AcceptedWebSocket && !context->acceptedWebSocket)
+        {
             context->acceptedWebSocket = true;
+            D2B_RUNTIME_EVIDENCE::LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event::ServerRequest,
+                                                        RUNTIME_EVIDENCE::Reason::WebSocketAccepted,
+                                                        RUNTIME_EVIDENCE::Result::Accepted,
+                                                        0,
+                                                        socket);
+        }
 
         // The scanner is an admission observer. Every accepted raw receive
         // block, including a WebSocket first-frame tail, remains untouched.

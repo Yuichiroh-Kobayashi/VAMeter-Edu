@@ -131,6 +131,21 @@ namespace D2B_RUNTIME_EVIDENCE
 
     void SetServerGeneration(std::uint32_t generation) { _serverGeneration = generation; }
 
+    void LogSecurityBreadcrumb(RUNTIME_EVIDENCE::Event event,
+                               RUNTIME_EVIDENCE::Reason reason,
+                               RUNTIME_EVIDENCE::Result result,
+                               std::uint32_t generation,
+                               std::int32_t socket)
+    {
+        Emit(EmptyResource(event,
+                           reason,
+                           result,
+                           RUNTIME_EVIDENCE::Owner::System,
+                           generation,
+                           socket,
+                           0));
+    }
+
     void LogServerRequest(RUNTIME_EVIDENCE::Event event,
                           RUNTIME_EVIDENCE::Owner owner,
                           RUNTIME_EVIDENCE::Reason reason,
