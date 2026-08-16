@@ -94,16 +94,25 @@ void AppPower_monitor::onResume()
 void AppPower_monitor::onRunning()
 {
     _check_page_switch();
+    if (_is_educational_measurement())
+    {
+        Button::Update();
+        _update_share_workflow();
+    }
     _update_view();
 }
 
 void AppPower_monitor::onDestroy()
 {
+    (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementExit);
+    _data.share_session.measurementTerminationObserved(LIVE_SHARE_SESSION::MeasurementTermination::Exit);
     NotificationBubble::Free();
     spdlog::info("{} onDestroy", getAppName());
     delete _data.view;
     if (_data.waveform_view)
         delete _data.waveform_view;
+    if (_data.live_share_view)
+        delete _data.live_share_view;
 }
 
 void AppPower_monitor::_check_page_switch()
@@ -202,7 +211,15 @@ void AppPower_monitor::_update_view()
         _data.pm_update_time_count = HAL::Millis();
     }
 
-    if (_data.current_page_num == 5 && _data.waveform_view)
+    if (_data.share_session.state() != LIVE_SHARE_SESSION::State::Inactive && _data.live_share_view)
+    {
+        _data.live_share_view->update(_data.share_session.state(),
+                                      _share_theme_color(),
+                                      HAL::GetSystemLiveWifiSsid(),
+                                      HAL::GetSystemLiveViewerUrl(),
+                                      _data.share_session.lastStartOutcome());
+    }
+    else if (_data.current_page_num == 5 && _data.waveform_view)
     {
         _data.waveform_view->update();
         if (_data.waveform_view->want2quit())
@@ -213,6 +230,131 @@ void AppPower_monitor::_update_view()
         _data.view->update(HAL::Millis());
         if (_data.view->want2quit())
             destroyApp();
+    }
+}
+
+bool AppPower_monitor::_is_educational_measurement() const
+{
+    return _data.initial_page_num == 1 || _data.initial_page_num == 2;
+}
+
+uint32_t AppPower_monitor::_share_theme_color() const
+{
+    return _data.initial_page_num == 1
+               ? AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusVoltage
+               : AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageShuntCurrent;
+}
+
+void AppPower_monitor::_update_share_workflow()
+{
+    using namespace LIVE_SHARE_SESSION;
+    const std::uint32_t now = HAL::Millis();
+    const State state = _data.share_session.state();
+
+    if ((state == State::Inactive || state == State::StartError) && Button::Side()->wasClicked())
+    {
+        _execute_share_action(_data.share_session.requestStart());
+        return;
+    }
+
+    if (state == State::WifiQr || state == State::ViewerQr)
+    {
+        if (Button::Side()->wasClicked())
+        {
+            _execute_share_action(_data.share_session.requestStop(now));
+            return;
+        }
+        if (state == State::WifiQr)
+        {
+            _data.share_session.stationCountObserved(HAL::GetApStaNum());
+            if (_data.share_session.state() == State::WifiQr && Button::Encoder()->wasClicked())
+                _data.share_session.manualNext();
+        }
+        else if (Button::Encoder()->wasClicked())
+        {
+            // Frozen C2B option A: Viewer QR encoder click returns to Wi-Fi QR.
+            _data.share_session.manualPrevious();
+        }
+        return;
+    }
+
+    if (state == State::Stopping)
+    {
+        Action action = _data.share_session.observeTransportStop(HAL::PollSystemLiveStop(), now);
+        if (action == Action::None)
+            action = _data.share_session.tick(now);
+        _execute_share_action(action);
+        return;
+    }
+
+    if (state == State::StopRecovery &&
+        (Button::Encoder()->wasClicked() || Button::Side()->wasClicked()))
+        _execute_share_action(_data.share_session.retryCleanup());
+}
+
+void AppPower_monitor::_execute_share_action(LIVE_SHARE_SESSION::Action action)
+{
+    using namespace LIVE_SHARE_SESSION;
+    switch (action)
+    {
+    case Action::StartSystemLive:
+    {
+        if (_data.live_share_view == nullptr)
+            _data.live_share_view = new VIEWS::LiveShareView;
+        const WEB_SERVER_OWNER::StartResult result = HAL::StartSystemLiveSharing();
+        StartOutcome outcome = StartOutcome::Failed;
+        if (result == WEB_SERVER_OWNER::StartResult::Started)
+            outcome = StartOutcome::Started;
+        else if (result == WEB_SERVER_OWNER::StartResult::BusyOtherOwner)
+            outcome = StartOutcome::Busy;
+        _data.share_session.finishStart(outcome);
+        break;
+    }
+    case Action::BeginNetworkStop:
+    {
+        const Action next =
+            _data.share_session.observeTransportStop(HAL::BeginSystemLiveStop(), HAL::Millis());
+        _execute_share_action(next);
+        break;
+    }
+    case Action::StopSystemServer:
+    case Action::RetryCleanup:
+        _finish_share_cleanup(HAL::FinishSystemLiveStop());
+        break;
+    case Action::None:
+    default:
+        break;
+    }
+}
+
+void AppPower_monitor::_finish_share_cleanup(WEB_SERVER_OWNER::StopResult result)
+{
+    using namespace LIVE_SHARE_SESSION;
+    CleanupOutcome outcome = CleanupOutcome::RetryRequired;
+    switch (result)
+    {
+    case WEB_SERVER_OWNER::StopResult::Stopped:
+        outcome = CleanupOutcome::Stopped;
+        break;
+    case WEB_SERVER_OWNER::StopResult::AlreadyStopped:
+        outcome = CleanupOutcome::AlreadyStopped;
+        break;
+    case WEB_SERVER_OWNER::StopResult::RejectedWrongOwner:
+        outcome = CleanupOutcome::RejectedWrongOwner;
+        break;
+    case WEB_SERVER_OWNER::StopResult::ApStopFailed:
+        outcome = CleanupOutcome::ApStopFailed;
+        break;
+    case WEB_SERVER_OWNER::StopResult::RetryRequired:
+    default:
+        outcome = CleanupOutcome::RetryRequired;
+        break;
+    }
+    _data.share_session.finishCleanup(outcome);
+    if (_data.share_session.state() == State::Inactive)
+    {
+        delete _data.live_share_view;
+        _data.live_share_view = nullptr;
     }
 }
 

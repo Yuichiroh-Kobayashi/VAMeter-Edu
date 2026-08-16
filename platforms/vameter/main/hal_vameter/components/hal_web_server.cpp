@@ -9,11 +9,15 @@
 #include "libs/local_csv_download/local_csv_download_name.h"
 #include "libs/local_csv_download/local_csv_download_selection.h"
 #include "libs/local_csv_download/local_csv_stream.h"
+#include "libs/live_share_safety/live_share_safety.h"
 #include "libs/web_server_owner/web_server_owner.h"
 #include "libs/web_server_owner/web_server_results.h"
 #include "libs/web_server_owner/web_server_transaction.h"
 #include "d2b_esp_transport.h"
 #include "d2b_runtime_evidence.h"
+#include "origin_admission_esp.h"
+#include "viewer_http_routes.h"
+#include "libs/viewer_asset_contract/viewer_asset_contract.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
@@ -38,8 +42,24 @@ namespace
     class OwnedPsychicHttpServer : public PsychicHttpServer
     {
     public:
+        bool installSystemLiveOrigin(const char* activeIpv4)
+        {
+            return _originAdmission.Install(*this, activeIpv4);
+        }
+
+        void setSystemLiveAdmissionNotReady()
+        {
+            _originAdmission.SetAdmissionNotReady();
+        }
+
+        void setSystemLiveAdmissionReady()
+        {
+            _originAdmission.SetAdmissionReady();
+        }
+
         ~OwnedPsychicHttpServer() override
         {
+            setSystemLiveAdmissionNotReady();
             // PsychicEndpoint has no destructor for its handler pointer in
             // the pinned PsychicHttp revision.  The wrapper therefore owns
             // and releases endpoint/default handlers before the base class
@@ -49,10 +69,17 @@ namespace
                 delete (*endpoint)->handler();
             delete defaultEndpoint->handler();
         }
+
+    private:
+        // The non-owning G3-A Policy and its expected-Origin bytes are owned
+        // by the exact server wrapper that outlives every HTTPD session.
+        ORIGIN_ADMISSION_ESP::ServerBinding _originAdmission;
     };
 
     PsychicHttpServer* _http_server = nullptr;
     WEB_SERVER_OWNER::State _http_server_owner;
+    std::string _activeSystemLiveIpv4;
+    std::string _activeSystemLiveApSsid;
 
     RUNTIME_EVIDENCE::Owner RuntimeOwner(WEB_SERVER_OWNER::Owner owner)
     {
@@ -71,6 +98,7 @@ namespace
     struct HttpdTransactionContext
     {
         WEB_SERVER_OWNER::Owner owner;
+        bool d2bAlreadyPrepared;
     };
 
     httpd_handle_t HttpdHandleFromKey(std::uintptr_t rawServerHandleKey)
@@ -94,7 +122,8 @@ namespace
     void PrepareHttpdStopCallback(void* context, std::uintptr_t rawServerHandleKey)
     {
         const HttpdTransactionContext* transaction = static_cast<const HttpdTransactionContext*>(context);
-        if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System)
+        if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System &&
+            !transaction->d2bAlreadyPrepared)
             D2B_ESP::PrepareServerStop(HttpdHandleFromKey(rawServerHandleKey));
     }
 
@@ -102,7 +131,11 @@ namespace
     {
         const HttpdTransactionContext* transaction = static_cast<const HttpdTransactionContext*>(context);
         if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System)
+        {
             D2B_ESP::AfterServerStopped(HttpdHandleFromKey(rawServerHandleKey));
+            _activeSystemLiveIpv4.clear();
+            _activeSystemLiveApSsid.clear();
+        }
     }
 
     void FailedHttpdStopCallback(void* context, std::uintptr_t rawServerHandleKey)
@@ -112,7 +145,10 @@ namespace
             D2B_ESP::ServerStopFailed(HttpdHandleFromKey(rawServerHandleKey));
     }
 
-    WEB_SERVER_OWNER::StartResult StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner, RUNTIME_EVIDENCE::Reason reason)
+    WEB_SERVER_OWNER::StartResult StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner,
+                                                       RUNTIME_EVIDENCE::Reason reason,
+                                                       bool installOriginAdmission,
+                                                       const char* activeIpv4)
     {
         const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
         D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStart,
@@ -174,17 +210,73 @@ namespace
                              : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
         }
 
+        ownedServer->server = nullptr;
+
         if (owner == WEB_SERVER_OWNER::Owner::System)
         {
             ownedServer->onClose(
                 [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
         }
 
-        ownedServer->server = nullptr;
         ownedServer->config.stack_size =
             owner == WEB_SERVER_OWNER::Owner::System
                 ? kSystemHttpdStackSizeBytes
                 : kDownloadHttpdStackSizeBytes;
+
+        if (installOriginAdmission &&
+            (owner != WEB_SERVER_OWNER::Owner::System || !ownedServer->installSystemLiveOrigin(activeIpv4)))
+        {
+            const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                &_http_server_owner,
+                owner,
+                0,
+                0,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+            };
+            const WEB_SERVER_OWNER::PartialCleanupOutcome cleanup =
+                WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+            spdlog::error("SystemLive expected Origin is unavailable or invalid");
+            return cleanup.result == WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure
+                       ? WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure
+                       : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+        }
+
+        if (installOriginAdmission)
+        {
+            const std::size_t effectiveCapacity = ownedServer->config.max_uri_handlers;
+            if (effectiveCapacity < VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount)
+            {
+                const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                    &_http_server_owner,
+                    owner,
+                    0,
+                    0,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                };
+                const WEB_SERVER_OWNER::PartialCleanupOutcome cleanup =
+                    WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+                spdlog::error("SystemLive URI capacity {} is below required {}",
+                              effectiveCapacity,
+                              VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+                return cleanup.result == WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure
+                           ? WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure
+                           : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+            }
+            spdlog::info("SystemLive effective URI capacity {} required {} headroom {}",
+                         effectiveCapacity,
+                         VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount,
+                         effectiveCapacity - VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+        }
 
         const esp_err_t listenResult = ownedServer->listen(80);
         if (listenResult != ESP_OK)
@@ -268,7 +360,9 @@ namespace
         }
     }
 
-    WEB_SERVER_OWNER::StopResult StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner, RUNTIME_EVIDENCE::Reason reason)
+    WEB_SERVER_OWNER::StopResult StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner,
+                                                     RUNTIME_EVIDENCE::Reason reason,
+                                                     bool d2bAlreadyPrepared = false)
     {
         const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
         D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStop,
@@ -276,13 +370,19 @@ namespace
                                                reason,
                                                _http_server_owner.generation());
         const std::uint32_t generation = _http_server_owner.generation();
+        if (owner == WEB_SERVER_OWNER::Owner::System &&
+            _http_server != nullptr &&
+            _http_server_owner.owner() == owner)
+        {
+            static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+        }
         // Capture the raw handle while the PsychicHttp wrapper is valid.  No
         // wrapper field or method is touched after a successful stop callback.
         const std::uintptr_t wrapperKey = reinterpret_cast<std::uintptr_t>(_http_server);
         std::uintptr_t rawServerHandleKey = 0;
         if (_http_server != nullptr && _http_server_owner.owner() == owner)
             rawServerHandleKey = reinterpret_cast<std::uintptr_t>(_http_server->server);
-        HttpdTransactionContext transactionContext = {owner};
+        HttpdTransactionContext transactionContext = {owner, d2bAlreadyPrepared};
         const WEB_SERVER_OWNER::TransactionRequest stopRequest = {
             &_http_server_owner,
             owner,
@@ -506,9 +606,32 @@ void HAL_VAMeter::_web_server_api_loading()
 /*                                 Web server                                 */
 /* -------------------------------------------------------------------------- */
 WEB_SERVER_OWNER::StartResult HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                          WEB_SERVER_PROFILE::Profile profile,
                                                           bool autoWifiMode,
                                                           WebServerReason reason)
 {
+    if (profile == WEB_SERVER_PROFILE::Profile::SystemConfig)
+    {
+        setBaseRelay(false);
+        const bool relayOff = !getBaseRelayState();
+        spdlog::info("SystemConfig Relay OFF command issued; software state off={}", relayOff);
+        if (!relayOff)
+        {
+            spdlog::critical("SystemConfig start rejected: Relay software state remains ON");
+            return WEB_SERVER_OWNER::StartResult::ApStartFailed;
+        }
+    }
+
+    const WEB_SERVER_PROFILE::RoutePolicy profilePolicy = WEB_SERVER_PROFILE::PolicyFor(profile);
+    if (profilePolicy.originRxRequired)
+    {
+        // Metadata is authoritative only for the current SystemLive
+        // lifecycle.  Clear any previous lifecycle before this attempt can
+        // acquire AP/HTTPD ownership.
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
+    }
+
     // Reconcile the synchronous AP mode before any owner, STA, AP, or HTTPD
     // side effect.  Retained or unknown AP state is a fail-closed recovery
     // result even when the internal owner state is inactive.
@@ -560,8 +683,12 @@ HELL:
     const RUNTIME_EVIDENCE::Reason evidenceReason =
         reason == WebServerReason::NetworkSettingsStart ? RUNTIME_EVIDENCE::Reason::NetworkSettingsStart
                                                         : RUNTIME_EVIDENCE::Reason::OwnerAcquire;
+    const std::string activeSystemLiveIpv4 = profilePolicy.originRxRequired ? _get_ip() : std::string();
     const WEB_SERVER_OWNER::StartResult ownedStart =
-        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, evidenceReason);
+        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System,
+                             evidenceReason,
+                             profilePolicy.originRxRequired,
+                             activeSystemLiveIpv4.c_str());
     if (ownedStart != WEB_SERVER_OWNER::StartResult::Started)
     {
         if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(ownedStart))
@@ -573,11 +700,10 @@ HELL:
         return ownedStart;
     }
 
-    _web_server_page_loading();
-    _web_server_api_loading();
-    D2B_ESP::SetServerGeneration(_http_server_owner.generation());
-    if (!D2B_ESP::Register(_http_server->server, _http_server_owner.generation()))
+    const auto rollbackSystemStart = [this]() -> WEB_SERVER_OWNER::StartResult
     {
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
         const WEB_SERVER_OWNER::StopResult cleanup =
             StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, RUNTIME_EVIDENCE::Reason::ServerStartFailed);
         if (!WEB_SERVER_OWNER::IsStopSuccessful(cleanup))
@@ -586,9 +712,69 @@ HELL:
         if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
             return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
         return WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure;
-    }
-    spdlog::info("web server started");
+    };
 
+    if (profilePolicy.configurationPages)
+        _web_server_page_loading();
+    if (profilePolicy.configurationApis)
+        _web_server_api_loading();
+
+    bool viewerRoutesInstalled = false;
+    if (profilePolicy.viewerRequired)
+    {
+        StaticAsset_t* staticAsset = AssetPool::GetStaticAsset();
+        if (staticAsset == nullptr || !VIEWER_HTTP_ROUTES::HasExpectedAssetIdentity(&staticAsset->WebPage))
+        {
+            spdlog::error("VIEWER_ASSETPOOL_IDENTITY_MISMATCH");
+            return rollbackSystemStart();
+        }
+        if (!VIEWER_HTTP_ROUTES::Register(_http_server->server, &staticAsset->WebPage))
+            return rollbackSystemStart();
+        viewerRoutesInstalled = true;
+    }
+
+    bool d2bRoutesInstalled = false;
+    if (profilePolicy.d2bRequired)
+    {
+        D2B_ESP::SetServerGeneration(_http_server_owner.generation());
+        if (!D2B_ESP::Register(_http_server->server, _http_server_owner.generation()))
+            return rollbackSystemStart();
+        d2bRoutesInstalled = true;
+    }
+
+    const bool routeProfileComplete =
+        (!profilePolicy.viewerRequired || viewerRoutesInstalled) &&
+        (!profilePolicy.d2bRequired || d2bRoutesInstalled) &&
+        (!profilePolicy.originRxRequired ||
+         VIEWER_ASSET_CONTRACT::kViewerRouteCount + VIEWER_ASSET_CONTRACT::kD2bRouteCount ==
+             VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+    if (!routeProfileComplete)
+    {
+        spdlog::error("SystemLive route/profile completeness gate failed");
+        return rollbackSystemStart();
+    }
+
+    if (profilePolicy.originRxRequired)
+    {
+        // Stage and validate all device-side QR authority while admission is
+        // still false.  activeSystemLiveIpv4 is the same trusted value already
+        // frozen into the O1-RX expected Origin for this server lifecycle.
+        const std::string activeSystemLiveApSsid = getApWifiSsid();
+        if (LIVE_SHARE_SESSION::BuildViewerUrl(activeSystemLiveIpv4).empty() ||
+            activeSystemLiveApSsid.empty() || activeSystemLiveApSsid.size() > 32U)
+        {
+            spdlog::error("SystemLive QR authority metadata validation failed");
+            return rollbackSystemStart();
+        }
+        _activeSystemLiveIpv4 = activeSystemLiveIpv4;
+        _activeSystemLiveApSsid = activeSystemLiveApSsid;
+
+        spdlog::info("SystemLive routes complete; arming admission readiness");
+        static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionReady();
+        return WEB_SERVER_OWNER::StartResult::Started;
+    }
+
+    spdlog::info("web server started");
     return WEB_SERVER_OWNER::StartResult::Started;
 }
 
@@ -613,12 +799,145 @@ WEB_SERVER_OWNER::StopResult HAL_VAMeter::stopWebServer(WebServerReason reason)
     return serverResult;
 }
 
+LIVE_SHARE_SAFETY::Result
+HAL_VAMeter::terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+{
+    struct MeasurementSafetyContext
+    {
+        HAL_VAMeter* hal;
+        bool d2bPrepared;
+    };
+
+    MeasurementSafetyContext context = {this, false};
+    const LIVE_SHARE_SAFETY::Callbacks callbacks = {
+        &context,
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            safety->hal->setBaseRelay(false);
+            const bool relayOff = !safety->hal->getBaseRelayState();
+            spdlog::info("measurement safety Relay OFF command issued; software state off={}", relayOff);
+            return relayOff;
+        },
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            if (_http_server != nullptr &&
+                _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::System &&
+                _http_server->server != nullptr)
+            {
+                D2B_ESP::PrepareServerStop(_http_server->server);
+            }
+            safety->d2bPrepared = true;
+            return true;
+        },
+        [](void*) -> bool
+        {
+            // C2A defines no orderly wire message and never snapshots the
+            // transport singleton from the application task.  The active
+            // socket may therefore close abruptly during HTTPD shutdown.
+            spdlog::info("measurement safety transport termination is bounded/no-wait");
+            return true;
+        },
+        [](void*) -> bool
+        {
+            if (_http_server != nullptr &&
+                _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::System)
+            {
+                static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+            }
+            return true;
+        },
+        [](void* opaque) -> LIVE_SHARE_SAFETY::HttpdStopDisposition
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            const WEB_SERVER_OWNER::StopResult result =
+                StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System,
+                                    RUNTIME_EVIDENCE::Reason::OwnerRelease,
+                                    safety->d2bPrepared);
+            switch (result)
+            {
+            case WEB_SERVER_OWNER::StopResult::Stopped:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::Stopped;
+            case WEB_SERVER_OWNER::StopResult::AlreadyStopped:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::AlreadyStopped;
+            case WEB_SERVER_OWNER::StopResult::RejectedWrongOwner:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::RejectedWrongOwner;
+            case WEB_SERVER_OWNER::StopResult::RetryRequired:
+            case WEB_SERVER_OWNER::StopResult::ApStopFailed:
+            default:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::RetryRequired;
+            }
+        },
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            return safety->hal->_stop_ap_mode() != WEB_SERVER_OWNER::ApStopResult::StopFailed;
+        },
+    };
+
+    const LIVE_SHARE_SAFETY::Result result = LIVE_SHARE_SAFETY::Execute(reason, callbacks);
+    if (result.hasCleanupDebt())
+        spdlog::error("measurement safety retained HTTPD/AP cleanup debt");
+    return result;
+}
+
 std::string HAL_VAMeter::getSystemConfigUrl()
 {
     std::string ret = "http://";
     ret += _get_ip();
     ret += "/syscfg";
     return ret;
+}
+
+WEB_SERVER_OWNER::StartResult HAL_VAMeter::startSystemLiveSharing()
+{
+    const OnLogPageRenderCallback_t noUiLog = [](const std::string&, bool, bool) {};
+    return startWebServer(noUiLog, WEB_SERVER_PROFILE::Profile::SystemLive, false);
+}
+
+LIVE_SHARE_SESSION::TransportStopStatus HAL_VAMeter::beginSystemLiveStop()
+{
+    if (_http_server_owner.owner() != WEB_SERVER_OWNER::Owner::System)
+        return _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::None
+                   ? LIVE_SHARE_SESSION::TransportStopStatus::NoOwner
+                   : LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    if (_http_server == nullptr || _http_server->server == nullptr)
+        return LIVE_SHARE_SESSION::TransportStopStatus::NoOwner;
+
+    // This is deliberately the first network action of ordinary Stop Sharing.
+    // The application task does not inspect or mutate the D2B owner/session.
+    static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+    if (!D2B_ESP::RequestLocalStop(_http_server->server))
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    return LIVE_SHARE_SESSION::TransportStopStatus::Queued;
+}
+
+LIVE_SHARE_SESSION::TransportStopStatus HAL_VAMeter::pollSystemLiveStop()
+{
+    if (_http_server_owner.owner() != WEB_SERVER_OWNER::Owner::System ||
+        _http_server == nullptr || _http_server->server == nullptr)
+        return LIVE_SHARE_SESSION::TransportStopStatus::NoOwner;
+    return D2B_ESP::PollLocalStop(_http_server->server);
+}
+
+WEB_SERVER_OWNER::StopResult HAL_VAMeter::finishSystemLiveStop()
+{
+    const WEB_SERVER_OWNER::StopResult result = stopWebServer(WebServerReason::Unspecified);
+    if (result == WEB_SERVER_OWNER::StopResult::Stopped ||
+        result == WEB_SERVER_OWNER::StopResult::AlreadyStopped)
+    {
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
+    }
+    return result;
+}
+
+std::string HAL_VAMeter::getSystemLiveWifiSsid() { return _activeSystemLiveApSsid; }
+
+std::string HAL_VAMeter::getSystemLiveViewerUrl()
+{
+    return LIVE_SHARE_SESSION::BuildViewerUrl(_activeSystemLiveIpv4);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -733,7 +1052,10 @@ bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
     }
 
     const WEB_SERVER_OWNER::StartResult ownedStart =
-        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download, RUNTIME_EVIDENCE::Reason::DownloadStart);
+        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download,
+                             RUNTIME_EVIDENCE::Reason::DownloadStart,
+                             false,
+                             nullptr);
     if (ownedStart != WEB_SERVER_OWNER::StartResult::Started)
     {
         _download_selection.clear();

@@ -104,7 +104,10 @@ void AppSettings::_on_page_network()
         else if (selected == 1)
         {
             const WEB_SERVER_OWNER::StartResult startResult =
-                HAL::StartWebServer(OnLogPageRender, false, HAL::WebServerReason::NetworkSettingsStart);
+                HAL::StartWebServer(OnLogPageRender,
+                                    WEB_SERVER_PROFILE::Profile::SystemConfig,
+                                    false,
+                                    HAL::WebServerReason::NetworkSettingsStart);
             switch (NETWORK_WEB_SERVER_RECOVERY::DecideStartAction(startResult))
             {
             case NETWORK_WEB_SERVER_RECOVERY::Action::ContinueWorkflow:

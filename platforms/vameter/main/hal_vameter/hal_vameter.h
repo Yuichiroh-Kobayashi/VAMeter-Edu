@@ -87,6 +87,8 @@ public:
 
     void setBaseRelay(bool state) override;
     bool getBaseRelayState() override;
+    LIVE_SHARE_SAFETY::Result
+    terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason) override;
 
     void loadSystemConfig() override;
     void saveSystemConfig() override;
@@ -120,10 +122,18 @@ public:
     std::vector<std::string> getStartupImageList() override;
 
     WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                 WEB_SERVER_PROFILE::Profile profile,
                                                  bool autoWifiMode,
                                                  WebServerReason reason = WebServerReason::Unspecified) override;
     WEB_SERVER_OWNER::StopResult stopWebServer(WebServerReason reason = WebServerReason::Unspecified) override;
     std::string getSystemConfigUrl() override;
+
+    WEB_SERVER_OWNER::StartResult startSystemLiveSharing() override;
+    LIVE_SHARE_SESSION::TransportStopStatus beginSystemLiveStop() override;
+    LIVE_SHARE_SESSION::TransportStopStatus pollSystemLiveStop() override;
+    WEB_SERVER_OWNER::StopResult finishSystemLiveStop() override;
+    std::string getSystemLiveWifiSsid() override;
+    std::string getSystemLiveViewerUrl() override;
 
     // Local download server
     bool startDownloadServer(const std::string& recordName) override;

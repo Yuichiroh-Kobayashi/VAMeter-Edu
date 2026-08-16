@@ -2,6 +2,7 @@
 #include "d2b_vi_pipeline.h"
 #include "d2b_vi_producer.h"
 #include "d2b_runtime_evidence.h"
+#include "origin_admission_esp.h"
 
 #include "libs/d2b_vi/d2b_control.h"
 #include "libs/d2b_vi/d2b_capabilities.h"
@@ -15,6 +16,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <atomic>
 
 namespace D2B_ESP
 {
@@ -27,6 +29,15 @@ namespace D2B_ESP
             "<h1>VAMeter-Edu D2B V/I</h1><p>d2b-stream/0.1 live voltage/current endpoint.</p>"
             "<ul><li><a href=\"capabilities\">capabilities</a></li><li><a href=\"status\">status</a></li></ul>"
             "</html>";
+
+        std::atomic<LIVE_SHARE_SESSION::TransportStopStatus> _localStopStatus(
+            LIVE_SHARE_SESSION::TransportStopStatus::Idle);
+        std::atomic<httpd_handle_t> _localStopServer(nullptr);
+        std::atomic<std::uint32_t> _localStopServerGeneration(0);
+        std::atomic<std::uint32_t> _registeredServerGeneration(0);
+        std::atomic<std::uint32_t> _localStopRequestCounter(0);
+        std::atomic<std::uint32_t> _localStopRequestId(0);
+        std::atomic<std::uint32_t> _localStopWorkToken(0);
 
         struct Owner
         {
@@ -65,6 +76,20 @@ namespace D2B_ESP
             return key;
         }
 
+        bool SameOwner(const Owner& left, const Owner& right)
+        {
+            return left.active && right.active && left.server == right.server && left.socket == right.socket &&
+                   left.generation != 0 && left.generation == right.generation;
+        }
+
+        std::uint32_t NextLocalStopRequestId()
+        {
+            std::uint32_t requestId = _localStopRequestCounter.fetch_add(1, std::memory_order_acq_rel) + 1U;
+            if (requestId == 0)
+                requestId = _localStopRequestCounter.fetch_add(1, std::memory_order_acq_rel) + 1U;
+            return requestId;
+        }
+
         class Transport
         {
         public:
@@ -75,6 +100,10 @@ namespace D2B_ESP
                   _streamIdCounter(0),
                   _generationCounter(0),
                   _serverGeneration(0),
+                  _localStopOwner(),
+                  _localStopOwnerServerGeneration(0),
+                  _localStopOwnerRequestId(0),
+                  _localStopActive(false),
                   _violations(),
                   _workspace()
             {
@@ -82,23 +111,28 @@ namespace D2B_ESP
                 _owner.socket = -1;
                 _owner.generation = 0;
                 _owner.active = false;
+                resetLocalStopOwner();
                 D2B::CloseSession(_session);
             }
 
             bool open(httpd_req_t* request)
             {
-                if (!originAllowed(request))
+                const int socket = httpd_req_to_sockfd(request);
+                if (socket < 0 || !ORIGIN_ADMISSION_ESP::AcceptedWebSocket(request->handle, socket))
                 {
-                    ESP_LOGW(kTag, "rejected WebSocket origin");
+                    ESP_LOGW(kTag, "rejected WebSocket without O1-RX admission proof");
                     return false;
                 }
 
-                const int socket = httpd_req_to_sockfd(request);
                 if (_owner.active)
                 {
                     ESP_LOGW(kTag, "rejected additional WebSocket connection");
                     return false;
                 }
+
+                // A newly published owner is an exact lifecycle boundary.  A
+                // gate retained for an older owner must never attach to it.
+                resetLocalStopOwner();
 
                 ++_generationCounter;
                 if (_generationCounter == 0)
@@ -184,13 +218,14 @@ namespace D2B_ESP
                 return processCompleteMessage(request);
             }
 
-            void close(httpd_handle_t server,
+            bool close(httpd_handle_t server,
                        int socket,
                        RUNTIME_EVIDENCE::Reason reason = RUNTIME_EVIDENCE::Reason::Disconnect)
             {
                 if (!matches(server, socket))
-                    return;
+                    return false;
                 const std::uint32_t generation = _owner.generation;
+                const Owner closingOwner = _owner;
                 const D2B_PIPELINE::OwnerKey owner = PipelineOwner(_owner);
                 D2B_PIPELINE::Close(owner, reason);
                 D2B::CloseSession(_session);
@@ -201,8 +236,10 @@ namespace D2B_ESP
                 _owner.active = false;
                 _violations.reset();
                 _workspace.reset();
+                clearLocalStopOwnerIfMatches(closingOwner);
                 D2B_RUNTIME_EVIDENCE::LogWebSocketDisconnect(owner, reason);
                 ESP_LOGI(kTag, "WebSocket owner closed, generation=%lu", static_cast<unsigned long>(generation));
+                return true;
             }
 
             void sanityCleanupAfterServerStopped(httpd_handle_t server)
@@ -219,11 +256,13 @@ namespace D2B_ESP
                     _violations.reset();
                     _workspace.reset();
                 }
+                resetLocalStopOwner();
                 _serverGeneration = 0;
             }
 
             void setServerGeneration(std::uint32_t generation)
             {
+                resetLocalStopOwner();
                 _serverGeneration = generation;
                 D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
             }
@@ -254,6 +293,77 @@ namespace D2B_ESP
 
             unsigned connectedCount() const { return _owner.active ? 1U : 0U; }
 
+            LIVE_SHARE_SESSION::TransportStopStatus beginLocalStop(httpd_handle_t server,
+                                                                   std::uint32_t serverGeneration,
+                                                                   std::uint32_t requestId)
+            {
+                if (server == nullptr || serverGeneration == 0 || requestId == 0 ||
+                    _serverGeneration != serverGeneration)
+                    return LIVE_SHARE_SESSION::TransportStopStatus::Complete;
+
+                if (!_owner.active || _owner.server != server)
+                {
+                    resetLocalStopOwner();
+                    return LIVE_SHARE_SESSION::TransportStopStatus::NoOwner;
+                }
+
+                // This code runs on the owning HTTPD task.  Admission is
+                // already false, so resolve and freeze the exact current owner
+                // tuple before inspecting its current stream state.
+                _localStopOwner = _owner;
+                _localStopOwnerServerGeneration = serverGeneration;
+                _localStopOwnerRequestId = requestId;
+                _localStopActive = true;
+
+                if (_session.state != D2B::ControlState::Streaming)
+                {
+                    return httpd_sess_trigger_close(_owner.server, _owner.socket) == ESP_OK
+                               ? LIVE_SHARE_SESSION::TransportStopStatus::OwnerClosing
+                               : LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+                }
+
+                const std::uint32_t streamId = _session.streamId;
+                char stoppedResponse[128];
+                const int length = std::snprintf(stoppedResponse,
+                                                 sizeof(stoppedResponse),
+                                                 "{\"type\":\"stream_stopped\",\"stream_id\":%lu,"
+                                                 "\"reason\":\"device stop\"}",
+                                                 static_cast<unsigned long>(streamId));
+                if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(stoppedResponse) ||
+                    !D2B_PIPELINE::RequestOrderlyStop(PipelineOwner(_owner),
+                                                      streamId,
+                                                      stoppedResponse,
+                                                      static_cast<std::size_t>(length)))
+                    return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+
+                _session.state = D2B::ControlState::Ready;
+                _session.ownsStream = false;
+                _session.streamId = 0;
+                return LIVE_SHARE_SESSION::TransportStopStatus::ActiveStreamStopping;
+            }
+
+            LIVE_SHARE_SESSION::TransportStopStatus pollLocalStop(httpd_handle_t server,
+                                                                  std::uint32_t serverGeneration,
+                                                                  std::uint32_t requestId)
+            {
+                if (!localStopOwnerMatches(server, serverGeneration, requestId))
+                    return LIVE_SHARE_SESSION::TransportStopStatus::Complete;
+
+                if (!SameOwner(_owner, _localStopOwner))
+                {
+                    resetLocalStopOwner();
+                    return LIVE_SHARE_SESSION::TransportStopStatus::Complete;
+                }
+
+                const D2B_PIPELINE::Snapshot pipeline = D2B_PIPELINE::GetSnapshot();
+                if (pipeline.streamActive || pipeline.stopping)
+                    return LIVE_SHARE_SESSION::TransportStopStatus::ActiveStreamStopping;
+
+                return httpd_sess_trigger_close(_owner.server, _owner.socket) == ESP_OK
+                           ? LIVE_SHARE_SESSION::TransportStopStatus::OwnerClosing
+                           : LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+            }
+
         private:
             esp_err_t processCompleteMessage(httpd_req_t* request)
             {
@@ -261,6 +371,16 @@ namespace D2B_ESP
                 _buffer.reset();
                 if (!_workspace.parsed.ok())
                     return protocolViolation(request, _workspace.parsed.error);
+
+                // Local Stop Sharing owns this exact admitted owner until the
+                // owner actually closes.  In particular this remains armed
+                // after the pipeline clears StopPending, so READY->STREAMING
+                // cannot be resurrected in the orderly-stop/close window.
+                if (localStopGatesCurrentOwner())
+                {
+                    ESP_LOGW(kTag, "closing locally stopping WebSocket owner after client control");
+                    return ESP_FAIL;
+                }
 
                 if (D2B_PIPELINE::StopPending(PipelineOwner(_owner)))
                     return protocolViolation(request, D2B::ErrorCode::InvalidState);
@@ -329,6 +449,39 @@ namespace D2B_ESP
                 return _owner.active && _owner.server == server && _owner.socket == socket && _owner.generation != 0;
             }
 
+            bool localStopGatesCurrentOwner() const
+            {
+                return _localStopActive && _localStopOwnerServerGeneration == _serverGeneration &&
+                       SameOwner(_owner, _localStopOwner);
+            }
+
+            bool localStopOwnerMatches(httpd_handle_t server,
+                                       std::uint32_t serverGeneration,
+                                       std::uint32_t requestId) const
+            {
+                return _localStopActive && server != nullptr && serverGeneration != 0 && requestId != 0 &&
+                       _localStopOwner.server == server &&
+                       _localStopOwnerServerGeneration == serverGeneration &&
+                       _localStopOwnerRequestId == requestId;
+            }
+
+            void clearLocalStopOwnerIfMatches(const Owner& owner)
+            {
+                if (_localStopActive && SameOwner(_localStopOwner, owner))
+                    resetLocalStopOwner();
+            }
+
+            void resetLocalStopOwner()
+            {
+                _localStopOwner.server = nullptr;
+                _localStopOwner.socket = -1;
+                _localStopOwner.generation = 0;
+                _localStopOwner.active = false;
+                _localStopOwnerServerGeneration = 0;
+                _localStopOwnerRequestId = 0;
+                _localStopActive = false;
+            }
+
             static bool PublishSession(void* context)
             {
                 SessionPublication* publication = static_cast<SessionPublication*>(context);
@@ -340,24 +493,6 @@ namespace D2B_ESP
                     return false;
                 transport->_session = publication->session;
                 return true;
-            }
-
-            bool originAllowed(httpd_req_t* request) const
-            {
-                const std::size_t originLength = httpd_req_get_hdr_value_len(request, "Origin");
-                if (originLength == 0)
-                    return true;
-                const std::size_t hostLength = httpd_req_get_hdr_value_len(request, "Host");
-                if (originLength >= sizeof(_originBuffer) || hostLength == 0 || hostLength >= sizeof(_hostBuffer))
-                    return false;
-                if (httpd_req_get_hdr_value_str(request, "Origin", _originBuffer, sizeof(_originBuffer)) != ESP_OK ||
-                    httpd_req_get_hdr_value_str(request, "Host", _hostBuffer, sizeof(_hostBuffer)) != ESP_OK)
-                    return false;
-
-                char expected[sizeof(_originBuffer)];
-                const int length = std::snprintf(expected, sizeof(expected), "http://%s", _hostBuffer);
-                return length > 0 && static_cast<std::size_t>(length) < sizeof(expected) &&
-                       std::strcmp(_originBuffer, expected) == 0;
             }
 
             esp_err_t rejectConsumed(httpd_req_t* request,
@@ -404,10 +539,12 @@ namespace D2B_ESP
             std::uint32_t _streamIdCounter;
             std::uint32_t _generationCounter;
             std::uint32_t _serverGeneration;
+            Owner _localStopOwner;
+            std::uint32_t _localStopOwnerServerGeneration;
+            std::uint32_t _localStopOwnerRequestId;
+            bool _localStopActive;
             D2B::ControlViolationState _violations;
             ControlWorkspace _workspace;
-            mutable char _originBuffer[192];
-            mutable char _hostBuffer[128];
             std::uint8_t _receiveBuffer[D2B::kMaximumControlMessageSize];
         };
 
@@ -415,6 +552,59 @@ namespace D2B_ESP
         {
             static Transport transport;
             return transport;
+        }
+
+        void ReleaseLocalStopWorkToken(std::uint32_t requestId)
+        {
+            std::uint32_t expected = requestId;
+            (void)_localStopWorkToken.compare_exchange_strong(expected, 0, std::memory_order_acq_rel);
+        }
+
+        void LocalStopWork(void* context)
+        {
+            const std::uint32_t requestId =
+                static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(context));
+            if (requestId == 0 || requestId != _localStopRequestId.load(std::memory_order_acquire))
+            {
+                ReleaseLocalStopWorkToken(requestId);
+                return;
+            }
+
+            const httpd_handle_t server = _localStopServer.load(std::memory_order_acquire);
+            const std::uint32_t serverGeneration =
+                _localStopServerGeneration.load(std::memory_order_acquire);
+            const LIVE_SHARE_SESSION::TransportStopStatus current =
+                _localStopStatus.load(std::memory_order_acquire);
+            LIVE_SHARE_SESSION::TransportStopStatus next = current;
+            if (current == LIVE_SHARE_SESSION::TransportStopStatus::Queued)
+                next = GetTransport().beginLocalStop(server, serverGeneration, requestId);
+            else if (current == LIVE_SHARE_SESSION::TransportStopStatus::ActiveStreamStopping)
+                next = GetTransport().pollLocalStop(server, serverGeneration, requestId);
+
+            if (requestId == _localStopRequestId.load(std::memory_order_acquire))
+                _localStopStatus.store(next, std::memory_order_release);
+            ReleaseLocalStopWorkToken(requestId);
+        }
+
+        bool QueueLocalStopWork(httpd_handle_t server, std::uint32_t requestId)
+        {
+            if (server == nullptr || requestId == 0 ||
+                requestId != _localStopRequestId.load(std::memory_order_acquire))
+                return false;
+
+            std::uint32_t expected = 0;
+            if (!_localStopWorkToken.compare_exchange_strong(expected, requestId, std::memory_order_acq_rel))
+                return expected == requestId;
+
+            void* const context = reinterpret_cast<void*>(static_cast<std::uintptr_t>(requestId));
+            if (httpd_queue_work(server, LocalStopWork, context) != ESP_OK)
+            {
+                ReleaseLocalStopWorkToken(requestId);
+                _localStopStatus.store(LIVE_SHARE_SESSION::TransportStopStatus::Failed,
+                                       std::memory_order_release);
+                return false;
+            }
+            return true;
         }
 
         esp_err_t SendJson(httpd_req_t* request, const char* body)
@@ -529,11 +719,49 @@ namespace D2B_ESP
         return true;
     }
 
-    void SetServerGeneration(std::uint32_t generation) { GetTransport().setServerGeneration(generation); }
+    void SetServerGeneration(std::uint32_t generation)
+    {
+        _registeredServerGeneration.store(generation, std::memory_order_release);
+        GetTransport().setServerGeneration(generation);
+    }
+
+    bool RequestLocalStop(httpd_handle_t server)
+    {
+        const std::uint32_t serverGeneration = _registeredServerGeneration.load(std::memory_order_acquire);
+        if (server == nullptr || serverGeneration == 0)
+            return false;
+
+        const std::uint32_t requestId = NextLocalStopRequestId();
+        _localStopServer.store(server, std::memory_order_release);
+        _localStopServerGeneration.store(serverGeneration, std::memory_order_release);
+        _localStopStatus.store(LIVE_SHARE_SESSION::TransportStopStatus::Queued, std::memory_order_release);
+        _localStopRequestId.store(requestId, std::memory_order_release);
+        return QueueLocalStopWork(server, requestId);
+    }
+
+    LIVE_SHARE_SESSION::TransportStopStatus PollLocalStop(httpd_handle_t server)
+    {
+        const LIVE_SHARE_SESSION::TransportStopStatus status =
+            _localStopStatus.load(std::memory_order_acquire);
+        const std::uint32_t requestId = _localStopRequestId.load(std::memory_order_acquire);
+        if (_localStopServer.load(std::memory_order_acquire) != server)
+            return LIVE_SHARE_SESSION::TransportStopStatus::Complete;
+        if (status == LIVE_SHARE_SESSION::TransportStopStatus::Queued ||
+            status == LIVE_SHARE_SESSION::TransportStopStatus::ActiveStreamStopping)
+            (void)QueueLocalStopWork(server, requestId);
+        return _localStopStatus.load(std::memory_order_acquire);
+    }
 
     void OnClientClosed(httpd_handle_t server, int socket)
     {
-        GetTransport().close(server, socket, RUNTIME_EVIDENCE::Reason::Disconnect);
+        const bool closed = GetTransport().close(server, socket, RUNTIME_EVIDENCE::Reason::Disconnect);
+        const LIVE_SHARE_SESSION::TransportStopStatus status =
+            _localStopStatus.load(std::memory_order_acquire);
+        if (closed && _localStopServer.load(std::memory_order_acquire) == server &&
+            (status == LIVE_SHARE_SESSION::TransportStopStatus::Queued ||
+             status == LIVE_SHARE_SESSION::TransportStopStatus::OwnerClosing ||
+             status == LIVE_SHARE_SESSION::TransportStopStatus::ActiveStreamStopping))
+            _localStopStatus.store(LIVE_SHARE_SESSION::TransportStopStatus::Complete, std::memory_order_release);
     }
 
     void PrepareServerStop(httpd_handle_t server)
@@ -543,5 +771,15 @@ namespace D2B_ESP
 
     void ServerStopFailed(httpd_handle_t server) { D2B_PIPELINE::MarkStopFailed(server); }
 
-    void AfterServerStopped(httpd_handle_t server) { GetTransport().sanityCleanupAfterServerStopped(server); }
+    void AfterServerStopped(httpd_handle_t server)
+    {
+        GetTransport().sanityCleanupAfterServerStopped(server);
+        const std::uint32_t invalidatedRequestId = NextLocalStopRequestId();
+        _localStopServer.store(nullptr, std::memory_order_release);
+        _localStopServerGeneration.store(0, std::memory_order_release);
+        _registeredServerGeneration.store(0, std::memory_order_release);
+        _localStopRequestId.store(invalidatedRequestId, std::memory_order_release);
+        _localStopWorkToken.store(0, std::memory_order_release);
+        _localStopStatus.store(LIVE_SHARE_SESSION::TransportStopStatus::Complete, std::memory_order_release);
+    }
 } // namespace D2B_ESP

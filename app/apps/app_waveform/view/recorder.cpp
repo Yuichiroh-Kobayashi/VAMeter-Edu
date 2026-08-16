@@ -380,6 +380,7 @@ void WaveFormRecorder::_handle_help_request()
 void WaveFormRecorder::_handle_recorder_error()
 {
     const VA_RECORDER::Error_t error = HAL::GetVaRecorderError();
+    (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementFault);
     if (!_data.destroy_already_timed_out)
         HAL::DestroyVaRecorder();
     _data.destroy_already_timed_out = false;

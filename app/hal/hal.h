@@ -23,6 +23,9 @@
 #include <LovyanGFX.hpp>
 #include "types.h"
 #endif
+#include "../libs/live_share_safety/live_share_safety.h"
+#include "../libs/live_share_session/live_share_session.h"
+#include "../libs/web_server_owner/web_server_profile.h"
 #include "../libs/web_server_owner/web_server_results.h"
 
 /**
@@ -466,6 +469,23 @@ public:
     virtual bool getBaseRelayState() { return false; }
 
     /* -------------------------------------------------------------------------- */
+    /*                         Measurement safety teardown                        */
+    /* -------------------------------------------------------------------------- */
+public:
+    static LIVE_SHARE_SAFETY::Result
+    TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+    {
+        return Get()->terminateMeasurementSession(reason);
+    }
+
+    virtual LIVE_SHARE_SAFETY::Result
+    terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+    {
+        const LIVE_SHARE_SAFETY::Callbacks callbacks = {};
+        return LIVE_SHARE_SAFETY::Execute(reason, callbacks);
+    }
+
+    /* -------------------------------------------------------------------------- */
     /*                                 Base grove                                 */
     /* -------------------------------------------------------------------------- */
 public:
@@ -623,14 +643,28 @@ public:
                                                         bool autoWifiMode = false,
                                                         WebServerReason reason = WebServerReason::Unspecified)
     {
-        return Get()->startWebServer(onLogPageRender, autoWifiMode, reason);
+        // This compatibility entry point has always started the configuration
+        // server. Keep that meaning explicit without a default profile.
+        return Get()->startWebServer(
+            onLogPageRender, WEB_SERVER_PROFILE::Profile::SystemConfig, autoWifiMode, reason);
     }
+
+    static WEB_SERVER_OWNER::StartResult StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                        WEB_SERVER_PROFILE::Profile profile,
+                                                        bool autoWifiMode,
+                                                        WebServerReason reason = WebServerReason::Unspecified)
+    {
+        return Get()->startWebServer(onLogPageRender, profile, autoWifiMode, reason);
+    }
+
     virtual WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                         WEB_SERVER_PROFILE::Profile profile,
                                                          bool autoWifiMode,
                                                          WebServerReason reason = WebServerReason::Unspecified)
     {
         (void)reason;
         (void)onLogPageRender;
+        (void)profile;
         (void)autoWifiMode;
         return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
     }
@@ -647,6 +681,48 @@ public:
 
     static std::string GetSystemConfigUrl() { return Get()->getSystemConfigUrl(); }
     virtual std::string getSystemConfigUrl() { return "http://192.168.4.1/syscfg"; }
+
+    static WEB_SERVER_OWNER::StartResult StartSystemLiveSharing()
+    {
+        return Get()->startSystemLiveSharing();
+    }
+    virtual WEB_SERVER_OWNER::StartResult startSystemLiveSharing()
+    {
+        return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
+    }
+
+    static LIVE_SHARE_SESSION::TransportStopStatus BeginSystemLiveStop()
+    {
+        return Get()->beginSystemLiveStop();
+    }
+    virtual LIVE_SHARE_SESSION::TransportStopStatus beginSystemLiveStop()
+    {
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    }
+
+    static LIVE_SHARE_SESSION::TransportStopStatus PollSystemLiveStop()
+    {
+        return Get()->pollSystemLiveStop();
+    }
+    virtual LIVE_SHARE_SESSION::TransportStopStatus pollSystemLiveStop()
+    {
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    }
+
+    static WEB_SERVER_OWNER::StopResult FinishSystemLiveStop()
+    {
+        return Get()->finishSystemLiveStop();
+    }
+    virtual WEB_SERVER_OWNER::StopResult finishSystemLiveStop()
+    {
+        return WEB_SERVER_OWNER::StopResult::RetryRequired;
+    }
+
+    static std::string GetSystemLiveWifiSsid() { return Get()->getSystemLiveWifiSsid(); }
+    virtual std::string getSystemLiveWifiSsid() { return std::string(); }
+
+    static std::string GetSystemLiveViewerUrl() { return Get()->getSystemLiveViewerUrl(); }
+    virtual std::string getSystemLiveViewerUrl() { return std::string(); }
 
     /* -------------------------------------------------------------------------- */
     /*                                     NVS                                    */

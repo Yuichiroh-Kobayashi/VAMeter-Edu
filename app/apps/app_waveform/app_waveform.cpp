@@ -54,6 +54,7 @@ void AppWaveform::onRunning()
 
 void AppWaveform::onDestroy()
 {
+    (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementExit);
     spdlog::info("{} onDestroy", getAppName());
     delete _data.view;
     NotificationBubble::Free();
