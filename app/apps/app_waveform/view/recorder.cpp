@@ -54,21 +54,47 @@ void WaveFormRecorder::init()
 /* -------------------------------------------------------------------------- */
 void WaveFormRecorder::update()
 {
-    // Update inputs
     Button::Update();
     Encoder::Update();
 
-    const bool sideHeld = Button::Side()->wasHold();
-    const bool sideClicked = Button::Side()->wasClicked();
-    if (_data.state != state_saving && sideHeld)
+    LIVE_SHARE_CONTROLLER::InputSnapshot input;
+    input.sideHeld = Button::Side()->wasHold();
+    input.sideClicked = Button::Side()->wasClicked();
+    input.encoderClicked = Button::Encoder()->wasClicked();
+    input.encoderHeld = Button::Encoder()->wasHold();
+
+    LIVE_SHARE_CONTROLLER::ForegroundAction action = LIVE_SHARE_CONTROLLER::ForegroundAction::None;
+    if (input.sideHeld && _data.state != state_saving)
+        action = LIVE_SHARE_CONTROLLER::ForegroundAction::Exit;
+    else if (input.encoderClicked && _data.state == state_idle && recordingInputAvailable())
+        action = LIVE_SHARE_CONTROLLER::ForegroundAction::StartRecording;
+    _update_with_input(input, action, true, true);
+}
+
+void WaveFormRecorder::updateForeground(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                                        LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                                        bool liveShareInactive)
+{
+    _update_with_input(input, action, liveShareInactive, false);
+}
+
+void WaveFormRecorder::_update_with_input(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                                          LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                                          bool liveShareInactive,
+                                          bool legacyHelpBehavior)
+{
+    if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::Exit && _data.state != state_saving)
         _data.want_to_quit = true;
-    else if (_data.state != state_saving && sideClicked)
+    else if (legacyHelpBehavior && _data.state != state_saving && input.sideClicked)
         _handle_help_request();
+
+    if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::RetryRecorderCleanup)
+        _retry_recorder_cleanup();
 
     switch (_data.state)
     {
     case state_idle:
-        _update_state_idle();
+        _update_state_idle(action == LIVE_SHARE_CONTROLLER::ForegroundAction::StartRecording, liveShareInactive);
         break;
     case state_waiting_trigger:
         _update_state_waiting_trigger();
@@ -83,11 +109,34 @@ void WaveFormRecorder::update()
         break;
     }
 
-    if (Button::Encoder()->wasHold())
+    if (input.encoderHeld)
     {
         // Relay toggle omitted
     }
+}
 
+LIVE_SHARE_CONTROLLER::RecorderActivity WaveFormRecorder::activity() const
+{
+    using LIVE_SHARE_CONTROLLER::RecorderActivity;
+    if (_data.destroy_already_timed_out || (_data.state == state_idle && HAL::IsVaRecorderExist()))
+        return RecorderActivity::BusyCleanup;
+    switch (_data.state)
+    {
+    case state_waiting_trigger:
+        return RecorderActivity::WaitingTrigger;
+    case state_recording:
+        return RecorderActivity::Recording;
+    case state_saving:
+        return RecorderActivity::Saving;
+    case state_idle:
+    default:
+        return RecorderActivity::Idle;
+    }
+}
+
+bool WaveFormRecorder::recordingInputAvailable() const
+{
+    return _data.state == state_idle && _data.config_panel != nullptr && !_data.config_panel->isPoppedOut();
 }
 
 // Override to add y zoom with threshold line
@@ -120,7 +169,7 @@ void WaveFormRecorder::_update_chart()
     Waveform::_update_transition();
 }
 
-void WaveFormRecorder::_update_state_idle()
+void WaveFormRecorder::_update_state_idle(bool startRecordingRequested, bool liveShareInactive)
 {
     // Update waveform
     if (!_data.config_panel->isPoppedOut())
@@ -131,7 +180,9 @@ void WaveFormRecorder::_update_state_idle()
     _data.config_panel->update(HAL::Millis());
 
     // Start recording
-    if (!_data.config_panel->isPoppedOut() && Button::Encoder()->wasClicked())
+    if (startRecordingRequested && liveShareInactive &&
+        LIVE_SHARE_CONTROLLER::CanStartRecording(activity(), LIVE_SHARE_SESSION::State::Inactive) &&
+        !_data.config_panel->isPoppedOut())
     {
         if (_handle_start_recording())
         {
@@ -357,6 +408,7 @@ bool WaveFormRecorder::_handle_start_recording()
         _data.destroy_already_timed_out = true;
         return false;
     }
+    _data.destroy_already_timed_out = false;
 
     spdlog::info("create educational manual trigger");
     std::unique_ptr<VA_RECORDER::TriggerBase> trigger(new (std::nothrow) Trigger_Manual);
@@ -364,9 +416,22 @@ bool WaveFormRecorder::_handle_start_recording()
         return false;
     trigger->setRecordTime(kEducationalRecordTimeMs);
     trigger->setChannelMode(_mode == 1 ? VA_RECORDER::channel_voltage
-                                      : (_mode == 2 ? VA_RECORDER::channel_current : VA_RECORDER::channel_both));
+                                       : (_mode == 2 ? VA_RECORDER::channel_current : VA_RECORDER::channel_both));
 
     return HAL::CreatVaRecorder(std::move(trigger));
+}
+
+bool WaveFormRecorder::_retry_recorder_cleanup()
+{
+    if (activity() != LIVE_SHARE_CONTROLLER::RecorderActivity::BusyCleanup)
+        return activity() == LIVE_SHARE_CONTROLLER::RecorderActivity::Idle;
+    if (!HAL::DestroyVaRecorder())
+    {
+        _data.destroy_already_timed_out = true;
+        return false;
+    }
+    _data.destroy_already_timed_out = false;
+    return true;
 }
 
 void WaveFormRecorder::_handle_help_request()
@@ -381,9 +446,8 @@ void WaveFormRecorder::_handle_recorder_error()
 {
     const VA_RECORDER::Error_t error = HAL::GetVaRecorderError();
     (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementFault);
-    if (!_data.destroy_already_timed_out)
-        HAL::DestroyVaRecorder();
-    _data.destroy_already_timed_out = false;
+    if (!_data.destroy_already_timed_out && !HAL::DestroyVaRecorder())
+        _data.destroy_already_timed_out = true;
     _data.state = state_idle;
     if (error == VA_RECORDER::error_insufficient_space || error == VA_RECORDER::error_storage_info_failed)
         HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_NoSpace);

@@ -30,8 +30,12 @@ namespace LIVE_SHARE_SESSION
     enum class StartOutcome : std::uint8_t
     {
         Started,
-        Busy,
-        Failed,
+        BusyOtherOwner,
+        ApStartFailed,
+        RetainedApNeedsStopRetry,
+        RetainedServerNeedsStopRetry,
+        AllocationOrListenFailure,
+        RouteOrRegistrationFailure,
     };
 
     enum class TransportStopStatus : std::uint8_t
@@ -66,6 +70,7 @@ namespace LIVE_SHARE_SESSION
         NetworkShareSession();
 
         State state() const;
+        bool isInactive() const;
         StartOutcome lastStartOutcome() const;
         TransportStopStatus transportStopStatus() const;
         bool browserConnected() const;
@@ -73,6 +78,7 @@ namespace LIVE_SHARE_SESSION
 
         Action requestStart();
         void finishStart(StartOutcome outcome);
+        bool dismissStartError();
         void stationCountObserved(std::uint8_t count);
         void manualNext();
         void manualPrevious();
@@ -100,4 +106,5 @@ namespace LIVE_SHARE_SESSION
     std::string EscapeWifiSsid(const std::string& ssid);
     std::string BuildWifiQrPayload(const std::string& activeApSsid);
     std::string BuildViewerUrl(const std::string& trustedActiveIpv4);
+    const char* StartOutcomeName(StartOutcome outcome);
 } // namespace LIVE_SHARE_SESSION

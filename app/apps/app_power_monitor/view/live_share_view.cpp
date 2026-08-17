@@ -51,25 +51,46 @@ namespace VIEWS
         if (state == LIVE_SHARE_SESSION::State::Stopping)
             title = "Stopping Live View";
         else if (state == LIVE_SHARE_SESSION::State::StopRecovery)
-            title = "Stop Recovery";
+        {
+            if (startOutcome == LIVE_SHARE_SESSION::StartOutcome::RetainedApNeedsStopRetry)
+                title = "Wi-Fi Cleanup";
+            else if (startOutcome == LIVE_SHARE_SESSION::StartOutcome::RetainedServerNeedsStopRetry)
+                title = "Server Cleanup";
+            else
+                title = "Stop Recovery";
+        }
         else if (state == LIVE_SHARE_SESSION::State::StartError)
-            title = startOutcome == LIVE_SHARE_SESSION::StartOutcome::Busy ? "Live View Busy" : "Live View Error";
+        {
+            switch (startOutcome)
+            {
+            case LIVE_SHARE_SESSION::StartOutcome::BusyOtherOwner:
+                title = "Live View Busy";
+                break;
+            case LIVE_SHARE_SESSION::StartOutcome::ApStartFailed:
+                title = "Wi-Fi Start Error";
+                break;
+            case LIVE_SHARE_SESSION::StartOutcome::RouteOrRegistrationFailure:
+                title = "Route Start Error";
+                break;
+            case LIVE_SHARE_SESSION::StartOutcome::AllocationOrListenFailure:
+                title = "Server Start Error";
+                break;
+            default:
+                title = "Live View Error";
+                break;
+            }
+        }
         canvas->drawString(title, 120, 4);
 
-        if ((state == LIVE_SHARE_SESSION::State::WifiQr || state == LIVE_SHARE_SESSION::State::ViewerQr) &&
-            !_qrBitmap.empty())
+        if ((state == LIVE_SHARE_SESSION::State::WifiQr || state == LIVE_SHARE_SESSION::State::ViewerQr) && !_qrBitmap.empty())
         {
             const int qrSize = 150;
             QRCODE::RenderQRCodeBitmap(_qrBitmap, 120 - qrSize / 2, 34, qrSize, TFT_BLACK, TFT_WHITE);
             AssetPool::LoadFont14(canvas);
             canvas->setTextDatum(middle_center);
             canvas->setTextColor(TFT_WHITE, themeColor);
-            canvas->drawString(state == LIVE_SHARE_SESSION::State::WifiQr ? "Join device Wi-Fi" : "Open Viewer",
-                               120,
-                               194);
-            canvas->drawString(state == LIVE_SHARE_SESSION::State::WifiQr ? "Encoder: Next" : "Encoder: Wi-Fi QR",
-                               120,
-                               211);
+            canvas->drawString(state == LIVE_SHARE_SESSION::State::WifiQr ? "Join device Wi-Fi" : "Open Viewer", 120, 194);
+            canvas->drawString(state == LIVE_SHARE_SESSION::State::WifiQr ? "Encoder: Next" : "Encoder: Wi-Fi QR", 120, 211);
             canvas->drawString("Side: Stop", 120, 227);
         }
         else
@@ -95,7 +116,7 @@ namespace VIEWS
             else if (state == LIVE_SHARE_SESSION::State::StartError)
             {
                 canvas->drawString("Sharing did not start", 120, 110);
-                canvas->drawString("Side: Retry", 120, 135);
+                canvas->drawString("Side: Dismiss", 120, 135);
             }
         }
         HAL::CanvasUpdate();

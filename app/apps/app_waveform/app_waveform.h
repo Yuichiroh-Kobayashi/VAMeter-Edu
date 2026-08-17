@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 #include "view/view.h"
+#include "../app_power_monitor/view/live_share_view.h"
+#include "../../libs/live_share_controller/live_share_controller.h"
 #include <mooncake.h>
 
 namespace MOONCAKE
@@ -28,6 +30,8 @@ namespace MOONCAKE
             struct Data_t
             {
                 VIEWS::WaveFormRecorder* view = nullptr;
+                VIEWS::LiveShareView* live_share_view = nullptr;
+                LIVE_SHARE_CONTROLLER::LiveShareController* live_share_controller = nullptr;
             };
             Data_t _data;
             static WaveformMode_t _mode;
@@ -46,6 +50,8 @@ namespace MOONCAKE
             void onRunning() override;
             void onDestroy() override;
             void _handle_recording_finished();
+            void _sync_live_share_view();
+            void _render_live_share_view();
         };
 
         class AppWaveform_Packer : public APP_PACKER_BASE

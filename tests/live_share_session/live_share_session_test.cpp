@@ -35,8 +35,7 @@ namespace
         session.stationCountObserved(1);
         Require(session.state() == LSS::State::ViewerQr, "station join enters viewer QR");
         Require(session.requestStop(100) == LSS::Action::BeginNetworkStop, "local stop begins network stop");
-        Require(session.observeTransportStop(LSS::TransportStopStatus::Complete, 200) ==
-                    LSS::Action::StopSystemServer,
+        Require(session.observeTransportStop(LSS::TransportStopStatus::Complete, 200) == LSS::Action::StopSystemServer,
                 "orderly completion stops server");
         session.finishCleanup(LSS::CleanupOutcome::Stopped);
         Require(session.state() == LSS::State::Inactive, "cleanup returns to measurement");
@@ -47,19 +46,47 @@ namespace
         LSS::NetworkShareSession failed;
         Require(failed.requestStart() == LSS::Action::StartSystemLive, "failure start request");
         Require(failed.requestStart() == LSS::Action::None, "repeated start while starting ignored");
-        failed.finishStart(LSS::StartOutcome::Failed);
+        failed.finishStart(LSS::StartOutcome::AllocationOrListenFailure);
         Require(failed.state() == LSS::State::StartError, "start failure enters error");
-        Require(failed.requestStart() == LSS::Action::StartSystemLive, "explicit retry accepted");
+        Require(failed.requestStart() == LSS::Action::None, "error cannot directly restart");
+        Require(failed.dismissStartError(), "side dismiss is an explicit transition");
+        Require(failed.state() == LSS::State::Inactive, "dismiss returns inactive");
+        Require(failed.requestStart() == LSS::Action::StartSystemLive, "a later separate start is accepted");
         failed.finishStart(LSS::StartOutcome::Started);
-        Require(failed.state() == LSS::State::WifiQr, "retry can start");
+        Require(failed.state() == LSS::State::WifiQr, "later start can succeed");
         Require(failed.requestStart() == LSS::Action::None, "start while active ignored");
 
         LSS::NetworkShareSession busy;
         busy.requestStart();
-        busy.finishStart(LSS::StartOutcome::Busy);
-        Require(busy.state() == LSS::State::StartError &&
-                    busy.lastStartOutcome() == LSS::StartOutcome::Busy,
-                "busy remains locally inactive with visible error");
+        busy.finishStart(LSS::StartOutcome::BusyOtherOwner);
+        Require(busy.state() == LSS::State::StartError && busy.lastStartOutcome() == LSS::StartOutcome::BusyOtherOwner,
+                "busy remains a typed visible error");
+        Require(busy.requestStart() == LSS::Action::None, "busy presentation blocks restart");
+        Require(busy.dismissStartError(), "busy can be dismissed");
+        Require(busy.state() == LSS::State::Inactive, "busy dismiss unlocks later use");
+        Require(!busy.dismissStartError(), "inactive cannot be dismissed again");
+    }
+
+    void TestTypedStartDebt()
+    {
+        const LSS::StartOutcome retained[] = {
+            LSS::StartOutcome::RetainedApNeedsStopRetry,
+            LSS::StartOutcome::RetainedServerNeedsStopRetry,
+        };
+        for (std::size_t index = 0; index < sizeof(retained) / sizeof(retained[0]); ++index)
+        {
+            LSS::NetworkShareSession session;
+            Require(session.requestStart() == LSS::Action::StartSystemLive, "retained failure start request");
+            session.finishStart(retained[index]);
+            Require(session.state() == LSS::State::StopRecovery, "retained start result enters cleanup recovery");
+            Require(session.requestStart() == LSS::Action::None, "retained start debt blocks restart");
+            Require(!session.dismissStartError(), "retained debt cannot dismiss past cleanup");
+            Require(session.retryCleanup() == LSS::Action::RetryCleanup, "retained debt exposes only cleanup retry");
+            session.finishCleanup(LSS::CleanupOutcome::RetryRequired);
+            Require(session.state() == LSS::State::StopRecovery, "retained cleanup failure remains locked");
+            session.finishCleanup(LSS::CleanupOutcome::AlreadyStopped);
+            Require(session.state() == LSS::State::Inactive, "typed cleanup success unlocks retained debt");
+        }
     }
 
     void TestBrowserIsObservational()
@@ -67,8 +94,7 @@ namespace
         LSS::NetworkShareSession session;
         StartToWifi(session);
         session.browserConnectionObserved(true);
-        Require(session.browserConnected() && session.state() == LSS::State::WifiQr,
-                "browser connect is observational");
+        Require(session.browserConnected() && session.state() == LSS::State::WifiQr, "browser connect is observational");
         session.browserConnectionObserved(false);
         Require(!session.browserConnected() && session.state() == LSS::State::WifiQr,
                 "browser disconnect does not stop local session");
@@ -79,8 +105,7 @@ namespace
         LSS::NetworkShareSession noOwner;
         StartToWifi(noOwner);
         noOwner.requestStop(10);
-        Require(noOwner.observeTransportStop(LSS::TransportStopStatus::NoOwner, 11) ==
-                    LSS::Action::StopSystemServer,
+        Require(noOwner.observeTransportStop(LSS::TransportStopStatus::NoOwner, 11) == LSS::Action::StopSystemServer,
                 "no owner proceeds without fake exchange");
 
         LSS::NetworkShareSession noStream;
@@ -88,26 +113,22 @@ namespace
         noStream.requestStop(20);
         Require(noStream.observeTransportStop(LSS::TransportStopStatus::OwnerClosing, 21) == LSS::Action::None,
                 "owner without stream closes before server");
-        Require(noStream.observeTransportStop(LSS::TransportStopStatus::Complete, 22) ==
-                    LSS::Action::StopSystemServer,
+        Require(noStream.observeTransportStop(LSS::TransportStopStatus::Complete, 22) == LSS::Action::StopSystemServer,
                 "owner close completion proceeds");
 
         LSS::NetworkShareSession active;
         StartToWifi(active);
         active.requestStop(1000);
-        Require(active.observeTransportStop(LSS::TransportStopStatus::ActiveStreamStopping, 1500) ==
-                    LSS::Action::None,
+        Require(active.observeTransportStop(LSS::TransportStopStatus::ActiveStreamStopping, 1500) == LSS::Action::None,
                 "active stream awaits orderly end");
-        Require(active.observeTransportStop(LSS::TransportStopStatus::Complete, 1900) ==
-                    LSS::Action::StopSystemServer,
+        Require(active.observeTransportStop(LSS::TransportStopStatus::Complete, 1900) == LSS::Action::StopSystemServer,
                 "active stream orderly completion proceeds");
 
         LSS::NetworkShareSession timeout;
         StartToWifi(timeout);
         timeout.requestStop(0xffffff00U);
         Require(timeout.tick(0x000002e7U) == LSS::Action::None, "deadline wrap-safe before 1000 ms");
-        Require(timeout.tick(0x000002e8U) == LSS::Action::StopSystemServer,
-                "1000 ms deadline triggers fallback");
+        Require(timeout.tick(0x000002e8U) == LSS::Action::StopSystemServer, "1000 ms deadline triggers fallback");
         Require(timeout.tick(0x000002e9U) == LSS::Action::None, "fallback requested once");
     }
 
@@ -123,8 +144,7 @@ namespace
             LSS::NetworkShareSession session;
             StartToWifi(session);
             session.requestStop(0);
-            Require(session.observeTransportStop(LSS::TransportStopStatus::NoOwner, 1) ==
-                        LSS::Action::StopSystemServer,
+            Require(session.observeTransportStop(LSS::TransportStopStatus::NoOwner, 1) == LSS::Action::StopSystemServer,
                     "cleanup failure setup");
             session.finishCleanup(failures[index]);
             Require(session.state() == LSS::State::StopRecovery, "typed cleanup failure enters recovery");
@@ -184,13 +204,10 @@ namespace
 
     void TestQrPayloads()
     {
-        Require(LSS::BuildWifiQrPayload("Class\\A;B,C:D") ==
-                    "WIFI:T:nopass;S:Class\\\\A\\;B\\,C\\:D;;",
+        Require(LSS::BuildWifiQrPayload("Class\\A;B,C:D") == "WIFI:T:nopass;S:Class\\\\A\\;B\\,C\\:D;;",
                 "Wi-Fi QR exact escaping");
-        Require(LSS::BuildWifiQrPayload("M5-VAMeter-07") == "WIFI:T:nopass;S:M5-VAMeter-07;;",
-                "Wi-Fi QR exact payload");
-        Require(LSS::BuildViewerUrl("192.168.4.1") == "http://192.168.4.1/viewer/",
-                "trusted viewer URL exact payload");
+        Require(LSS::BuildWifiQrPayload("M5-VAMeter-07") == "WIFI:T:nopass;S:M5-VAMeter-07;;", "Wi-Fi QR exact payload");
+        Require(LSS::BuildViewerUrl("192.168.4.1") == "http://192.168.4.1/viewer/", "trusted viewer URL exact payload");
         Require(LSS::BuildViewerUrl("256.1.1.1").empty(), "reject invalid IPv4 authority");
         Require(LSS::BuildViewerUrl("host.example").empty(), "reject hostname authority");
     }
@@ -200,6 +217,7 @@ int main()
 {
     TestHappyPathAndQrPolicy();
     TestStartFailuresAndRepeatedStart();
+    TestTypedStartDebt();
     TestBrowserIsObservational();
     TestOwnerCasesAndTimeout();
     TestCleanupRecovery();

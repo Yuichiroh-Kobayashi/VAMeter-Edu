@@ -16,6 +16,8 @@ if(PLATFORM_BUILD_DESKTOP)
 endif()
 
 if(BUILD_TESTING)
+    add_subdirectory(tests/live_share_session)
+    add_subdirectory(tests/educational_ui_rev2)
     add_subdirectory(tests/local_csv_download)
     add_subdirectory(tests/recorder_followup)
     add_subdirectory(tests/web_server_owner)

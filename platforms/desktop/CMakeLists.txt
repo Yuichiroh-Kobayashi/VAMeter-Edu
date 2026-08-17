@@ -112,15 +112,3 @@ target_include_directories(app_desktop_build PRIVATE
   "${REPO_ROOT}/dependencies/LovyanGFX/src"
 )
 target_link_libraries(app_desktop_build PUBLIC app_layer lovyangfx)
-
-# 设置构建路径
-set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build/desktop)
-
-# 确保构建路径存在
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR})
-
-# 设置生成的可执行文件输出路径
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}) 
-
-# # 设置生成的库文件输出路径
-# set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})

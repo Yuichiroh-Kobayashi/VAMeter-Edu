@@ -7,6 +7,7 @@
 #include "../../../hal/hal.h"
 #include "config_panel/config_panel.h"
 #include "libs/waveform_scale/waveform_scale.h"
+#include "libs/live_share_controller/live_share_controller.h"
 #include <smooth_ui_toolkit.h>
 #include <cstdint>
 #include <string>
@@ -155,7 +156,7 @@ namespace VIEWS
 
         void _update_input() override;
         void _update_chart();
-        void _update_state_idle();
+        void _update_state_idle(bool startRecordingRequested, bool liveShareInactive);
         void _update_state_waiting_trigger();
         void _update_state_recording();
         void _update_state_saving();
@@ -165,18 +166,25 @@ namespace VIEWS
         void _render_rec_state_label();
 
         bool _handle_start_recording();
+        bool _retry_recorder_cleanup();
         void _handle_recorder_error();
         void _handle_help_request();
+        void _update_with_input(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                                LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                                bool liveShareInactive,
+                                bool legacyHelpBehavior);
 
     public:
-        WaveFormRecorder(uint32_t themeColor, int mode = 0)
-            : Waveform(themeColor, mode)
-        {
-        }
+        WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}
         ~WaveFormRecorder();
 
         void init();
         void update() override;
+        void updateForeground(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                              LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                              bool liveShareInactive);
+        LIVE_SHARE_CONTROLLER::RecorderActivity activity() const;
+        bool recordingInputAvailable() const;
         inline bool hasFinishedRecording() { return _data.has_finished_recording; }
         inline bool want2quit() { return _data.want_to_quit; }
     };

@@ -5,17 +5,15 @@
 namespace LIVE_SHARE_SESSION
 {
     NetworkShareSession::NetworkShareSession()
-        : _state(State::Inactive),
-          _lastStartOutcome(StartOutcome::Failed),
-          _transportStopStatus(TransportStopStatus::Idle),
-          _browserConnected(false),
-          _measurementTerminated(false),
-          _serverStopRequested(false),
-          _stopStartedMs(0)
+        : _state(State::Inactive), _lastStartOutcome(StartOutcome::AllocationOrListenFailure),
+          _transportStopStatus(TransportStopStatus::Idle), _browserConnected(false), _measurementTerminated(false),
+          _serverStopRequested(false), _stopStartedMs(0)
     {
     }
 
     State NetworkShareSession::state() const { return _state; }
+
+    bool NetworkShareSession::isInactive() const { return _state == State::Inactive; }
 
     StartOutcome NetworkShareSession::lastStartOutcome() const { return _lastStartOutcome; }
 
@@ -27,7 +25,7 @@ namespace LIVE_SHARE_SESSION
 
     Action NetworkShareSession::requestStart()
     {
-        if (_measurementTerminated || (_state != State::Inactive && _state != State::StartError))
+        if (_measurementTerminated || _state != State::Inactive)
             return Action::None;
         _state = State::Starting;
         _transportStopStatus = TransportStopStatus::Idle;
@@ -40,7 +38,23 @@ namespace LIVE_SHARE_SESSION
         if (_state != State::Starting || _measurementTerminated)
             return;
         _lastStartOutcome = outcome;
-        _state = outcome == StartOutcome::Started ? State::WifiQr : State::StartError;
+        if (outcome == StartOutcome::Started)
+            _state = State::WifiQr;
+        else if (outcome == StartOutcome::RetainedApNeedsStopRetry || outcome == StartOutcome::RetainedServerNeedsStopRetry)
+            _state = State::StopRecovery;
+        else
+            _state = State::StartError;
+    }
+
+    bool NetworkShareSession::dismissStartError()
+    {
+        if (_measurementTerminated || _state != State::StartError)
+            return false;
+        _state = State::Inactive;
+        _transportStopStatus = TransportStopStatus::Idle;
+        _browserConnected = false;
+        _serverStopRequested = false;
+        return true;
     }
 
     void NetworkShareSession::stationCountObserved(std::uint8_t count)
@@ -61,10 +75,7 @@ namespace LIVE_SHARE_SESSION
             _state = State::WifiQr;
     }
 
-    void NetworkShareSession::browserConnectionObserved(bool connected)
-    {
-        _browserConnected = connected;
-    }
+    void NetworkShareSession::browserConnectionObserved(bool connected) { _browserConnected = connected; }
 
     Action NetworkShareSession::requestStop(std::uint32_t nowMs)
     {
@@ -95,8 +106,7 @@ namespace LIVE_SHARE_SESSION
 
     Action NetworkShareSession::tick(std::uint32_t nowMs)
     {
-        if (_state != State::Stopping || _measurementTerminated || _serverStopRequested ||
-            !stopDeadlineExpired(nowMs))
+        if (_state != State::Stopping || _measurementTerminated || _serverStopRequested || !stopDeadlineExpired(nowMs))
             return Action::None;
         _serverStopRequested = true;
         return Action::StopSystemServer;
@@ -190,5 +200,28 @@ namespace LIVE_SHARE_SESSION
         if (componentCount != 4U)
             return std::string();
         return std::string("http://") + trustedActiveIpv4 + "/viewer/";
+    }
+
+    const char* StartOutcomeName(StartOutcome outcome)
+    {
+        switch (outcome)
+        {
+        case StartOutcome::Started:
+            return "Started";
+        case StartOutcome::BusyOtherOwner:
+            return "BusyOtherOwner";
+        case StartOutcome::ApStartFailed:
+            return "ApStartFailed";
+        case StartOutcome::RetainedApNeedsStopRetry:
+            return "RetainedApNeedsStopRetry";
+        case StartOutcome::RetainedServerNeedsStopRetry:
+            return "RetainedServerNeedsStopRetry";
+        case StartOutcome::AllocationOrListenFailure:
+            return "AllocationOrListenFailure";
+        case StartOutcome::RouteOrRegistrationFailure:
+            return "RouteOrRegistrationFailure";
+        default:
+            return "Unknown";
+        }
     }
 } // namespace LIVE_SHARE_SESSION

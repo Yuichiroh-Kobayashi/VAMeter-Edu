@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 #include "view/view.h"
-#include "view/live_share_view.h"
 #include "../app_waveform/view/view.h"
-#include "../../libs/live_share_session/live_share_session.h"
+#include "../utils/system/ui/misc/meter_help_qr_view.h"
 #include <cstdint>
 #include <mooncake.h>
 
@@ -25,8 +24,8 @@ namespace MOONCAKE
             {
                 VIEWS::PmDataPage* view = nullptr;
                 VIEWS::WaveFormRecorder* waveform_view = nullptr;
-                VIEWS::LiveShareView* live_share_view = nullptr;
-                LIVE_SHARE_SESSION::NetworkShareSession share_session;
+                SYSTEM::UI::MeterHelpQrView* meter_help_view = nullptr;
+                METER_HELP_QR::MeterHelpInteraction meter_help_interaction;
                 int current_page_num = 0;
                 bool is_page_switched = false;
                 bool is_usb_c_mode = false;
@@ -44,10 +43,8 @@ namespace MOONCAKE
             void _setup_page_more_detail();
             void _setup_page_waveform();
             bool _is_educational_measurement() const;
-            uint32_t _share_theme_color() const;
-            void _update_share_workflow();
-            void _execute_share_action(LIVE_SHARE_SESSION::Action action);
-            void _finish_share_cleanup(WEB_SERVER_OWNER::StopResult result);
+            uint32_t _measurement_theme_color() const;
+            void _update_meter_help_workflow();
 
         public:
             // Constructor with initial page parameter
