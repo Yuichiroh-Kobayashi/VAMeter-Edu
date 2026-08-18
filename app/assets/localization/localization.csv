@@ -62,14 +62,14 @@ AppWaveform_Waitting,WAITING,等待触发,待機中
 AppWaveform_Saving,SAVING,保存中,セーブ中
 AppWaveform_Error_NoSpace,No space\nDelete\nin Files,No space\nDelete\nin Files,No space\nDelete\nin Files
 AppWaveform_Error_Recording,Rec error\nSee Files,Rec error\nSee Files,Rec error\nSee Files
-AppWaveform_Fault_Title,Safety Stop,安全停止,安全停止
-AppWaveform_Fault_StoppedForSafety,Measurement stopped for safety,为安全已停止测量,安全のため測定を停止しました
-AppWaveform_Fault_OutputOff,Output: OFF,输出: OFF,測定出力: OFF
-AppWaveform_Fault_OutputUnconfirmed,Cannot confirm output OFF,无法确认输出已关闭,測定出力を確認できません
-AppWaveform_Fault_PowerOff,Power off the device,请关闭电源,電源を切ってください
-AppWaveform_Fault_CleanupPending,Shutdown not complete,停止处理未完成,停止処理が完了していません
-AppWaveform_Fault_PowerCycle,Power-cycle the device,请重新开机,電源を入れ直してください
-AppWaveform_Fault_Ack,Encoder: Confirm,Encoder: 确认,Encoder: 確認
+AppWaveform_Fault_Title,Safety Stop,STOP,STOP
+AppWaveform_Fault_StoppedForSafety,Measurement stopped,录制已退出,記録を終了しました
+AppWaveform_Fault_OutputOff,Output: OFF,输出: OFF,出力: OFF
+AppWaveform_Fault_OutputUnconfirmed,Cannot confirm output OFF,输出: ?,出力: ?
+AppWaveform_Fault_PowerOff,Power off the device,请关闭,OFFにしてください
+AppWaveform_Fault_CleanupPending,Shutdown not complete,没有完成,終了できません
+AppWaveform_Fault_PowerCycle,Power-cycle the device,马上重启,再起動してください
+AppWaveform_Fault_Ack,Encoder: Confirm,Encoder: OK,Encoder: OK
 AppWaveform_Config_TriggerMode,TriggerMode,触发模式,トリガーモード
 AppWaveform_Config_Threshold,Threshold,阈值,閾値
 AppWaveform_Config_RecTime,Record Time,录制时间,レコードタイム

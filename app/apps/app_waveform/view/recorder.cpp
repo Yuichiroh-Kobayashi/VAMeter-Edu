@@ -475,7 +475,14 @@ void WaveFormRecorder::_render_fault_screen()
     AssetPool::LoadFont24(canvas);
     canvas->drawString(AssetPool::GetText().AppWaveform_Fault_Title, 120, _fault_title_y);
 
-    AssetPool::LoadFont14(canvas);
+    // LoadFont14 is Montserrat/English-only by design (no CJK glyphs); route
+    // non-English Fault body text to the locale-aware 16px font instead so
+    // jp/cn characters render from the embedded CJK subset rather than
+    // falling back to missing-glyph placeholder boxes.
+    if (AssetPool::IsLocaleEn())
+        AssetPool::LoadFont14(canvas);
+    else
+        AssetPool::LoadFont16(canvas);
     canvas->setTextDatum(middle_center);
 
     int line_y = _fault_body_start_y;

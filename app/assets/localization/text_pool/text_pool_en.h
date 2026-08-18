@@ -67,7 +67,7 @@ struct TextPool_en_t
     char AppWaveform_Error_NoSpace[27] = "No space\nDelete\nin Files";
     char AppWaveform_Error_Recording[21] = "Rec error\nSee Files";
     char AppWaveform_Fault_Title[12] = "Safety Stop";
-    char AppWaveform_Fault_StoppedForSafety[31] = "Measurement stopped for safety";
+    char AppWaveform_Fault_StoppedForSafety[20] = "Measurement stopped";
     char AppWaveform_Fault_OutputOff[12] = "Output: OFF";
     char AppWaveform_Fault_OutputUnconfirmed[26] = "Cannot confirm output OFF";
     char AppWaveform_Fault_PowerOff[21] = "Power off the device";
