@@ -65,6 +65,14 @@ struct LocalTextPoolMap_t
     char* AppWaveform_Saving = nullptr;
     char* AppWaveform_Error_NoSpace = nullptr;
     char* AppWaveform_Error_Recording = nullptr;
+    char* AppWaveform_Fault_Title = nullptr;
+    char* AppWaveform_Fault_StoppedForSafety = nullptr;
+    char* AppWaveform_Fault_OutputOff = nullptr;
+    char* AppWaveform_Fault_OutputUnconfirmed = nullptr;
+    char* AppWaveform_Fault_PowerOff = nullptr;
+    char* AppWaveform_Fault_CleanupPending = nullptr;
+    char* AppWaveform_Fault_PowerCycle = nullptr;
+    char* AppWaveform_Fault_Ack = nullptr;
     char* AppWaveform_Config_TriggerMode = nullptr;
     char* AppWaveform_Config_Threshold = nullptr;
     char* AppWaveform_Config_RecTime = nullptr;

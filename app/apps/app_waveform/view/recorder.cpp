@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <new>
 #include <memory>
@@ -23,6 +24,47 @@ using namespace SmoothUIToolKit;
 using namespace VIEWS;
 using namespace SYSTEM::INPUTS;
 using namespace SYSTEM::UI;
+
+namespace
+{
+    // Boundary translation only: LOCAL_FAULT stays decoupled from
+    // app/hal/types.h, so the HAL-facing enum is mapped here.
+    LOCAL_FAULT::RecorderErrorSource ClassifyErrorSource(VA_RECORDER::Error_t error)
+    {
+        switch (error)
+        {
+        case VA_RECORDER::error_storage_info_failed:
+            return LOCAL_FAULT::RecorderErrorSource::StorageInfoFailed;
+        case VA_RECORDER::error_insufficient_space:
+            return LOCAL_FAULT::RecorderErrorSource::InsufficientSpace;
+        case VA_RECORDER::error_temp_prepare_failed:
+            return LOCAL_FAULT::RecorderErrorSource::TempPrepareFailed;
+        case VA_RECORDER::error_open_chunk_failed:
+            return LOCAL_FAULT::RecorderErrorSource::OpenChunkFailed;
+        case VA_RECORDER::error_write_chunk_failed:
+            return LOCAL_FAULT::RecorderErrorSource::WriteChunkFailed;
+        case VA_RECORDER::error_open_final_failed:
+            return LOCAL_FAULT::RecorderErrorSource::OpenFinalFailed;
+        case VA_RECORDER::error_write_final_failed:
+            return LOCAL_FAULT::RecorderErrorSource::WriteFinalFailed;
+        case VA_RECORDER::error_close_failed:
+            return LOCAL_FAULT::RecorderErrorSource::CloseFailed;
+        case VA_RECORDER::error_allocation_failed:
+            return LOCAL_FAULT::RecorderErrorSource::AllocationFailed;
+        case VA_RECORDER::error_task_create_failed:
+            return LOCAL_FAULT::RecorderErrorSource::TaskCreateFailed;
+        case VA_RECORDER::error_none:
+        default:
+            return LOCAL_FAULT::RecorderErrorSource::Unknown;
+        }
+    }
+
+    const char* FaultCauseText(LOCAL_FAULT::Cause cause)
+    {
+        return cause == LOCAL_FAULT::Cause::NoSpace ? AssetPool::GetText().AppWaveform_Error_NoSpace
+                                                     : AssetPool::GetText().AppWaveform_Error_Recording;
+    }
+} // namespace
 
 WaveFormRecorder::~WaveFormRecorder()
 {
@@ -83,13 +125,21 @@ void WaveFormRecorder::_update_with_input(const LIVE_SHARE_CONTROLLER::InputSnap
                                           bool liveShareInactive,
                                           bool legacyHelpBehavior)
 {
-    if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::Exit && _data.state != state_saving)
-        _data.want_to_quit = true;
-    else if (legacyHelpBehavior && _data.state != state_saving && input.sideClicked)
-        _handle_help_request();
+    // Fault input ownership: while already latched, no input this frame may
+    // reach the common Exit/Help/RetryRecorderCleanup routing below. Only
+    // the state_fault case in the switch (and its own ACK gate) may act.
+    const bool entered_as_fault_latched = (_data.state == state_fault);
 
-    if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::RetryRecorderCleanup)
-        _retry_recorder_cleanup();
+    if (!entered_as_fault_latched)
+    {
+        if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::Exit && _data.state != state_saving)
+            _data.want_to_quit = true;
+        else if (legacyHelpBehavior && _data.state != state_saving && input.sideClicked)
+            _handle_help_request();
+
+        if (action == LIVE_SHARE_CONTROLLER::ForegroundAction::RetryRecorderCleanup)
+            _retry_recorder_cleanup();
+    }
 
     switch (_data.state)
     {
@@ -105,9 +155,19 @@ void WaveFormRecorder::_update_with_input(const LIVE_SHARE_CONTROLLER::InputSnap
     case state_saving:
         _update_state_saving();
         break;
+    case state_fault:
+        _update_state_fault(input);
+        break;
     default:
         break;
     }
+
+    // Same-frame priority: a recorder fault detected while processing the
+    // entry state above always wins over an ordinary Exit queued earlier in
+    // this same frame. Never let want_to_quit carry through a frame that
+    // enters (or remains in) state_fault.
+    if (_data.state == state_fault)
+        _data.want_to_quit = false;
 
     if (input.encoderHeld)
     {
@@ -118,6 +178,8 @@ void WaveFormRecorder::_update_with_input(const LIVE_SHARE_CONTROLLER::InputSnap
 LIVE_SHARE_CONTROLLER::RecorderActivity WaveFormRecorder::activity() const
 {
     using LIVE_SHARE_CONTROLLER::RecorderActivity;
+    if (_data.state == state_fault)
+        return RecorderActivity::FaultLatched;
     if (_data.destroy_already_timed_out || (_data.state == state_idle && HAL::IsVaRecorderExist()))
         return RecorderActivity::BusyCleanup;
     switch (_data.state)
@@ -396,6 +458,81 @@ void WaveFormRecorder::_render_rec_state_label()
     }
 }
 
+static constexpr int _fault_title_y = 10;
+static constexpr int _fault_body_start_y = 92;
+static constexpr int _fault_body_line_height = 22;
+static constexpr int _fault_ack_y = 222;
+
+void WaveFormRecorder::_render_fault_screen()
+{
+    LGFX_SpriteFx* canvas = HAL::GetCanvas();
+    const uint32_t bg = AssetPool::GetColor().AppWaveform.colorStateLabelRecording;
+
+    canvas->fillScreen(bg);
+    canvas->setTextColor(TFT_WHITE, bg);
+
+    canvas->setTextDatum(top_center);
+    AssetPool::LoadFont24(canvas);
+    canvas->drawString(AssetPool::GetText().AppWaveform_Fault_Title, 120, _fault_title_y);
+
+    AssetPool::LoadFont14(canvas);
+    canvas->setTextDatum(middle_center);
+
+    int line_y = _fault_body_start_y;
+    // Allocation-free '\n'-bounded line splitter: some existing localization
+    // strings (e.g. FaultCauseText's No-space/Rec-error variants) still
+    // encode multiple display lines in one key. Byte-scanning for '\n' is
+    // UTF-8-safe: continuation bytes are always >= 0x80, so this never
+    // splits inside a multi-byte character.
+    static constexpr std::size_t kFaultLineBufferSize = 48;
+    auto drawLine = [&](const char* text)
+    {
+        const char* cursor = text;
+        while (cursor != nullptr)
+        {
+            const char* newline = std::strchr(cursor, '\n');
+            std::size_t segment_len =
+                newline != nullptr ? static_cast<std::size_t>(newline - cursor) : std::strlen(cursor);
+            if (segment_len >= kFaultLineBufferSize)
+                segment_len = kFaultLineBufferSize - 1;
+
+            char line_buffer[kFaultLineBufferSize];
+            std::memcpy(line_buffer, cursor, segment_len);
+            line_buffer[segment_len] = '\0';
+
+            canvas->drawString(line_buffer, 120, line_y);
+            line_y += _fault_body_line_height;
+            cursor = newline != nullptr ? newline + 1 : nullptr;
+        }
+    };
+
+    const LOCAL_FAULT::Presentation presentation = LOCAL_FAULT::SelectPresentation(_data.fault);
+    switch (presentation)
+    {
+    case LOCAL_FAULT::Presentation::OutputUnconfirmed:
+        drawLine(AssetPool::GetText().AppWaveform_Fault_OutputUnconfirmed);
+        drawLine(AssetPool::GetText().AppWaveform_Fault_PowerOff);
+        break;
+    case LOCAL_FAULT::Presentation::CleanupPending:
+        drawLine(AssetPool::GetText().AppWaveform_Fault_CleanupPending);
+        if (_data.fault.relayOffSoftwareConfirmed)
+            drawLine(AssetPool::GetText().AppWaveform_Fault_OutputOff);
+        drawLine(AssetPool::GetText().AppWaveform_Fault_PowerCycle);
+        break;
+    case LOCAL_FAULT::Presentation::Normal:
+    default:
+        drawLine(AssetPool::GetText().AppWaveform_Fault_StoppedForSafety);
+        drawLine(AssetPool::GetText().AppWaveform_Fault_OutputOff);
+        drawLine(FaultCauseText(_data.fault.cause));
+        break;
+    }
+
+    if (_data.fault.acknowledgementAllowed)
+        canvas->drawString(AssetPool::GetText().AppWaveform_Fault_Ack, 120, _fault_ack_y);
+
+    HAL::CanvasUpdate();
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                  Recording                                 */
 /* -------------------------------------------------------------------------- */
@@ -444,16 +581,74 @@ void WaveFormRecorder::_handle_help_request()
 
 void WaveFormRecorder::_handle_recorder_error()
 {
+    // 1. capture/classify the already-observed recorder/start error.
     const VA_RECORDER::Error_t error = HAL::GetVaRecorderError();
-    (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementFault);
-    if (!_data.destroy_already_timed_out && !HAL::DestroyVaRecorder())
-        _data.destroy_already_timed_out = true;
-    _data.state = state_idle;
-    if (error == VA_RECORDER::error_insufficient_space || error == VA_RECORDER::error_storage_info_failed)
-        HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_NoSpace);
-    else
-        HAL::PopWarning(AssetPool::GetText().AppWaveform_Error_Recording);
+    const bool is_start_or_trigger_failure = (error == VA_RECORDER::error_none);
 
+    // 2/3. Relay OFF remains the first external safety side effect inside
+    // LIVE_SHARE_SAFETY::Execute; the result is now retained instead of
+    // discarded via (void).
+    const LIVE_SHARE_SAFETY::Result safety_result =
+        HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementFault);
+
+    // 4. attempt existing recorder cleanup exactly as required.
+    bool recorder_cleanup_pending_or_failed = _data.destroy_already_timed_out;
+    if (!_data.destroy_already_timed_out && !HAL::DestroyVaRecorder())
+    {
+        _data.destroy_already_timed_out = true;
+        recorder_cleanup_pending_or_failed = true;
+    }
+
+    // 5. populate the fixed local fault payload.
+    const LOCAL_FAULT::Cause cause = is_start_or_trigger_failure
+                                        ? LOCAL_FAULT::Cause::StartOrTriggerCreationFailed
+                                        : LOCAL_FAULT::ClassifyRecorderError(ClassifyErrorSource(error));
+    _data.fault = LOCAL_FAULT::BuildPayload(
+        cause, safety_result.relayOffConfirmed, safety_result.hasCleanupDebt(), recorder_cleanup_pending_or_failed);
+
+    // 6. enter state_fault (not state_idle).
+    _data.state = state_fault;
+
+    // 7. clear/arm input state so the triggering press cannot acknowledge
+    // the fault; a fresh edge is required starting next frame.
+    Button::Update();
+    Button::Encoder()->wasClicked();
+    Button::Encoder()->wasHold();
+    Button::Side()->wasClicked();
+    Button::Side()->wasHold();
+    Encoder::Reset();
+
+    // A press already in flight when the fault starts (e.g. the Encoder was
+    // held through the transition) must be fully released at least once
+    // before any click counts as a fresh ACK edge; its own release-click
+    // must not be treated as fresh.
+    _data.fault_ack_pending_release = Button::Encoder()->isPressed();
+
+    // 8. return to normal per-frame state-machine ownership (caller).
+}
+
+void WaveFormRecorder::_update_state_fault(const LIVE_SHARE_CONTROLLER::InputSnapshot& input)
+{
+    _render_fault_screen();
+
+    if (_data.fault_ack_pending_release)
+    {
+        // Consume the carried-over press without treating its release (or
+        // any click reported for this frame) as an ACK edge.
+        if (!Button::Encoder()->isPressed())
+            _data.fault_ack_pending_release = false;
+        return;
+    }
+
+    if (!LOCAL_FAULT::CanAcknowledge(_data.fault, input.encoderClicked))
+        return;
+
+    _data.state = state_idle;
+    _data.fault = LOCAL_FAULT::Payload();
+    _data.fault_ack_pending_release = false;
+
+    // Clear residue again on the ack transition so the click that just
+    // acknowledged cannot be replayed as a fresh state_idle input edge.
     Button::Update();
     Button::Encoder()->wasClicked();
     Button::Encoder()->wasHold();

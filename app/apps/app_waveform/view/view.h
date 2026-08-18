@@ -8,6 +8,7 @@
 #include "config_panel/config_panel.h"
 #include "libs/waveform_scale/waveform_scale.h"
 #include "libs/live_share_controller/live_share_controller.h"
+#include "libs/local_fault/local_fault.h"
 #include <smooth_ui_toolkit.h>
 #include <cstdint>
 #include <string>
@@ -135,6 +136,7 @@ namespace VIEWS
             state_waiting_trigger,
             state_recording,
             state_saving,
+            state_fault,
         };
 
         struct Data_t
@@ -150,6 +152,12 @@ namespace VIEWS
             uint32_t recording_start_time_count = 0;
 
             int string_y_offset = 0;
+
+            LOCAL_FAULT::Payload fault;
+            // True while a press that started before (or during) fault entry
+            // is still in flight. Its eventual release must not itself count
+            // as the fresh Encoder-click edge required to acknowledge.
+            bool fault_ack_pending_release = false;
         };
         Data_t _data;
         inline const ConfigPanel::Config_t& getConfig() { return _data.config_panel->getConfig(); }
@@ -160,10 +168,12 @@ namespace VIEWS
         void _update_state_waiting_trigger();
         void _update_state_recording();
         void _update_state_saving();
+        void _update_state_fault(const LIVE_SHARE_CONTROLLER::InputSnapshot& input);
 
         void _handle_render();
         void _render_threshold_line();
         void _render_rec_state_label();
+        void _render_fault_screen();
 
         bool _handle_start_recording();
         bool _retry_recorder_cleanup();

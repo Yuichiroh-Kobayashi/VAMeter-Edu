@@ -20,7 +20,9 @@ namespace LIVE_SHARE_CONTROLLER
         if (liveShareState != LIVE_SHARE_SESSION::State::Inactive)
             return ForegroundAction::None;
         if (input.sideHeld)
-            return recorderActivity == RecorderActivity::Saving ? ForegroundAction::None : ForegroundAction::Exit;
+            return (recorderActivity == RecorderActivity::Saving || recorderActivity == RecorderActivity::FaultLatched)
+                     ? ForegroundAction::None
+                     : ForegroundAction::Exit;
         if (input.sideClicked && input.encoderClicked)
             return ForegroundAction::None;
         if (recorderActivity == RecorderActivity::BusyCleanup)

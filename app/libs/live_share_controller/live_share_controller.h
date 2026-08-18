@@ -14,6 +14,7 @@ namespace LIVE_SHARE_CONTROLLER
         Recording,
         Saving,
         BusyCleanup,
+        FaultLatched,
     };
 
     struct InputSnapshot
