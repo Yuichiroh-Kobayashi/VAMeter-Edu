@@ -8,8 +8,8 @@ namespace VIEWER_ASSET_CONTRACT
     static const std::size_t kIndexBytes = 573U;
     static const std::size_t kManifestBytes = 1363U;
     static const std::size_t kCssGzipBytes = 580U;
-    static const std::size_t kJsGzipBytes = 17604U;
-    static const std::size_t kStoredPayloadBytes = 20120U;
+    static const std::size_t kJsGzipBytes = 18785U;
+    static const std::size_t kStoredPayloadBytes = 21301U;
     static const std::size_t kBundleIdCharacters = 64U;
     static const std::size_t kBundleIdCapacity = 65U;
     static const std::size_t kViewerRouteCount = 6U;

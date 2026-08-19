@@ -31,23 +31,23 @@ int main()
     Expect(kIndexBytes == 573U, "index capacity");
     Expect(kManifestBytes == 1363U, "manifest capacity");
     Expect(kCssGzipBytes == 580U, "CSS gzip capacity");
-    Expect(kJsGzipBytes == 17604U, "JS gzip capacity");
+    Expect(kJsGzipBytes == 18785U, "JS gzip capacity");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 20120U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 21301U, "stored payload bytes");
     Expect(std::strlen(kViewerBundleId) == kBundleIdCharacters, "bundle ID length");
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
-    Expect(Equal(kIndexSha256, "3d4df6be1797daf092be9c380bffabd0d1705ec6d194a03dbe49f25cc2d54373"), "index SHA-256");
+    Expect(Equal(kIndexSha256, "b06f9c7e7f5aa788ba5743bd27700fa3594a1907af8521e5e3acc920f1e23ce7"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
     Expect(Equal(kCssGzipSha256, "5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "717776a47702ea18fa273adf3f680f58758f20b46e678bd515e75b147bece1e6"), "JS SHA-256");
+    Expect(Equal(kJsGzipSha256, "bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54"), "JS SHA-256");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
         "/viewer/assets/app.5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9.css",
-        "/viewer/assets/app.717776a47702ea18fa273adf3f680f58758f20b46e678bd515e75b147bece1e6.js",
+        "/viewer/assets/app.bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();
