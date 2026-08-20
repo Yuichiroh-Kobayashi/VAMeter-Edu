@@ -7,7 +7,7 @@ Read this document before editing waveform UI, recorder lifecycle, CSV, storage,
 Single-channel waveform views:
 
 - manual trigger only;
-- fixed 10-second recording;
+- fixed 5-second fallback recording after D2B became the primary live path;
 - encoder click starts while idle;
 - encoder rotation changes horizontal time zoom only;
 - side short click calls the Help-request hook and must not mutate recorder or measurement state;
@@ -16,6 +16,8 @@ Single-channel waveform views:
 - no manual vertical scale;
 - staged Auto scale;
 - centered live value remains visible.
+
+The recorder checks duration completion before the 5-second chunk rotation, so the current 5-second policy avoids the known second-chunk rotation. Per-sample synchronous FAT writes remain inside measurement, Issue #3 stays open, and neither gap-free CSV nor uniform 25 Hz sampling is guaranteed.
 
 USB-C Power Monitor opens Waveform in internal `mode_both`. This compatibility view:
 

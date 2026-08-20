@@ -191,19 +191,21 @@ Validate on a physical VAMeter:
 
 Validate:
 
-- manual 10-second record;
+- manual 5-second fallback record;
 - mode-specific blank columns;
 - first timestamp near zero;
 - for the current manual-trigger, nominal 40 ms, no-pretrigger path,
   timestamps start near zero and are strictly increasing;
 - for other sampling modes or pretrigger use, validate the documented
   duplicate-timestamp policy rather than assuming unique milliseconds;
-- final elapsed time near 10 seconds;
+- final elapsed time near 5 seconds;
 - REC numbering;
 - failure behavior;
 - Files preview/delete;
 - MSC transfer;
 - QR/AP download where affected.
+
+The 5-second policy avoids the known second-chunk rotation by the existing Finish-before-Rotate order. Physical validation must still measure actual intervals because per-sample synchronous FAT writes remain and Issue #3 stays open.
 
 ### Storage/filesystem changes
 

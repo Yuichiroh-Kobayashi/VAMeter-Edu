@@ -159,7 +159,7 @@ Read `docs/ai/recorder-and-measurement-contracts.md` before touching recorder, w
 
 Key rules:
 
-- Manual trigger only; fixed 10-second recording.
+- Manual trigger only; fixed 5-second fallback recording after D2B became the primary live path.
 - `elapsed_ms` is a real relative timestamp, not a synthesized sample index.
 - Preserve real delay and jitter; do not regularize or interpolate stored timestamps.
 - Current CSV schema is `voltage,current,elapsed_ms`.
@@ -172,6 +172,7 @@ Key rules:
 - Current records are `REC-[0-9]+.csv`; legacy `MO-*` files must not affect REC numbering, preview, or download.
 - Download basename validation and bounded streaming must not be weakened.
 - Do not describe the current recorder as a guaranteed uniform 25 Hz logger. Issue #3 documents observed sampling stalls.
+- The 5-second policy avoids the known second-chunk rotation because duration completion is checked before rotation, but per-sample synchronous FAT writes remain and Issue #3 stays open.
 
 ## Change discipline
 

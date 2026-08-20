@@ -9,6 +9,7 @@
 #include "../triggers/triggers.h"
 #include "../../utils/system/system.h"
 #include "../../../assets/assets.h"
+#include "../../../libs/educational_recorder_policy/educational_recorder_policy.h"
 #include <cmath>
 #include <mooncake.h>
 #include <cstddef>
@@ -545,8 +546,6 @@ void WaveFormRecorder::_render_fault_screen()
 /* -------------------------------------------------------------------------- */
 bool WaveFormRecorder::_handle_start_recording()
 {
-    static constexpr uint32_t kEducationalRecordTimeMs = 10000;
-
     if (!HAL::DestroyVaRecorder())
     {
         _data.destroy_already_timed_out = true;
@@ -558,7 +557,7 @@ bool WaveFormRecorder::_handle_start_recording()
     std::unique_ptr<VA_RECORDER::TriggerBase> trigger(new (std::nothrow) Trigger_Manual);
     if (!trigger)
         return false;
-    trigger->setRecordTime(kEducationalRecordTimeMs);
+    trigger->setRecordTime(EDUCATIONAL_RECORDER_POLICY::kFixedDurationMs);
     trigger->setChannelMode(_mode == 1 ? VA_RECORDER::channel_voltage
                                        : (_mode == 2 ? VA_RECORDER::channel_current : VA_RECORDER::channel_both));
 

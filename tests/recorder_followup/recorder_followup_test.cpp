@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "owned_task_resource.h"
+#include "educational_recorder_policy.h"
 #include "record_csv.h"
 #include "waveform_scale.h"
 
@@ -29,6 +30,11 @@ namespace
     bool Near(float lhs, float rhs, float tolerance = 0.000001f)
     {
         return std::fabs(lhs - rhs) <= tolerance;
+    }
+
+    void TestEducationalRecorderPolicy()
+    {
+        CHECK(EDUCATIONAL_RECORDER_POLICY::kFixedDurationMs == 5000U);
     }
 
     void TestCsvParsing()
@@ -294,6 +300,7 @@ namespace
 
 int main()
 {
+    TestEducationalRecorderPolicy();
     TestCsvParsing();
     TestCsvOutput();
     TestCsvLongLineDrain();

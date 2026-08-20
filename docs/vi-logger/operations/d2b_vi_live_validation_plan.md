@@ -153,10 +153,12 @@ deadlock, watchdog reset, or task fault.
 ## Recorder and waveform regression
 
 Without changing their contracts, verify normal waveform operation and one
-manual 10-second recording. Confirm the CSV remains
+manual 5-second fallback recording. Confirm the CSV remains
 `voltage,current,elapsed_ms`, preserves real elapsed timestamps, uses blank
 unused columns, and remains downloadable through Files/AP flow. Do not claim
-uniform 25 Hz sampling; Issue #3 remains separate.
+uniform 25 Hz sampling; per-sample synchronous FAT writes remain and Issue #3
+stays open. The 5-second policy avoids the known second-chunk rotation through
+the existing Finish-before-Rotate order.
 
 ## Evidence record and decision
 

@@ -75,6 +75,8 @@ Accepted behavior includes:
 - legacy CSV preview compatibility;
 - host tests and design documentation.
 
+After D2B became the primary live path, device-side CSV recording became the fallback and its current fixed duration changed to 5 seconds. The existing recorder order checks duration completion before the 5-second chunk rotation, so this policy avoids the known second-chunk rotation. Per-sample synchronous FAT writes remain; Issue #3 stays open and neither gap-free output nor uniform 25 Hz sampling is claimed.
+
 ## Deliberate simplifications
 
 A manual vertical-scale prototype was built and reviewed, then removed.

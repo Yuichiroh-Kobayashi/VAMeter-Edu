@@ -10,6 +10,7 @@ add_executable(recorder_followup_test
 )
 
 target_include_directories(recorder_followup_test PRIVATE
+    ../../app/libs/educational_recorder_policy
     ../../app/libs/record_csv
     ../../app/libs/recorder_lifecycle
     ../../app/libs/waveform_scale

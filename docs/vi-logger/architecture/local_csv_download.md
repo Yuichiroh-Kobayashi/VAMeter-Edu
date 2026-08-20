@@ -18,14 +18,20 @@ The complete deletion path is `Settings → Files → Record files →
 <record> → Delete`. Deletion requires confirmation; the firmware neither deletes
 old recordings automatically nor formats storage when it becomes full.
 
-The educational waveform recorder uses manual trigger only and a fixed 10-second
-recording. Pressing the encoder starts recording, encoder rotation changes only
+After D2B became the primary live path, the educational waveform CSV recorder is
+the fallback. It uses manual trigger only and a fixed 5-second recording. Pressing
+the encoder starts recording, encoder rotation changes only
 the horizontal time-axis zoom, and a short side-button click reaches the
 dedicated Help-request hook without changing measurement or recorder state. A long hold exits the waveform screen. While `state_saving` is active, both short click and long hold are ignored: saving neither enters Help nor exits Waveform. The project has no HelpEvent transport sink yet, so the hook currently emits a diagnostic log. Before starting, the recorder requires at least 64 KiB free.
 This is conservative headroom for temporary chunks and the final CSV to coexist,
 including FAT allocation and directory metadata; it is not the measured size of
-one 10-second CSV. If storage information cannot be read or the threshold is not
+one 5-second CSV. If storage information cannot be read or the threshold is not
 met, recording is rejected with a warning and the device does not reboot.
+
+The existing recorder checks duration completion before the 5-second chunk
+rotation, so the current policy avoids the known second-chunk rotation. Per-sample
+synchronous FAT writes remain, Issue #3 stays open, and neither gap-free CSV nor
+uniform 25 Hz sampling is claimed.
 
 Current V-I records must match `REC-[0-9]+.csv` using ASCII digits. Legacy
 `MO-[0-9]+.csv` files remain visible only as individual cleanup targets: they do
