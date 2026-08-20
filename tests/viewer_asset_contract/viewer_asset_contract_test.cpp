@@ -31,23 +31,23 @@ int main()
     Expect(kIndexBytes == 573U, "index capacity");
     Expect(kManifestBytes == 1363U, "manifest capacity");
     Expect(kCssGzipBytes == 580U, "CSS gzip capacity");
-    Expect(kJsGzipBytes == 18785U, "JS gzip capacity");
+    Expect(kJsGzipBytes == 18790U, "JS gzip capacity");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 21301U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 21306U, "stored payload bytes");
     Expect(std::strlen(kViewerBundleId) == kBundleIdCharacters, "bundle ID length");
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
-    Expect(Equal(kIndexSha256, "b06f9c7e7f5aa788ba5743bd27700fa3594a1907af8521e5e3acc920f1e23ce7"), "index SHA-256");
+    Expect(Equal(kIndexSha256, "1d3e9e7b09d47a1b52c2f584d6f95dae94944c47226ebf76da82b5b367aebbf7"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
     Expect(Equal(kCssGzipSha256, "5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54"), "JS SHA-256");
+    Expect(Equal(kJsGzipSha256, "b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166"), "JS SHA-256");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
         "/viewer/assets/app.5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9.css",
-        "/viewer/assets/app.bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54.js",
+        "/viewer/assets/app.b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();
@@ -83,7 +83,7 @@ int main()
     bundleId[kBundleIdCharacters] = 'x';
     Expect(!IsExpectedBundleId(bundleId, sizeof(bundleId)), "unterminated bundle ID rejected");
     bundleId[kBundleIdCharacters] = 0U;
-    bundleId[0] = '0';
+    bundleId[0] = (bundleId[0] == static_cast<std::uint8_t>('0')) ? static_cast<std::uint8_t>('1') : static_cast<std::uint8_t>('0');
     Expect(!IsExpectedBundleId(bundleId, sizeof(bundleId)), "mismatched bundle ID rejected");
 
     std::cout << "PASS: frozen Viewer product contract\n";

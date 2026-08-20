@@ -4,17 +4,17 @@
 
 namespace VIEWER_ASSET_CONTRACT
 {
-    const char kViewerBundleId[] = "d80b386a5a5ba44ce84fc3b6275cac6e565bda100b1b4791b45ed7e0ad27d4f5";
-    const char kIndexSha256[] = "b06f9c7e7f5aa788ba5743bd27700fa3594a1907af8521e5e3acc920f1e23ce7";
-    const char kManifestSha256[] = "d80b386a5a5ba44ce84fc3b6275cac6e565bda100b1b4791b45ed7e0ad27d4f5";
+    const char kViewerBundleId[] = "042b48e37a7f18b71f1ba89b2188391a87413c7e38d79ef0b380822ce7e0b894";
+    const char kIndexSha256[] = "1d3e9e7b09d47a1b52c2f584d6f95dae94944c47226ebf76da82b5b367aebbf7";
+    const char kManifestSha256[] = "042b48e37a7f18b71f1ba89b2188391a87413c7e38d79ef0b380822ce7e0b894";
     const char kCssGzipSha256[] = "5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9";
-    const char kJsGzipSha256[] = "bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54";
+    const char kJsGzipSha256[] = "b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166";
 
     const char kRootRoute[] = "/";
     const char kViewerRoute[] = "/viewer/";
     const char kManifestRoute[] = "/viewer/asset-manifest.json";
     const char kCssRoute[] = "/viewer/assets/app.5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9.css";
-    const char kJsRoute[] = "/viewer/assets/app.bd9a5a158ab1f58d7c0f147e933d1a35911c6e64f47e676c84e3aa5d172a7e54.js";
+    const char kJsRoute[] = "/viewer/assets/app.b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166.js";
     const char kDeviceRoute[] = "/viewer/device.json";
 
     const char kHtmlMime[] = "text/html; charset=utf-8";
@@ -38,7 +38,7 @@ namespace VIEWER_ASSET_CONTRACT
     const char kD2bProtocolValue[] = "d2b-stream/0.1";
     const char kD2bStreamValue[] = "live-vi";
     const char kDeviceJson[] =
-        "{\"schema_version\":1,\"viewer_bundle_id\":\"d80b386a5a5ba44ce84fc3b6275cac6e565bda100b1b4791b45ed7e0ad27d4f5\","
+        "{\"schema_version\":1,\"viewer_bundle_id\":\"042b48e37a7f18b71f1ba89b2188391a87413c7e38d79ef0b380822ce7e0b894\","
         "\"d2b_protocol\":\"d2b-stream/0.1\",\"d2b_stream\":\"live-vi\"}";
     const std::size_t kDeviceJsonBytes = sizeof(kDeviceJson) - 1U;
 
