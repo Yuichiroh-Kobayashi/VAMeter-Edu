@@ -190,8 +190,11 @@ void AppWaveform::_handle_recording_finished()
         // Delete
         else if (selected_index == 2)
         {
-            HAL::DeleteVaRecord(HAL::GetLatestVaRecordName());
-            break;
+            if (CreateConfirmPage(AssetPool::GetText().AppFiles_Confirm_Delete, false))
+            {
+                HAL::DeleteVaRecord(HAL::GetLatestVaRecordName());
+                break;
+            }
         }
     }
 
