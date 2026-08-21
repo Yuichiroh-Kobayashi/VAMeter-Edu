@@ -21,6 +21,23 @@ void AppSettings::_on_page_root()
 {
     spdlog::info("on page root");
 
+    enum MenuIndex
+    {
+        kOperationGuide,
+        kAbout,
+        kDisplay,
+        kBuzzer,
+        kEncoder,
+        kCalibration,
+        kProbeMode,
+        kFiles,
+        kNetwork,
+        kLanguage,
+        kStartupImage,
+        kBaseTest,
+        kQuit,
+    };
+
     int selected_index = 0;
     while (1)
     {
@@ -32,55 +49,85 @@ void AppSettings::_on_page_root()
         options.push_back(AssetPool::GetText().AppSettings_Option_Encoder);     // case 4
         options.push_back(AssetPool::GetText().AppSettings_Option_Calibration); // case 5
         options.push_back("Probe Mode");       // case 6 (AssetPool::GetText().AppSettings_Option_Probe)
-        options.push_back(AssetPool::GetText().AppSettings_Option_Network);     // case 7
+        options.push_back(AssetPool::GetText().AppName_Files);                 // case 7
+        options.push_back(AssetPool::GetText().AppSettings_Option_Network);     // case 8
         // options.push_back(AssetPool::GetText().AppSettings_Option_OTA);
-        options.push_back(AssetPool::GetText().AppSettings_Option_Language);    // case 8
-        options.push_back(AssetPool::GetText().AppSettings_Option_StartupImage);// case 9
-        options.push_back("Base Test");                                         // case 10
+        options.push_back(AssetPool::GetText().AppSettings_Option_Language);    // case 9
+        options.push_back(AssetPool::GetText().AppSettings_Option_StartupImage);// case 10
+        options.push_back("Base Test");                                         // case 11
         // options.push_back("Factory Reset");
-        options.push_back(AssetPool::GetText().AppSettings_Option_Quit);        // case 11
+        options.push_back(AssetPool::GetText().AppSettings_Option_Quit);        // case 12
 
         selected_index = SelectMenuPage::CreateAndWaitResult(
             AssetPool::GetText().AppName_Settings, options, selected_index, &_data.select_page_theme);
 
         if (selected_index == -1)
             break;
-        else if (selected_index == options.size() - 1)
+        else if (selected_index == kQuit)
             break;
 
-        else if (selected_index == 0)
+        else if (selected_index == kOperationGuide)
             AppStartupAnim::PopUpGuideMap(true);
 
-        else if (selected_index == 1)
+        else if (selected_index == kAbout)
             _on_page_about();
 
-        else if (selected_index == 2)
+        else if (selected_index == kDisplay)
             _on_page_display();
 
-        else if (selected_index == 3)
+        else if (selected_index == kBuzzer)
             _on_page_buzzer();
 
-        else if (selected_index == 4)
+        else if (selected_index == kEncoder)
             _on_page_encoder();
 
-        else if (selected_index == 5)
+        else if (selected_index == kCalibration)
             _on_page_calibration();
 
-        else if (selected_index == 6)
+        else if (selected_index == kProbeMode)
             _on_page_probe_mode();
             // _on_page_network();
 
-        else if (selected_index == 7)
+        else if (selected_index == kFiles)
+        {
+            spdlog::info("opening Files from Settings");
+
+            MOONCAKE::APP_PACKER_BASE* files_packer = nullptr;
+            for (const auto& app_packer : mcAppGetFramework()->getInstalledAppList())
+            {
+                if (std::string(app_packer->getAppName()) == AssetPool::GetText().AppName_Files)
+                {
+                    files_packer = app_packer;
+                    break;
+                }
+            }
+
+            if (files_packer == nullptr)
+            {
+                spdlog::error("Files app packer not found");
+                continue;
+            }
+
+            if (!mcAppGetFramework()->createAndStartApp(files_packer))
+            {
+                spdlog::error("failed to start Files app");
+                continue;
+            }
+
+            return;
+        }
+
+        else if (selected_index == kNetwork)
             _on_page_network();
             // _on_page_ota_upgrade();
 
-        else if (selected_index == 8)
+        else if (selected_index == kLanguage)
             _on_page_language();
 
-        else if (selected_index == 9)
+        else if (selected_index == kStartupImage)
             _on_page_startup_image();
 
-        else if (selected_index == 10)
+        else if (selected_index == kBaseTest)
             _on_page_base_test();
 
         //else if (selected_index == 11)

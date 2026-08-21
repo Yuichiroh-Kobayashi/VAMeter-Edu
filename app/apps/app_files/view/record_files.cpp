@@ -10,6 +10,7 @@
 #include "spdlog/spdlog.h"
 #include <string>
 #include <vector>
+#include "libs/local_csv_download/local_csv_download_name.h"
 
 using namespace SYSTEM::INPUTS;
 using namespace SYSTEM::UI;
@@ -22,6 +23,7 @@ void AppFiles::_on_page_record_files()
     spdlog::info("on page record files");
 
 HELL:
+    _data.is_just_delete_file = false;
     // Get file list
     auto file_list = HAL::GetVaRecordNameList();
     if (file_list.size() == 0)
@@ -59,8 +61,12 @@ void AppFiles::_on_record_file_open(const std::string& fileName)
     while (1)
     {
         std::vector<std::string> option_list;
-        option_list.push_back(AssetPool::GetText().AppFiles_Option_Open);
-        option_list.push_back(AssetPool::GetText().AppFiles_Option_Upload); // "Download (QR)"
+        const bool is_current_record = LOCAL_CSV_DOWNLOAD::IsCurrentRecordName(fileName);
+        if (is_current_record)
+        {
+            option_list.push_back(AssetPool::GetText().AppFiles_Option_Open);
+            option_list.push_back(AssetPool::GetText().AppFiles_Option_Upload); // "Download (QR)"
+        }
         option_list.push_back(AssetPool::GetText().AppFiles_Option_Delete);
         option_list.push_back(AssetPool::GetText().AppSettings_Option_Back);
 
@@ -73,24 +79,31 @@ void AppFiles::_on_record_file_open(const std::string& fileName)
             break;
 
         // Preview
-        else if (selected_index == 0)
+        else if (is_current_record && selected_index == 0)
         {
             auto record = HAL::GetVaRecord(fileName);
             VaRecordViewer::CreateAndWait(&record);
         }
 
         // Download (QR)
-        else if (selected_index == 1)
+        else if (is_current_record && selected_index == 1)
         {
             _on_page_download_local(fileName);
         }
 
         // Delete
-        else if (selected_index == 2)
+        else if (selected_index == (is_current_record ? 2 : 0))
         {
-            HAL::DeleteVaRecord(fileName);
-            _data.is_just_delete_file = true;
-            break;
+            if (CreateConfirmPage(AssetPool::GetText().AppFiles_Confirm_Delete, false))
+            {
+                if (HAL::DeleteVaRecord(fileName))
+                {
+                    _data.is_just_delete_file = true;
+                    break;
+                }
+                spdlog::error("failed to delete record: {}", fileName);
+                HAL::PopWarning(AssetPool::GetText().AppFiles_Error_Delete);
+            }
         }
     }
 }

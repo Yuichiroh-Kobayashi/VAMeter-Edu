@@ -8,6 +8,7 @@
 #include "../../utils/system/system.h"
 #include "../../utils/qrcode/qrcode.h"
 #include "../../../assets/assets.h"
+#include "network_web_server_recovery.h"
 #include "spdlog/fmt/bundled/core.h"
 #include <string>
 #include <vector>
@@ -17,6 +18,43 @@ using namespace SYSTEM::UI;
 using namespace SmoothUIToolKit;
 using namespace MOONCAKE::APPS;
 using namespace QRCODE;
+
+namespace
+{
+    void ShowNetworkWebServerNotice(const char* line1, const char* line2 = nullptr)
+    {
+        CreateNoticePage("Web Server",
+                         [&](Transition2D& transition)
+                         {
+                             HAL::GetCanvas()->drawCenterString(line1, 120, 90 + transition.getValue().y);
+                             if (line2 != nullptr)
+                                 HAL::GetCanvas()->drawCenterString(line2, 120, 130 + transition.getValue().y);
+                             HAL::GetCanvas()->drawCenterString("Click to Back", 120, 216 + transition.getValue().y);
+                         },
+                         nullptr);
+    }
+
+    void RunNetworkWebServerStopRecovery(SelectMenuPage::Theme_t& theme)
+    {
+        while (true)
+        {
+            const std::vector<std::string> options = {" - Retry Stop", " - Power-Cycle Help"};
+            const int selected = SelectMenuPage::CreateAndWaitResult("Web Server Recovery", options, 0, &theme);
+            if (selected == 0)
+            {
+                const WEB_SERVER_OWNER::StopResult result =
+                    HAL::StopWebServer(HAL::WebServerReason::NetworkSettingsIntentionalStop);
+                if (NETWORK_WEB_SERVER_RECOVERY::StopCompleted(result))
+                    return;
+                ShowNetworkWebServerNotice(NETWORK_WEB_SERVER_RECOVERY::StopResultMessage(result),
+                                           "Retry Stop or power-cycle.");
+                continue;
+            }
+
+            ShowNetworkWebServerNotice("Server/AP still active.", "Retry Stop or power-cycle.");
+        }
+    }
+} // namespace
 
 void AppSettings::_on_page_network()
 {
@@ -65,7 +103,26 @@ void AppSettings::_on_page_network()
         // Configure via Web
         else if (selected == 1)
         {
-            HAL::StartWebServer(OnLogPageRender);
+            const WEB_SERVER_OWNER::StartResult startResult =
+                HAL::StartWebServer(OnLogPageRender,
+                                    WEB_SERVER_PROFILE::Profile::SystemConfig,
+                                    false,
+                                    HAL::WebServerReason::NetworkSettingsStart);
+            switch (NETWORK_WEB_SERVER_RECOVERY::DecideStartAction(startResult))
+            {
+            case NETWORK_WEB_SERVER_RECOVERY::Action::ContinueWorkflow:
+                break;
+            case NETWORK_WEB_SERVER_RECOVERY::Action::ShowBusyNotice:
+                ShowNetworkWebServerNotice("Web server is busy.", "AP remains active.");
+                continue;
+            case NETWORK_WEB_SERVER_RECOVERY::Action::EnterStopRecovery:
+                RunNetworkWebServerStopRecovery(theme);
+                continue;
+            case NETWORK_WEB_SERVER_RECOVERY::Action::ShowStartFailure:
+            default:
+                ShowNetworkWebServerNotice("Web server start failed.");
+                continue;
+            }
 
             // Pop wifi code
             auto text = fmt::format("WIFI:T:nopass;S:{};;", HAL::GetApWifiSsid());
@@ -136,7 +193,10 @@ void AppSettings::_on_page_network()
                 },
                 nullptr);
 
-            HAL::StopWebServer();
+            const WEB_SERVER_OWNER::StopResult stopResult =
+                HAL::StopWebServer(HAL::WebServerReason::NetworkSettingsIntentionalStop);
+            if (!NETWORK_WEB_SERVER_RECOVERY::StopCompleted(stopResult))
+                RunNetworkWebServerStopRecovery(theme);
         }
         // AP Suffix Setting
         else if (selected == 2)

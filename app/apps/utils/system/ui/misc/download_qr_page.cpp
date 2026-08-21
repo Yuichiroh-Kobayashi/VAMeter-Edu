@@ -9,6 +9,7 @@
 #include "../../../../../hal/hal.h"
 #include "../../../qrcode/qrcode.h"
 #include "hal/utils/lgfx_fx/lgfx_fx.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
 #include <mooncake.h>
 #include <vector>
 #include <string>
@@ -21,10 +22,20 @@ namespace SYSTEM
     {
         void CreateDownloadQRPage(const std::string& recordName)
         {
+            if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
+            {
+                spdlog::warn("Rejected local CSV download name: {}", recordName);
+                return;
+            }
+
             spdlog::info("Starting local download server for: {}", recordName);
 
             // Start download server
-            HAL::StartDownloadServer(recordName);
+            if (!HAL::StartDownloadServer(recordName))
+            {
+                spdlog::error("Failed to start local download server");
+                return;
+            }
 
             // Show preparing status (Debug & UX)
             HAL::GetCanvas()->fillScreen(AssetPool::GetColor().AppSettings.background);

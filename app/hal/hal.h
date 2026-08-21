@@ -4,7 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 #pragma once
+#include <cstdio>
 #include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 #ifndef ESP_PLATFORM
 #define LGFX_USE_V1
@@ -20,6 +23,11 @@
 #include <LovyanGFX.hpp>
 #include "types.h"
 #endif
+#include "../libs/live_share_safety/live_share_safety.h"
+#include "../libs/live_share_session/live_share_session.h"
+#include "../libs/viewer_asset_contract/viewer_asset_contract.h"
+#include "../libs/web_server_owner/web_server_profile.h"
+#include "../libs/web_server_owner/web_server_results.h"
 
 /**
  * @brief Provide a dingleton to abstract hardware methods
@@ -33,6 +41,15 @@ private:
     static HAL* _hal;
 
 public:
+    enum class WebServerReason
+    {
+        Unspecified,
+        NetworkSettingsStart,
+        NetworkSettingsIntentionalStop,
+        DownloadStart,
+        DownloadIntentionalStop,
+    };
+
     /**
      * @brief Get HAL instance
      *
@@ -453,6 +470,23 @@ public:
     virtual bool getBaseRelayState() { return false; }
 
     /* -------------------------------------------------------------------------- */
+    /*                         Measurement safety teardown                        */
+    /* -------------------------------------------------------------------------- */
+public:
+    static LIVE_SHARE_SAFETY::Result
+    TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+    {
+        return Get()->terminateMeasurementSession(reason);
+    }
+
+    virtual LIVE_SHARE_SAFETY::Result
+    terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+    {
+        const LIVE_SHARE_SAFETY::Callbacks callbacks = {};
+        return LIVE_SHARE_SAFETY::Execute(reason, callbacks);
+    }
+
+    /* -------------------------------------------------------------------------- */
     /*                                 Base grove                                 */
     /* -------------------------------------------------------------------------- */
 public:
@@ -472,8 +506,11 @@ public:
     /*                                 VA Recoder                                 */
     /* -------------------------------------------------------------------------- */
 public:
-    static bool CreatVaRecorder(VA_RECORDER::TriggerBase* trigger) { return Get()->creatVaRecorder(trigger); }
-    virtual bool creatVaRecorder(VA_RECORDER::TriggerBase* trigger) { return false; }
+    static bool CreatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
+    {
+        return Get()->creatVaRecorder(std::move(trigger));
+    }
+    virtual bool creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger) { return false; }
 
     static bool IsVaRecorderExist() { return Get()->isVaRecorderExist(); }
     virtual bool isVaRecorderExist() { return false; }
@@ -486,6 +523,9 @@ public:
 
     static bool DestroyVaRecorder() { return Get()->destroyVaRecorder(); }
     virtual bool destroyVaRecorder() { return false; }
+
+    static VA_RECORDER::Error_t GetVaRecorderError() { return Get()->getVaRecorderError(); }
+    virtual VA_RECORDER::Error_t getVaRecorderError() { return VA_RECORDER::error_none; }
 
     /* -------------------------------------------------------------------------- */
     /*                                  VA Record                                 */
@@ -554,9 +594,10 @@ public:
      * @brief Start local download server for CSV file via AP mode
      *
      * @param recordName Name of the record file to serve
+     * @return true when the server owns port 80 and is ready
      */
-    static void StartDownloadServer(const std::string& recordName) { Get()->startDownloadServer(recordName); }
-    virtual void startDownloadServer(const std::string& recordName) {}
+    static bool StartDownloadServer(const std::string& recordName) { return Get()->startDownloadServer(recordName); }
+    virtual bool startDownloadServer(const std::string& recordName) { return false; }
 
     /**
      * @brief Stop local download server and AP mode
@@ -599,17 +640,98 @@ public:
     /*                                 Web server                                 */
     /* -------------------------------------------------------------------------- */
 public:
-    static bool StartWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode = false)
+    static WEB_SERVER_OWNER::StartResult StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                        bool autoWifiMode = false,
+                                                        WebServerReason reason = WebServerReason::Unspecified)
     {
-        return Get()->startWebServer(onLogPageRender, autoWifiMode);
+        // This compatibility entry point has always started the configuration
+        // server. Keep that meaning explicit without a default profile.
+        return Get()->startWebServer(
+            onLogPageRender, WEB_SERVER_PROFILE::Profile::SystemConfig, autoWifiMode, reason);
     }
-    virtual bool startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode) { return false; }
 
-    static bool StopWebServer() { return Get()->stopWebServer(); }
-    virtual bool stopWebServer() { return true; }
+    static WEB_SERVER_OWNER::StartResult StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                        WEB_SERVER_PROFILE::Profile profile,
+                                                        bool autoWifiMode,
+                                                        WebServerReason reason = WebServerReason::Unspecified,
+                                                        VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                            VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid)
+    {
+        return Get()->startWebServer(onLogPageRender, profile, autoWifiMode, reason, displayProfile);
+    }
+
+    virtual WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                         WEB_SERVER_PROFILE::Profile profile,
+                                                         bool autoWifiMode,
+                                                         WebServerReason reason = WebServerReason::Unspecified,
+                                                         VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                             VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid)
+    {
+        (void)reason;
+        (void)onLogPageRender;
+        (void)profile;
+        (void)autoWifiMode;
+        (void)displayProfile;
+        return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
+    }
+
+    static WEB_SERVER_OWNER::StopResult StopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    {
+        return Get()->stopWebServer(reason);
+    }
+    virtual WEB_SERVER_OWNER::StopResult stopWebServer(WebServerReason reason = WebServerReason::Unspecified)
+    {
+        (void)reason;
+        return WEB_SERVER_OWNER::StopResult::AlreadyStopped;
+    }
 
     static std::string GetSystemConfigUrl() { return Get()->getSystemConfigUrl(); }
     virtual std::string getSystemConfigUrl() { return "http://192.168.4.1/syscfg"; }
+
+    static WEB_SERVER_OWNER::StartResult
+    StartSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
+    {
+        return Get()->startSystemLiveSharing(displayProfile);
+    }
+    virtual WEB_SERVER_OWNER::StartResult
+    startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
+    {
+        (void)displayProfile;
+        return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
+    }
+
+    static LIVE_SHARE_SESSION::TransportStopStatus BeginSystemLiveStop()
+    {
+        return Get()->beginSystemLiveStop();
+    }
+    virtual LIVE_SHARE_SESSION::TransportStopStatus beginSystemLiveStop()
+    {
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    }
+
+    static LIVE_SHARE_SESSION::TransportStopStatus PollSystemLiveStop()
+    {
+        return Get()->pollSystemLiveStop();
+    }
+    virtual LIVE_SHARE_SESSION::TransportStopStatus pollSystemLiveStop()
+    {
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    }
+
+    static WEB_SERVER_OWNER::StopResult FinishSystemLiveStop()
+    {
+        return Get()->finishSystemLiveStop();
+    }
+    virtual WEB_SERVER_OWNER::StopResult finishSystemLiveStop()
+    {
+        return WEB_SERVER_OWNER::StopResult::RetryRequired;
+    }
+
+    static std::string GetSystemLiveWifiSsid() { return Get()->getSystemLiveWifiSsid(); }
+    virtual std::string getSystemLiveWifiSsid() { return std::string(); }
+
+    static std::string GetSystemLiveViewerUrl() { return Get()->getSystemLiveViewerUrl(); }
+    virtual std::string getSystemLiveViewerUrl() { return std::string(); }
 
     /* -------------------------------------------------------------------------- */
     /*                                     NVS                                    */

@@ -6,6 +6,9 @@
 #pragma once
 #include "../../../hal/hal.h"
 #include "config_panel/config_panel.h"
+#include "libs/waveform_scale/waveform_scale.h"
+#include "libs/live_share_controller/live_share_controller.h"
+#include "libs/local_fault/local_fault.h"
 #include <smooth_ui_toolkit.h>
 #include <cstdint>
 #include <string>
@@ -90,6 +93,8 @@ namespace VIEWS
         InputProps_t _input_props;
 
         int _mode = 0; // 0: Both, 1: Volt, 2: Current
+        WAVEFORM_SCALE::AutoScaleState _voltage_scale;
+        WAVEFORM_SCALE::AutoScaleState _current_scale;
 
     protected:
         void _update_pm_data();
@@ -102,6 +107,7 @@ namespace VIEWS
 
         void _render_background();
         void _render_y_scales();
+        void _render_scale_readouts();
         void _render_x_scales_notice();
         virtual void _on_render_background_finish() {}
         void _render_wave();
@@ -130,6 +136,7 @@ namespace VIEWS
             state_waiting_trigger,
             state_recording,
             state_saving,
+            state_fault,
         };
 
         struct Data_t
@@ -139,29 +146,43 @@ namespace VIEWS
             bool want_to_quit = false;
 
             ConfigPanel* config_panel = nullptr;
-            VA_RECORDER::TriggerBase* trigger = nullptr;
+            bool destroy_already_timed_out = false;
 
             float threshold_a_scaled_buffer = 0.0f;
             uint32_t recording_start_time_count = 0;
 
             int string_y_offset = 0;
+
+            LOCAL_FAULT::Payload fault;
+            // True while a press that started before (or during) fault entry
+            // is still in flight. Its eventual release must not itself count
+            // as the fresh Encoder-click edge required to acknowledge.
+            bool fault_ack_pending_release = false;
         };
         Data_t _data;
         inline const ConfigPanel::Config_t& getConfig() { return _data.config_panel->getConfig(); }
 
         void _update_input() override;
         void _update_chart();
-        void _update_state_idle();
+        void _update_state_idle(bool startRecordingRequested, bool liveShareInactive);
         void _update_state_waiting_trigger();
         void _update_state_recording();
         void _update_state_saving();
+        void _update_state_fault(const LIVE_SHARE_CONTROLLER::InputSnapshot& input);
 
         void _handle_render();
-        void _render_mode_icon();
         void _render_threshold_line();
         void _render_rec_state_label();
+        void _render_fault_screen();
 
-        void _handle_start_recording();
+        bool _handle_start_recording();
+        bool _retry_recorder_cleanup();
+        void _handle_recorder_error();
+        void _handle_help_request();
+        void _update_with_input(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                                LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                                bool liveShareInactive,
+                                bool legacyHelpBehavior);
 
     public:
         WaveFormRecorder(uint32_t themeColor, int mode = 0) : Waveform(themeColor, mode) {}
@@ -169,6 +190,11 @@ namespace VIEWS
 
         void init();
         void update() override;
+        void updateForeground(const LIVE_SHARE_CONTROLLER::InputSnapshot& input,
+                              LIVE_SHARE_CONTROLLER::ForegroundAction action,
+                              bool liveShareInactive);
+        LIVE_SHARE_CONTROLLER::RecorderActivity activity() const;
+        bool recordingInputAvailable() const;
         inline bool hasFinishedRecording() { return _data.has_finished_recording; }
         inline bool want2quit() { return _data.want_to_quit; }
     };

@@ -1,21 +1,38 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ * SPDX-License-Identifier: MIT
+ */
 #include "../hal_vameter.h"
 #include "../hal_config.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/record_csv/record_csv.h"
+#include "libs/recorder_lifecycle/owned_task_resource.h"
 #include <mooncake.h>
-#include <string>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
-#include <dirent.h>
 #include <esp_task_wdt.h>
+#include <esp_timer.h>
+#include <esp_vfs_fat.h>
+#include <cerrno>
+#include <cstring>
+#include <dirent.h>
+#include <new>
+#include <memory>
+#include <sys/stat.h>
 
-/* -------------------------------------------------------------------------- */
-/*           A class to handle communication between daemon and hal           */
-/* -------------------------------------------------------------------------- */
+POWER_MONITOR::PMData_t* _borrow_pm_data_daemon();
+void _return_pm_data_daemon();
+
+namespace
+{
+constexpr const char* kStoragePath = "/spiflash";
+constexpr const char* kTempPath = "/spiflash/temp";
+// Conservative headroom for temp chunks and the final CSV to coexist, plus FAT allocation/directory metadata.
+constexpr uint64_t kRecorderMinimumFreeBytes = 64U * 1024U;
+constexpr uint32_t kChunkSaveIntervalMs = 5000;
+constexpr size_t kMergeBufferBytes = 8192;
+
 enum RunningState_t
 {
     daemon_state_preparing = 0,
@@ -23,474 +40,404 @@ enum RunningState_t
     daemon_state_recording,
     daemon_state_wraping_up,
     daemon_state_finished,
+    daemon_state_error,
 };
 
 struct RecorderDaemonStatus_t
 {
-public:
     struct Data_t
     {
-        char savePath[30] = {0};
+        char savePath[64] = {0};
         RunningState_t currentState = daemon_state_preparing;
-        VA_RECORDER::TriggerBase* trigger = nullptr;
-        bool goToHell = false;
-        float current_offset = 0.0f;
+        VA_RECORDER::Error_t error = VA_RECORDER::error_none;
     };
 
-private:
-    Data_t _data;
-    SemaphoreHandle_t _mutex;
+    Data_t data;
+    RECORDER_LIFECYCLE::OwnedTaskResource<VA_RECORDER::TriggerBase> triggerOwner;
+    SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
+    ~RecorderDaemonStatus_t() { if (mutex != nullptr) vSemaphoreDelete(mutex); }
 
-public:
-    RecorderDaemonStatus_t() { _mutex = xSemaphoreCreateMutex(); }
-    ~RecorderDaemonStatus_t() { vSemaphoreDelete(_mutex); }
-    Data_t& Borrow()
+    Data_t snapshot()
     {
-        xSemaphoreTake(_mutex, portMAX_DELAY);
-        return _data;
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const Data_t copy = data;
+        xSemaphoreGive(mutex);
+        return copy;
     }
-    void Return() { xSemaphoreGive(_mutex); }
-    Data_t& GetRaw() { return _data; }
+    void setState(RunningState_t state)
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        data.currentState = state;
+        xSemaphoreGive(mutex);
+    }
+    bool acquireTrigger(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool acquired = triggerOwner.acquire(std::move(trigger));
+        xSemaphoreGive(mutex);
+        return acquired;
+    }
+    VA_RECORDER::TriggerBase* trigger()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        VA_RECORDER::TriggerBase* value = triggerOwner.get();
+        xSemaphoreGive(mutex);
+        return value;
+    }
+    void taskStarted()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.taskStarted();
+        xSemaphoreGive(mutex);
+    }
+    void taskCreateFailed()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.taskCreateFailed();
+        xSemaphoreGive(mutex);
+    }
+    void requestStop()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        triggerOwner.requestStop();
+        xSemaphoreGive(mutex);
+    }
+    bool stopRequested()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool value = triggerOwner.stopRequested();
+        xSemaphoreGive(mutex);
+        return value;
+    }
+    void finish(VA_RECORDER::Error_t value)
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        data.error = value;
+        data.currentState = value == VA_RECORDER::error_none ? daemon_state_finished : daemon_state_error;
+        triggerOwner.taskFinished();
+        xSemaphoreGive(mutex);
+    }
+    bool releaseFinishedTrigger()
+    {
+        xSemaphoreTake(mutex, portMAX_DELAY);
+        const bool released = triggerOwner.releaseFinished();
+        xSemaphoreGive(mutex);
+        return released;
+    }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                                    Errno                                   */
-/* -------------------------------------------------------------------------- */
-static const char* _errno_open_temp_dir_failed = "Open temp dir\nFailed";
-static const char* _errno_clear_temp_dir_failed = "Clear temp dir\nFailed";
-static const char* _errno_remove_temp_dir_failed = "Clear remove dir\nFailed";
-static const char* _errno_create_temp_dir_failed = "Clear create dir\nFailed";
-static const char* _errno_open_chunk_failed = "Open chunk\nFailed";
-static const char* _errno_close_chunk_failed = "Close chunk\nFailed";
-static const char* _errno_open_rec_file_failed = "Open rec file\nFailed";
-static const char* _errno_close_rec_file_failed = "Close rec file\nFailed";
-static const char* _errno_malloc_failed = "Malloc failed";
+RecorderDaemonStatus_t* g_recorder = nullptr;
+VA_RECORDER::Error_t g_last_create_error = VA_RECORDER::error_none;
 
-/* -------------------------------------------------------------------------- */
-/*                            Recorder deamon task                            */
-/* -------------------------------------------------------------------------- */
-POWER_MONITOR::PMData_t* _borrow_pm_data_daemon();
-void _return_pm_data_daemon();
-
-// 选👴! OS 的神
-void _remove_temp_dir(const char* tempDirPath)
+void logErrno(const char* operation, const char* path)
 {
-    spdlog::info("try remove {}", tempDirPath);
-
-    // Clear dir
-    DIR* dir = opendir(tempDirPath);
-    if (dir == NULL)
-        HAL::PopFatalError(_errno_open_temp_dir_failed);
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
-        {
-            char path[1024];
-            snprintf(path, sizeof(path), "%s/%s", tempDirPath, entry->d_name);
-            if (remove(path) != 0)
-                HAL::PopFatalError(_errno_clear_temp_dir_failed);
-        }
-
-        esp_task_wdt_reset();
-    }
-
-    closedir(dir);
-    spdlog::info("dir clear");
-
-    // Remove dir
-    if (rmdir(tempDirPath) == -1)
-        HAL::PopFatalError(_errno_remove_temp_dir_failed);
-
-    spdlog::info("remove done");
+    const int value = errno;
+    spdlog::error("{} {} failed: errno={} ({})", operation, path, value, strerror(value));
 }
 
-static void _va_recorder_daemon(void* param)
+bool removeTempDirectory()
 {
-    esp_task_wdt_add(NULL);
-    bool is_going_to_hell = false;
-
-    const char* temp_folder_path = "/spiflash/temp";
-    FILE* rec_final_file = NULL;
-    FILE* rec_chunk_file = NULL;
-    uint16_t rec_chunk_file_count = 0;
-    char rec_chunk_file_path_buffer[30] = {0};
-
-    char* chunk_read_buffer = NULL;
-    size_t chunk_read_buffer_size = 0;
-    uint32_t rec_chunk_save_interval = 5000;
-    uint32_t millis = 0;
-
-    // uint32_t sample_time_count = 0;
-    uint32_t chunk_save_time_count = 0;
-    uint32_t recording_time_count = 0;
-
-    // Get status
-    RecorderDaemonStatus_t* daemon_status = (RecorderDaemonStatus_t*)param;
-
-    // Get trigger and buffer
-    VA_RECORDER::TriggerBase* trigger = daemon_status->Borrow().trigger;
-    VA_RECORDER::PreTriggerBuffer* pre_trigger_buffer = nullptr;
-
-    if (daemon_status->GetRaw().trigger->preTriggerBufferSize() != 0)
+    DIR* dir = opendir(kTempPath);
+    if (dir == nullptr)
     {
-        spdlog::info("create pretrigger buffer in size: {}", daemon_status->GetRaw().trigger->preTriggerBufferSize());
-        pre_trigger_buffer = new VA_RECORDER::PreTriggerBuffer;
-        pre_trigger_buffer->reSize(daemon_status->GetRaw().trigger->preTriggerBufferSize());
-    }
-    else
-        spdlog::info("no pretrigger buffer");
-
-    /* -------------------------------------------------------------------------- */
-    /*                               State preparing                              */
-    /* -------------------------------------------------------------------------- */
-    // Create temp folder
-    if (access(temp_folder_path, F_OK) == 0)
-    {
-        _remove_temp_dir(temp_folder_path);
-    }
-    if (mkdir(temp_folder_path, S_IRWXU) != 0)
-    {
-        daemon_status->Return();
-        HAL::PopFatalError(_errno_create_temp_dir_failed);
-    }
-
-    daemon_status->Return();
-
-    /* -------------------------------------------------------------------------- */
-    /*                                State waiting                               */
-    /* -------------------------------------------------------------------------- */
-    daemon_status->Borrow().currentState = daemon_state_waiting;
-    daemon_status->Return();
-
-    // Create chunk file
-    rec_chunk_file_count++;
-    snprintf(
-        rec_chunk_file_path_buffer, sizeof(rec_chunk_file_path_buffer), "%s/%d.csv", temp_folder_path, rec_chunk_file_count);
-
-    spdlog::info("open {}", rec_chunk_file_path_buffer);
-    rec_chunk_file = fopen(rec_chunk_file_path_buffer, "w");
-    if (rec_chunk_file == NULL)
-        HAL::PopFatalError("Open chunk failed");
-
-    while (1)
-    {
-        // Push pretrigger buffer
-        if (pre_trigger_buffer != nullptr)
-        {
-            auto pm_data = _borrow_pm_data_daemon();
-            pre_trigger_buffer->put(VA_RECORDER::RecordData_t(pm_data->busVoltage, pm_data->shuntCurrent));
-            _return_pm_data_daemon();
-        }
-
-        // If triggered
-        if (trigger->onCheck(pre_trigger_buffer))
-            break;
-
-        esp_task_wdt_reset();
-        vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
-
-        // Check kill signal
-        is_going_to_hell = daemon_status->Borrow().goToHell;
-        daemon_status->Return();
-        if (is_going_to_hell)
-            goto HELL;
-    }
-
-    /* -------------------------------------------------------------------------- */
-    /*                               State recording                              */
-    /* -------------------------------------------------------------------------- */
-    daemon_status->Borrow().currentState = daemon_state_recording;
-    daemon_status->Return();
-
-    HAL::ResetPowerMonitorData();
-
-    millis = esp_timer_get_time() / 1000;
-    recording_time_count = millis;
-    chunk_save_time_count = millis;
-    while (1)
-    {
-        // Normal writing
-        auto pm_data = _borrow_pm_data_daemon();
-        fprintf(rec_chunk_file, "%.4f,%.7f\n", pm_data->busVoltage, pm_data->shuntCurrent);
-        _return_pm_data_daemon();
-
-        // Time out check
-        millis = esp_timer_get_time() / 1000;
-        if (millis - recording_time_count > trigger->getRecordTime())
-        {
-            break;
-        }
-
-        // Chunk saving
-        millis = esp_timer_get_time() / 1000;
-        if (millis - chunk_save_time_count > rec_chunk_save_interval)
-        {
-            spdlog::info("chunk saving..");
-
-            // Close chunk file
-            if (fclose(rec_chunk_file) == EOF)
-                HAL::PopFatalError("Close chunk failed");
-            rec_chunk_file = NULL;
-
-            rec_chunk_file_count++;
-            snprintf(rec_chunk_file_path_buffer,
-                     sizeof(rec_chunk_file_path_buffer),
-                     "%s/%d.csv",
-                     temp_folder_path,
-                     rec_chunk_file_count);
-            spdlog::info("open {}", rec_chunk_file_path_buffer);
-
-            // Create new chunk
-            rec_chunk_file = fopen(rec_chunk_file_path_buffer, "w");
-            if (rec_chunk_file == NULL)
-                HAL::PopFatalError("Open chunk failed");
-
-            millis = esp_timer_get_time() / 1000;
-            chunk_save_time_count = millis;
-        }
-
-        esp_task_wdt_reset();
-        vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
-
-        // Check kill signal
-        is_going_to_hell = daemon_status->Borrow().goToHell;
-        daemon_status->Return();
-        if (is_going_to_hell)
-            goto HELL;
-    }
-
-    // Close chunk file
-    if (fclose(rec_chunk_file) == EOF)
-        HAL::PopFatalError("Close chunk failed");
-    rec_chunk_file = NULL;
-
-    /* -------------------------------------------------------------------------- */
-    /*                                State wrap up                               */
-    /* -------------------------------------------------------------------------- */
-    daemon_status->Borrow().currentState = daemon_state_wraping_up;
-    daemon_status->Return();
-
-    spdlog::info("start wraping, chunk num: {}", rec_chunk_file_count);
-    spdlog::info("open {}", daemon_status->Borrow().savePath);
-
-    /* --------------------------- Write file starter --------------------------- */
-    rec_final_file = fopen(daemon_status->GetRaw().savePath, "w");
-    daemon_status->Return();
-    if (rec_final_file == NULL)
-        HAL::PopFatalError(_errno_open_rec_file_failed);
-
-    fprintf(rec_final_file, "voltage,current,time,capacity,energy\n");
-    {
-        auto pm_data = _borrow_pm_data_daemon();
-        fprintf(rec_final_file, ",,%ld,%.7f,%.7f\n", pm_data->time, pm_data->capacity, pm_data->energy);
-        _return_pm_data_daemon();
-    }
-
-    if (fclose(rec_final_file) == EOF)
-        HAL::PopFatalError(_errno_close_rec_file_failed);
-    rec_final_file = NULL;
-
-    /* ------------------------- Write pretrigger buffer ------------------------ */
-    // If has pretrigger buffer
-    if (pre_trigger_buffer != nullptr)
-    {
-        spdlog::info("write pretrigger buffer");
-
-        // Open final file
-        rec_final_file = fopen(daemon_status->Borrow().savePath, "a");
-        daemon_status->Return();
-        if (rec_final_file == NULL)
-            HAL::PopFatalError(_errno_open_rec_file_failed);
-
-        // Write pretrigger buffer into file, and free
-        pre_trigger_buffer->peekAll([rec_final_file](const VA_RECORDER::RecordData_t& recData) {
-            fprintf(rec_final_file, "%.4f,%.7f\n", recData.voltage, recData.current);
-        });
-        delete pre_trigger_buffer;
-        pre_trigger_buffer = nullptr;
-
-        // Save
-        if (fclose(rec_final_file) == EOF)
-            HAL::PopFatalError(_errno_close_rec_file_failed);
-        rec_final_file = NULL;
-    }
-
-    /* ------------------------------ Merge chunks ------------------------------ */
-    // Write all chunks into final file
-    for (int i = 1; i < rec_chunk_file_count + 1; i++)
-    {
-        snprintf(rec_chunk_file_path_buffer, sizeof(rec_chunk_file_path_buffer), "%s/%d.csv", temp_folder_path, i);
-        spdlog::info("try append {}", rec_chunk_file_path_buffer);
-
-        // Open chunk file
-        rec_chunk_file = fopen(rec_chunk_file_path_buffer, "rb");
-        if (rec_chunk_file == NULL)
-            HAL::PopFatalError(_errno_open_chunk_failed);
-
-        // Get size and allocate
-        fseek(rec_chunk_file, 0, SEEK_END);
-        chunk_read_buffer_size = ftell(rec_chunk_file);
-        fseek(rec_chunk_file, 0, SEEK_SET);
-
-        chunk_read_buffer = (char*)malloc(chunk_read_buffer_size * sizeof(char));
-        if (chunk_read_buffer == NULL)
-            HAL::PopFatalError(_errno_malloc_failed);
-
-        // Copy buffer and close chunk
-        fread(chunk_read_buffer, sizeof(char), chunk_read_buffer_size, rec_chunk_file);
-        if (fclose(rec_chunk_file) == EOF)
-            HAL::PopFatalError(_errno_close_chunk_failed);
-        rec_chunk_file = NULL;
-
-        // Open final file
-        rec_final_file = fopen(daemon_status->Borrow().savePath, "a");
-        daemon_status->Return();
-        if (rec_final_file == NULL)
-            HAL::PopFatalError(_errno_open_rec_file_failed);
-
-        // Append buffer to the end
-        fwrite(chunk_read_buffer, sizeof(char), chunk_read_buffer_size, rec_final_file);
-
-        // Save and free
-        if (fclose(rec_final_file) == EOF)
-            HAL::PopFatalError(_errno_close_rec_file_failed);
-        rec_final_file = NULL;
-
-        free(chunk_read_buffer);
-        chunk_read_buffer = NULL;
-
-        esp_task_wdt_reset();
-    }
-
-    /* ------------------------------- Remove temp ------------------------------ */
-    _remove_temp_dir(temp_folder_path);
-
-    spdlog::info("done, saved at {}", daemon_status->Borrow().savePath);
-    daemon_status->Return();
-
-/* -------------------------------------------------------------------------- */
-/*                                   Goodbye                                  */
-/* -------------------------------------------------------------------------- */
-HELL:
-    // Check resource
-    if (rec_final_file != NULL)
-    {
-        if (fclose(rec_final_file) == EOF)
-            HAL::PopFatalError(_errno_close_rec_file_failed);
-    }
-
-    if (rec_chunk_file != NULL)
-    {
-        if (fclose(rec_chunk_file) == EOF)
-            HAL::PopFatalError(_errno_close_rec_file_failed);
-    }
-
-    if (chunk_read_buffer != NULL)
-        free(chunk_read_buffer);
-
-    if (pre_trigger_buffer != nullptr)
-        delete pre_trigger_buffer;
-
-    daemon_status->Borrow().currentState = daemon_state_finished;
-    daemon_status->Return();
-    esp_task_wdt_delete(NULL);
-    vTaskDelete(NULL);
-}
-
-/* -------------------------------------------------------------------------- */
-/*                                    Apis                                    */
-/* -------------------------------------------------------------------------- */
-static RecorderDaemonStatus_t* _recorder_daemon_status = nullptr;
-
-bool HAL_VAMeter::creatVaRecorder(VA_RECORDER::TriggerBase* trigger)
-{
-    if (_recorder_daemon_status != nullptr)
-    {
-        spdlog::error("recoder already exist");
+        if (errno == ENOENT) return true;
+        logErrno("opendir", kTempPath);
         return false;
     }
-    spdlog::info("create recoder: rec time: {} ms, interval: {} ms", trigger->getRecordTime(), trigger->getSampleInterval());
+    bool ok = true;
+    while (dirent* entry = readdir(dir))
+    {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char path[128] = {0};
+        const int length = snprintf(path, sizeof(path), "%s/%s", kTempPath, entry->d_name);
+        if (length <= 0 || static_cast<size_t>(length) >= sizeof(path) || remove(path) != 0)
+        {
+            logErrno("remove", path);
+            ok = false;
+        }
+        esp_task_wdt_reset();
+    }
+    if (closedir(dir) != 0) { logErrno("closedir", kTempPath); ok = false; }
+    if (rmdir(kTempPath) != 0) { logErrno("rmdir", kTempPath); ok = false; }
+    return ok;
+}
 
-    // Create status
-    _recorder_daemon_status = new RecorderDaemonStatus_t;
-    _fs_get_new_rec_file_path(_recorder_daemon_status->GetRaw().savePath, sizeof(_recorder_daemon_status->GetRaw().savePath));
-    _recorder_daemon_status->GetRaw().trigger = trigger;
-    _recorder_daemon_status->GetRaw().current_offset = _config.currentOffset;
+bool prepareTempDirectory()
+{
+    if (!removeTempDirectory()) return false;
+    if (mkdir(kTempPath, S_IRWXU) != 0) { logErrno("mkdir", kTempPath); return false; }
+    char probePath[64] = {0};
+    snprintf(probePath, sizeof(probePath), "%s/1.csv", kTempPath);
+    FILE* probe = fopen(probePath, "w");
+    if (probe == nullptr) { logErrno("fopen", probePath); removeTempDirectory(); return false; }
+    if (fclose(probe) != 0) { logErrno("fclose", probePath); removeTempDirectory(); return false; }
+    if (remove(probePath) != 0) { logErrno("remove", probePath); removeTempDirectory(); return false; }
+    return true;
+}
 
-    // Create daemon
-    xTaskCreate(_va_recorder_daemon, "rec", 4000, (void*)_recorder_daemon_status, 15, NULL);
+void recorderTask(void* parameter)
+{
+    esp_task_wdt_add(nullptr);
+    RecorderDaemonStatus_t* status = static_cast<RecorderDaemonStatus_t*>(parameter);
+    status->taskStarted();
+    const RecorderDaemonStatus_t::Data_t initial = status->snapshot();
+    VA_RECORDER::TriggerBase* trigger = status->trigger();
+    const RECORD_CSV::OutputMode outputMode =
+        trigger->getChannelMode() == VA_RECORDER::channel_voltage
+            ? RECORD_CSV::output_voltage
+            : (trigger->getChannelMode() == VA_RECORDER::channel_current ? RECORD_CSV::output_current
+                                                                         : RECORD_CSV::output_both);
+    VA_RECORDER::PreTriggerBuffer* pretrigger = nullptr;
+    FILE* chunk = nullptr;
+    FILE* finalFile = nullptr;
+    char* copyBuffer = nullptr;
+    char chunkPath[64] = {0};
+    uint16_t chunkCount = 1;
+    bool finalCreated = false;
+    bool completed = false;
+    VA_RECORDER::Error_t error = VA_RECORDER::error_none;
+    uint32_t recordingDurationMs = 0;
+
+    if (trigger->preTriggerBufferSize() != 0)
+    {
+        pretrigger = new (std::nothrow) VA_RECORDER::PreTriggerBuffer;
+        if (pretrigger == nullptr) { error = VA_RECORDER::error_allocation_failed; goto cleanup; }
+        pretrigger->reSize(trigger->preTriggerBufferSize());
+    }
+    else spdlog::info("no pretrigger buffer");
+
+    snprintf(chunkPath, sizeof(chunkPath), "%s/%u.csv", kTempPath, chunkCount);
+    chunk = fopen(chunkPath, "w");
+    if (chunk == nullptr) { logErrno("fopen", chunkPath); error = VA_RECORDER::error_open_chunk_failed; goto cleanup; }
+    status->setState(daemon_state_waiting);
+
+    while (!trigger->onCheck(pretrigger))
+    {
+        if (pretrigger != nullptr)
+        {
+            POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
+            pretrigger->put(VA_RECORDER::RecordData_t(data->busVoltage, data->shuntCurrent));
+            _return_pm_data_daemon();
+        }
+        if (status->stopRequested()) goto cleanup;
+        esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
+    }
+
+    status->setState(daemon_state_recording);
+    HAL::ResetPowerMonitorData();
+    {
+        const int64_t startedUs = esp_timer_get_time();
+        uint32_t chunkStartedMs = 0;
+        while (true)
+        {
+            POWER_MONITOR::PMData_t* data = _borrow_pm_data_daemon();
+            const uint32_t elapsedMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
+            const bool writeOk = RECORD_CSV::WriteSample(
+                chunk, outputMode, data->busVoltage, data->shuntCurrent, elapsedMs);
+            _return_pm_data_daemon();
+            if (!writeOk) { logErrno("fprintf", chunkPath); error = VA_RECORDER::error_write_chunk_failed; goto cleanup; }
+            recordingDurationMs = static_cast<uint32_t>((esp_timer_get_time() - startedUs) / 1000);
+            if (recordingDurationMs >= trigger->getRecordTime()) break;
+            if (recordingDurationMs - chunkStartedMs >= kChunkSaveIntervalMs)
+            {
+                if (fclose(chunk) != 0) { chunk = nullptr; logErrno("fclose", chunkPath); error = VA_RECORDER::error_close_failed; goto cleanup; }
+                chunk = nullptr;
+                ++chunkCount;
+                snprintf(chunkPath, sizeof(chunkPath), "%s/%u.csv", kTempPath, chunkCount);
+                chunk = fopen(chunkPath, "w");
+                if (chunk == nullptr) { logErrno("fopen", chunkPath); error = VA_RECORDER::error_open_chunk_failed; goto cleanup; }
+                chunkStartedMs = recordingDurationMs;
+            }
+            if (status->stopRequested()) goto cleanup;
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(trigger->getSampleInterval()));
+        }
+    }
+    if (fclose(chunk) != 0) { chunk = nullptr; logErrno("fclose", chunkPath); error = VA_RECORDER::error_close_failed; goto cleanup; }
+    chunk = nullptr;
+    status->setState(daemon_state_wraping_up);
+
+    finalFile = fopen(initial.savePath, "w");
+    if (finalFile == nullptr) { logErrno("fopen", initial.savePath); error = VA_RECORDER::error_open_final_failed; goto cleanup; }
+    finalCreated = true;
+    if (!RECORD_CSV::WriteHeader(finalFile))
+    { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
+    if (pretrigger != nullptr)
+    {
+        bool writeOk = true;
+        pretrigger->peekAll([&](const VA_RECORDER::RecordData_t& data) {
+            if (writeOk && !RECORD_CSV::WriteSample(finalFile, outputMode, data.voltage, data.current, 0))
+                writeOk = false;
+        });
+        if (!writeOk) { logErrno("fprintf", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
+        delete pretrigger;
+        pretrigger = nullptr;
+    }
+
+    copyBuffer = static_cast<char*>(malloc(kMergeBufferBytes));
+    if (copyBuffer == nullptr) { spdlog::error("malloc {} failed", kMergeBufferBytes); error = VA_RECORDER::error_allocation_failed; goto cleanup; }
+    for (uint16_t i = 1; i <= chunkCount; ++i)
+    {
+        snprintf(chunkPath, sizeof(chunkPath), "%s/%u.csv", kTempPath, i);
+        chunk = fopen(chunkPath, "rb");
+        if (chunk == nullptr) { logErrno("fopen", chunkPath); error = VA_RECORDER::error_open_chunk_failed; goto cleanup; }
+        while (true)
+        {
+            const size_t readSize = fread(copyBuffer, 1, kMergeBufferBytes, chunk);
+            if (readSize != 0 && fwrite(copyBuffer, 1, readSize, finalFile) != readSize)
+            { logErrno("fwrite", initial.savePath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
+            if (readSize < kMergeBufferBytes)
+            {
+                if (ferror(chunk)) { logErrno("fread", chunkPath); error = VA_RECORDER::error_write_final_failed; goto cleanup; }
+                break;
+            }
+        }
+        if (fclose(chunk) != 0) { chunk = nullptr; logErrno("fclose", chunkPath); error = VA_RECORDER::error_close_failed; goto cleanup; }
+        chunk = nullptr;
+        esp_task_wdt_reset();
+    }
+    if (fclose(finalFile) != 0) { finalFile = nullptr; logErrno("fclose", initial.savePath); error = VA_RECORDER::error_close_failed; goto cleanup; }
+    finalFile = nullptr;
+    if (!removeTempDirectory()) { error = VA_RECORDER::error_temp_prepare_failed; goto cleanup; }
+    spdlog::info("done, saved at {}", initial.savePath);
+    completed = true;
+
+cleanup:
+    if (chunk != nullptr && fclose(chunk) != 0)
+    { logErrno("fclose", chunkPath); if (error == VA_RECORDER::error_none) error = VA_RECORDER::error_close_failed; }
+    if (finalFile != nullptr && fclose(finalFile) != 0)
+    { logErrno("fclose", initial.savePath); if (error == VA_RECORDER::error_none) error = VA_RECORDER::error_close_failed; }
+    free(copyBuffer);
+    delete pretrigger;
+    if (!completed && !removeTempDirectory() && error == VA_RECORDER::error_none)
+        error = VA_RECORDER::error_temp_prepare_failed;
+    if (error != VA_RECORDER::error_none)
+    {
+        if (finalCreated && remove(initial.savePath) != 0 && errno != ENOENT) logErrno("remove", initial.savePath);
+        status->finish(error);
+    }
+    else status->finish(VA_RECORDER::error_none);
+    esp_task_wdt_delete(nullptr);
+    vTaskDelete(nullptr);
+}
+} // namespace
+
+bool HAL_VAMeter::creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger)
+{
+    g_last_create_error = VA_RECORDER::error_none;
+    if (!trigger || g_recorder != nullptr)
+    {
+        spdlog::error("recorder already exists or trigger is null");
+        return false;
+    }
+    uint64_t totalBytes = 0;
+    uint64_t freeBytes = 0;
+    const esp_err_t infoResult = esp_vfs_fat_info(kStoragePath, &totalBytes, &freeBytes);
+    spdlog::info("record storage: total={} free={} required={}", totalBytes, freeBytes, kRecorderMinimumFreeBytes);
+    if (infoResult != ESP_OK)
+    {
+        spdlog::error("esp_vfs_fat_info {} failed: {}", kStoragePath, esp_err_to_name(infoResult));
+        g_last_create_error = VA_RECORDER::error_storage_info_failed;
+        return false;
+    }
+    if (!LOCAL_CSV_DOWNLOAD::HasEnoughRecordingSpace(true, freeBytes, kRecorderMinimumFreeBytes))
+    {
+        spdlog::warn("recording start rejected: insufficient storage");
+        g_last_create_error = VA_RECORDER::error_insufficient_space;
+        return false;
+    }
+    if (!prepareTempDirectory())
+    {
+        g_last_create_error = VA_RECORDER::error_temp_prepare_failed;
+        return false;
+    }
+    g_recorder = new (std::nothrow) RecorderDaemonStatus_t;
+    if (g_recorder == nullptr || g_recorder->mutex == nullptr)
+    {
+        delete g_recorder;
+        g_recorder = nullptr;
+        removeTempDirectory();
+        g_last_create_error = VA_RECORDER::error_allocation_failed;
+        return false;
+    }
+    if (!_fs_get_new_rec_file_path(g_recorder->data.savePath, sizeof(g_recorder->data.savePath)))
+    {
+        delete g_recorder;
+        g_recorder = nullptr;
+        removeTempDirectory();
+        g_last_create_error = VA_RECORDER::error_temp_prepare_failed;
+        return false;
+    }
+    if (!g_recorder->acquireTrigger(std::move(trigger)))
+    {
+        delete g_recorder;
+        g_recorder = nullptr;
+        removeTempDirectory();
+        g_last_create_error = VA_RECORDER::error_allocation_failed;
+        return false;
+    }
+    if (xTaskCreate(recorderTask, "rec", 4000, g_recorder, 15, nullptr) != pdPASS)
+    {
+        spdlog::error("xTaskCreate recorder failed");
+        g_recorder->taskCreateFailed();
+        delete g_recorder;
+        g_recorder = nullptr;
+        removeTempDirectory();
+        g_last_create_error = VA_RECORDER::error_task_create_failed;
+        return false;
+    }
     return true;
 }
 
 bool HAL_VAMeter::isVaRecorderExist()
 {
-    if (_recorder_daemon_status == nullptr)
-    {
-        spdlog::error("recoder not exist");
-        return false;
-    }
-
-    bool is_running = _recorder_daemon_status->Borrow().currentState != daemon_state_finished;
-    _recorder_daemon_status->Return();
-    return is_running;
+    if (g_recorder == nullptr) return false;
+    const RunningState_t state = g_recorder->snapshot().currentState;
+    return state != daemon_state_finished && state != daemon_state_error;
 }
 
 bool HAL_VAMeter::isVaRecorderRecording()
 {
-    if (_recorder_daemon_status == nullptr)
-    {
-        spdlog::error("recoder not exist");
-        return false;
-    }
-
-    bool is_recording = _recorder_daemon_status->Borrow().currentState == daemon_state_recording;
-    _recorder_daemon_status->Return();
-    return is_recording;
+    return g_recorder != nullptr && g_recorder->snapshot().currentState == daemon_state_recording;
 }
 
 bool HAL_VAMeter::isVaRecorderSaving()
 {
-    if (_recorder_daemon_status == nullptr)
-    {
-        spdlog::error("recoder not exist");
-        return false;
-    }
+    return g_recorder != nullptr && g_recorder->snapshot().currentState == daemon_state_wraping_up;
+}
 
-    bool is_saving = _recorder_daemon_status->Borrow().currentState == daemon_state_wraping_up;
-    _recorder_daemon_status->Return();
-    return is_saving;
+VA_RECORDER::Error_t HAL_VAMeter::getVaRecorderError()
+{
+    return g_recorder == nullptr ? g_last_create_error : g_recorder->snapshot().error;
 }
 
 bool HAL_VAMeter::destroyVaRecorder()
 {
-    if (_recorder_daemon_status == nullptr)
-    {
-        spdlog::error("recoder not exist");
-        return false;
-    }
-
-    // Destroy daemon
+    if (g_recorder == nullptr) return true;
     if (isVaRecorderExist())
     {
-        spdlog::info("recorder runing, kill signal send");
-        _recorder_daemon_status->Borrow().goToHell = true;
-        _recorder_daemon_status->Return();
-        while (1)
+        g_recorder->requestStop();
+        const uint32_t started = esp_timer_get_time() / 1000;
+        while (isVaRecorderExist() && (esp_timer_get_time() / 1000) - started < 5000U)
         {
             feedTheDog();
             vTaskDelay(pdMS_TO_TICKS(50));
-
-            if (!isVaRecorderExist())
-                break;
+        }
+        if (isVaRecorderExist())
+        {
+            spdlog::error("recorder stop timed out");
+            return false;
         }
     }
-
-    // Destroy recorde
-    // delete _recorder_daemon_status->GetRaw().trigger;
-    delete _recorder_daemon_status;
-    _recorder_daemon_status = nullptr;
-    spdlog::info("recoder destroyed");
+    g_last_create_error = g_recorder->snapshot().error;
+    if (!g_recorder->releaseFinishedTrigger())
+    {
+        spdlog::error("recorder trigger release rejected before task finish");
+        return false;
+    }
+    delete g_recorder;
+    g_recorder = nullptr;
+    spdlog::info("recorder destroyed");
     return true;
 }

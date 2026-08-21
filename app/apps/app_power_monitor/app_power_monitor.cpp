@@ -94,16 +94,24 @@ void AppPower_monitor::onResume()
 void AppPower_monitor::onRunning()
 {
     _check_page_switch();
+    if (_is_educational_measurement())
+    {
+        Button::Update();
+        _update_meter_help_workflow();
+    }
     _update_view();
 }
 
 void AppPower_monitor::onDestroy()
 {
+    (void)HAL::TerminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason::MeasurementExit);
     NotificationBubble::Free();
     spdlog::info("{} onDestroy", getAppName());
     delete _data.view;
     if (_data.waveform_view)
         delete _data.waveform_view;
+    if (_data.meter_help_view)
+        delete _data.meter_help_view;
 }
 
 void AppPower_monitor::_check_page_switch()
@@ -202,6 +210,8 @@ void AppPower_monitor::_update_view()
         _data.pm_update_time_count = HAL::Millis();
     }
 
+    if (_data.meter_help_view)
+        return;
     if (_data.current_page_num == 5 && _data.waveform_view)
     {
         _data.waveform_view->update();
@@ -213,6 +223,49 @@ void AppPower_monitor::_update_view()
         _data.view->update(HAL::Millis());
         if (_data.view->want2quit())
             destroyApp();
+    }
+}
+
+bool AppPower_monitor::_is_educational_measurement() const
+{
+    return _data.initial_page_num == 1 || _data.initial_page_num == 2;
+}
+
+uint32_t AppPower_monitor::_measurement_theme_color() const
+{
+    return _data.initial_page_num == 1 ? AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageBusVoltage
+                                       : AssetPool::GetStaticAsset()->Color.AppPowerMonitor.pageShuntCurrent;
+}
+
+void AppPower_monitor::_update_meter_help_workflow()
+{
+    const bool sideClicked = Button::Side()->wasClicked();
+    const bool encoderClicked = Button::Encoder()->wasClicked();
+    if (_data.meter_help_view)
+    {
+        if (_data.meter_help_interaction.returnPending())
+        {
+            _data.meter_help_view->update(false, false, _measurement_theme_color());
+            if (_data.meter_help_interaction.canReleaseOwnership(Button::Side()->isPressed(), Button::Encoder()->isPressed()))
+            {
+                delete _data.meter_help_view;
+                _data.meter_help_view = nullptr;
+                _data.meter_help_interaction.reset();
+            }
+            return;
+        }
+        if (_data.meter_help_view->update(sideClicked, encoderClicked, _measurement_theme_color()))
+            _data.meter_help_interaction.requestReturn();
+        return;
+    }
+
+    if (sideClicked)
+    {
+        const METER_HELP_QR::MeterHelpKind kind =
+            _data.initial_page_num == 1 ? METER_HELP_QR::MeterHelpKind::Voltage : METER_HELP_QR::MeterHelpKind::Current;
+        _data.meter_help_interaction.reset();
+        _data.meter_help_view = new SYSTEM::UI::MeterHelpQrView(kind);
+        _data.meter_help_view->update(false, encoderClicked, _measurement_theme_color());
     }
 }
 

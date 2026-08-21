@@ -5,6 +5,7 @@
  */
 #pragma once
 #include <hal/hal.h>
+#include "libs/web_server_owner/web_server_ap_operation.h"
 
 class HAL_VAMeter : public HAL
 {
@@ -27,7 +28,7 @@ private:
     std::string _create_config_json();
     void _backup_config_file();
     void _log_out_system_config();
-    void _fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize);
+    bool _fs_get_new_rec_file_path(char* recFilePath, size_t bufferSize);
     std::string _fs_get_rec_file_path(const std::string& recordName);
 
     void _nvs_init();
@@ -36,13 +37,15 @@ private:
 
     std::string _get_mac();
     std::string _get_ip();
-    bool _start_ap_mode();
-    bool _stop_ap_mode();
+    bool _ap_start_preflight();
+    WEB_SERVER_OWNER::ApStartResult _start_ap_mode();
+    WEB_SERVER_OWNER::ApStopResult _stop_ap_mode();
     std::vector<std::string> _get_wifi_list();
+
+    WEB_SERVER_OWNER::ApOperation _ap_operation;
 
     void _web_server_page_loading();
     void _web_server_api_loading();
-    void _web_server_ws_api_loading();
     void _print_stack_high_water_mark();
 
 public:
@@ -84,6 +87,8 @@ public:
 
     void setBaseRelay(bool state) override;
     bool getBaseRelayState() override;
+    LIVE_SHARE_SAFETY::Result
+    terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason) override;
 
     void loadSystemConfig() override;
     void saveSystemConfig() override;
@@ -91,11 +96,12 @@ public:
     void stopMscMode() override;
     void factoryReset(OnLogPageRenderCallback_t onLogPageRender) override;
 
-    bool creatVaRecorder(VA_RECORDER::TriggerBase* trigger) override;
+    bool creatVaRecorder(std::unique_ptr<VA_RECORDER::TriggerBase> trigger) override;
     bool isVaRecorderExist() override;
     bool isVaRecorderRecording() override;
     bool isVaRecorderSaving() override;
     bool destroyVaRecorder() override;
+    VA_RECORDER::Error_t getVaRecorderError() override;
 
     std::vector<std::string> getVaRecordNameList() override;
     std::string getLatestVaRecordName() override;
@@ -115,12 +121,25 @@ public:
     bool renderCustomStartupImage() override;
     std::vector<std::string> getStartupImageList() override;
 
-    bool startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode) override;
-    bool stopWebServer() override;
+    WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                 WEB_SERVER_PROFILE::Profile profile,
+                                                 bool autoWifiMode,
+                                                 WebServerReason reason = WebServerReason::Unspecified,
+                                                 VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                     VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid) override;
+    WEB_SERVER_OWNER::StopResult stopWebServer(WebServerReason reason = WebServerReason::Unspecified) override;
     std::string getSystemConfigUrl() override;
 
+    WEB_SERVER_OWNER::StartResult
+    startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile) override;
+    LIVE_SHARE_SESSION::TransportStopStatus beginSystemLiveStop() override;
+    LIVE_SHARE_SESSION::TransportStopStatus pollSystemLiveStop() override;
+    WEB_SERVER_OWNER::StopResult finishSystemLiveStop() override;
+    std::string getSystemLiveWifiSsid() override;
+    std::string getSystemLiveViewerUrl() override;
+
     // Local download server
-    void startDownloadServer(const std::string& recordName) override;
+    bool startDownloadServer(const std::string& recordName) override;
     void stopDownloadServer() override;
     std::string getLocalIP() override;
 

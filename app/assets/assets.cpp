@@ -5,6 +5,7 @@
  */
 #include "assets.h"
 #include "localization/types.h"
+#include "libs/viewer_asset_contract/viewer_asset_contract.h"
 #include <cstdint>
 #include <mooncake.h>
 #include <algorithm>
@@ -16,6 +17,9 @@
 #include "images/images.h"
 #include <iostream>
 #include <fstream>
+#include <cstdio>
+#include <cstdlib>
+#include <sys/stat.h>
 #endif
 
 AssetPool* AssetPool::_asset_pool = nullptr;
@@ -160,6 +164,104 @@ static bool _copy_file(std::string filePath, uint8_t* target)
     return true;
 }
 
+static bool _copy_viewer_file_exact(const char* environmentVariable, uint8_t* target, std::size_t expectedBytes)
+{
+    const char* filePath = std::getenv(environmentVariable);
+    if (filePath == nullptr || filePath[0] == '\0')
+    {
+        spdlog::error("{} is missing or empty", environmentVariable);
+        return false;
+    }
+
+    struct stat fileStatus = {};
+    if (::stat(filePath, &fileStatus) != 0 || !S_ISREG(fileStatus.st_mode))
+    {
+        spdlog::error("{} does not resolve to a regular file", environmentVariable);
+        return false;
+    }
+
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+        spdlog::error("open {} failed", filePath);
+        return false;
+    }
+
+    const std::streampos fileSize = file.tellg();
+    if (fileSize < 0 || fileSize != static_cast<std::streampos>(expectedBytes))
+    {
+        spdlog::error("{} has unexpected byte length", filePath);
+        return false;
+    }
+
+    file.seekg(0, std::ios::beg);
+    if (!file.good())
+    {
+        spdlog::error("seek {} failed", filePath);
+        return false;
+    }
+
+    file.read(reinterpret_cast<char*>(target), static_cast<std::streamsize>(expectedBytes));
+    if (file.fail() || file.gcount() != static_cast<std::streamsize>(expectedBytes))
+    {
+        spdlog::error("exact read {} failed", filePath);
+        return false;
+    }
+    return true;
+}
+
+static bool _copy_viewer_assets(StaticAsset_t* assetPool)
+{
+    using namespace VIEWER_ASSET_CONTRACT;
+    if (!_copy_viewer_file_exact(kIndexEnvironmentVariable, assetPool->WebPage.viewer_index_html, kIndexBytes) ||
+        !_copy_viewer_file_exact(kManifestEnvironmentVariable, assetPool->WebPage.viewer_asset_manifest, kManifestBytes) ||
+        !_copy_viewer_file_exact(kCssGzipEnvironmentVariable, assetPool->WebPage.viewer_css_gzip, kCssGzipBytes) ||
+        !_copy_viewer_file_exact(kJsGzipEnvironmentVariable, assetPool->WebPage.viewer_js_gzip, kJsGzipBytes))
+    {
+        return false;
+    }
+
+    std::memcpy(assetPool->WebPage.viewer_bundle_id, kViewerBundleId, kBundleIdCapacity);
+    return true;
+}
+
+static bool _write_asset_pool_exact(const char* finalPath, const StaticAsset_t* assetPool)
+{
+    const std::string temporaryPath = std::string(finalPath) + ".tmp";
+    std::ofstream outFile(temporaryPath.c_str(), std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!outFile.is_open())
+    {
+        spdlog::error("open {} failed", temporaryPath);
+        return false;
+    }
+
+    outFile.write(reinterpret_cast<const char*>(assetPool), sizeof(StaticAsset_t));
+    outFile.flush();
+    if (outFile.fail())
+    {
+        outFile.close();
+        std::remove(temporaryPath.c_str());
+        spdlog::error("write {} failed", temporaryPath);
+        return false;
+    }
+
+    outFile.close();
+    if (outFile.fail())
+    {
+        std::remove(temporaryPath.c_str());
+        spdlog::error("close {} failed", temporaryPath);
+        return false;
+    }
+
+    if (std::rename(temporaryPath.c_str(), finalPath) != 0)
+    {
+        std::remove(temporaryPath.c_str());
+        spdlog::error("publish {} failed", finalPath);
+        return false;
+    }
+    return true;
+}
+
 static void _copy_fonts(StaticAsset_t* assetPool)
 {
     _copy_file("../../app/assets/fonts/Montserrat-SemiBold-16.vlw", assetPool->Font.montserrat_semibold_16);
@@ -237,17 +339,21 @@ StaticAsset_t* AssetPool::CreateStaticAsset()
     _copy_images(asset_pool);
     _copy_web_pages(asset_pool);
 
+    if (!_copy_viewer_assets(asset_pool))
+    {
+        delete asset_pool;
+        return nullptr;
+    }
+
     /* -------------------------------------------------------------------------- */
     /*                                Output to bin                               */
     /* -------------------------------------------------------------------------- */
-    std::string bin_path = "AssetPool-VAMeter.bin";
-
-    std::ofstream outFile(bin_path, std::ios::binary);
-    if (!outFile)
-        spdlog::error("open {} failed", bin_path);
-
-    outFile.write(reinterpret_cast<const char*>(asset_pool), sizeof(StaticAsset_t));
-    outFile.close();
+    const char* bin_path = "AssetPool-VAMeter.bin";
+    if (!_write_asset_pool_exact(bin_path, asset_pool))
+    {
+        delete asset_pool;
+        return nullptr;
+    }
     spdlog::info("output asset pool to: {}", bin_path);
 
     return asset_pool;
@@ -296,13 +402,8 @@ bool AssetPool::DumpStaticAsset(const char* path, const StaticAsset_t* asset)
         spdlog::error("asset is null; dump skipped");
         return false;
     }
-    std::ofstream out(path, std::ios::binary | std::ios::out | std::ios::trunc);
-    if (!out)
-    {
-        spdlog::error("open {} for write failed", path);
+    if (!_write_asset_pool_exact(path, asset))
         return false;
-    }
-    out.write(reinterpret_cast<const char*>(asset), sizeof(StaticAsset_t));
     spdlog::info("asset pool dumped to: {}", path);
     return true;
 #else

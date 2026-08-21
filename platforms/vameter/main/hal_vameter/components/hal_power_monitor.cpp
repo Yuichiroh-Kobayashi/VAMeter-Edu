@@ -10,6 +10,8 @@
 #include <mooncake.h>
 #include <smooth_ui_toolkit.h>
 #include "../utils/INA226/src/INA226.h"
+#include "d2b_vi_producer.h"
+#include "libs/d2b_vi/d2b_acquisition.h"
 #include "hal/gpio_types.h"
 #include "hal/hal.h"
 #include <freertos/FreeRTOS.h>
@@ -240,17 +242,24 @@ void _set_pm_data_daemon_current_offset(const float& offset)
 
 static bool _is_reverse_measuring = false;
 
-static void _handle_basic_data_update()
+static std::uint32_t _handle_basic_data_update()
 {
-    _pm_data_daemon->busVoltage = _ina226_hc->readBusVoltage();
+    float busVoltage = 0.0F;
+    const bool busVoltageReadSucceeded = _ina226_hc->readBusVoltageChecked(busVoltage);
+    _pm_data_daemon->busVoltage = busVoltage;
     _pm_data_daemon->busPower = _ina226_hc->readBusPower();
+
+    bool currentReadSucceeded = false;
+    INA226* selectedCurrentSensor = nullptr;
 
     // spdlog::info("{} {}", _ina226_lc->readShuntVoltage(), _ina226_hc->readShuntCurrent());
 
 HELL:
     if (_is_low_current_mode)
     {
-        _pm_data_daemon->shuntVoltage = _ina226_lc->readShuntVoltage();
+        float shuntVoltage = 0.0F;
+        currentReadSucceeded = _ina226_lc->readShuntVoltageChecked(shuntVoltage);
+        _pm_data_daemon->shuntVoltage = shuntVoltage;
 
         // It should be the same, but readShuntCurrent() not
         // _pm_data_daemon->shuntCurrent = _ina226_lc->readShuntCurrent();
@@ -271,11 +280,14 @@ HELL:
         _pm_data_daemon->shuntCurrent -= _pm_data_daemon_current_offset;
         if (_pm_data_daemon->shuntCurrent < 0.0f)
             _pm_data_daemon->shuntCurrent = 0.0f;
+        selectedCurrentSensor = _ina226_lc;
     }
     else
     {
         _pm_data_daemon->shuntVoltage = _ina226_hc->readShuntVoltage();
-        _pm_data_daemon->shuntCurrent = _ina226_hc->readShuntCurrent();
+        float shuntCurrent = 0.0F;
+        currentReadSucceeded = _ina226_hc->readShuntCurrentChecked(shuntCurrent);
+        _pm_data_daemon->shuntCurrent = shuntCurrent;
 
         // If higher than 1mA, quit reverse measuring
         if (_is_reverse_measuring && _pm_data_daemon->shuntCurrent > -0.003)
@@ -291,7 +303,17 @@ HELL:
             }
             // If not, interrupt will change to high current mode for us
         }
+        selectedCurrentSensor = _ina226_hc;
     }
+
+    bool overflow = false;
+    const bool overflowReadSucceeded = selectedCurrentSensor->readMathOverflowChecked(overflow);
+    return D2B::BuildViValidMask(busVoltageReadSucceeded,
+                                 _pm_data_daemon->busVoltage,
+                                 currentReadSucceeded,
+                                 _pm_data_daemon->shuntCurrent,
+                                 overflowReadSucceeded,
+                                 overflow);
 }
 
 static constexpr int _pm_data_daemon_update_interval = 35;
@@ -407,11 +429,16 @@ static void _power_monitor_daemon(void* param)
         // Update pm data
         xSemaphoreTake(_pm_data_handle_mutex, portMAX_DELAY);
 
-        _handle_basic_data_update();
+        const std::uint32_t d2bValidMask = _handle_basic_data_update();
         _handle_avg_update();
         _handle_peak_and_min_update();
         _handle_capacity_and_energy_update();
         _handle_time_tag_update(_time_count_start);
+
+        D2B_PRODUCER::Tap(static_cast<std::uint64_t>(esp_timer_get_time()),
+                          d2bValidMask,
+                          _pm_data_daemon->busVoltage,
+                          _pm_data_daemon->shuntCurrent);
 
         xSemaphoreGive(_pm_data_handle_mutex);
     }

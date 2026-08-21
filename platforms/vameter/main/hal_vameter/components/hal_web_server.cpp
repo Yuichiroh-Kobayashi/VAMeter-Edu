@@ -6,11 +6,26 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include "../../../app/assets/assets.h"
+#include "libs/local_csv_download/local_csv_download_name.h"
+#include "libs/local_csv_download/local_csv_download_selection.h"
+#include "libs/local_csv_download/local_csv_stream.h"
+#include "libs/live_share_safety/live_share_safety.h"
+#include "libs/web_server_owner/web_server_owner.h"
+#include "libs/web_server_owner/web_server_results.h"
+#include "libs/web_server_owner/web_server_transaction.h"
+#include "d2b_esp_transport.h"
+#include "d2b_runtime_evidence.h"
+#include "origin_admission_esp.h"
+#include "viewer_http_routes.h"
+#include "libs/viewer_asset_contract/viewer_asset_contract.h"
 #include <mooncake.h>
 #include <Arduino.h>
 #include <PsychicHttp.h>
 #include <FS.h>
 #include <vfs_api.h>
+#include <cstdlib>
+#include <memory>
+#include <new>
 
 // class VFS_t : public FS
 // {
@@ -19,8 +34,383 @@
 // };
 // static VFS_t VFS;
 
-static PsychicHttpServer* _web_server = nullptr;
-static PsychicWebSocketHandler* _ws_pm_data = nullptr;
+namespace
+{
+    constexpr std::size_t kSystemHttpdStackSizeBytes = 8192U;
+    constexpr std::size_t kDownloadHttpdStackSizeBytes = 4096U;
+
+    class OwnedPsychicHttpServer : public PsychicHttpServer
+    {
+    public:
+        bool installSystemLiveOrigin(const char* activeIpv4)
+        {
+            return _originAdmission.Install(*this, activeIpv4);
+        }
+
+        void setSystemLiveAdmissionNotReady()
+        {
+            _originAdmission.SetAdmissionNotReady();
+        }
+
+        void setSystemLiveAdmissionReady()
+        {
+            _originAdmission.SetAdmissionReady();
+        }
+
+        ~OwnedPsychicHttpServer() override
+        {
+            setSystemLiveAdmissionNotReady();
+            // PsychicEndpoint has no destructor for its handler pointer in
+            // the pinned PsychicHttp revision.  The wrapper therefore owns
+            // and releases endpoint/default handlers before the base class
+            // releases the endpoint objects themselves.  The wrapper itself
+            // remains owned by ESP-IDF global_user_ctx_free_fn or unique_ptr.
+            for (std::list<PsychicEndpoint*>::iterator endpoint = _endpoints.begin(); endpoint != _endpoints.end(); ++endpoint)
+                delete (*endpoint)->handler();
+            delete defaultEndpoint->handler();
+        }
+
+    private:
+        // The non-owning G3-A Policy and its expected-Origin bytes are owned
+        // by the exact server wrapper that outlives every HTTPD session.
+        ORIGIN_ADMISSION_ESP::ServerBinding _originAdmission;
+    };
+
+    PsychicHttpServer* _http_server = nullptr;
+    WEB_SERVER_OWNER::State _http_server_owner;
+    std::string _activeSystemLiveIpv4;
+    std::string _activeSystemLiveApSsid;
+
+    RUNTIME_EVIDENCE::Owner RuntimeOwner(WEB_SERVER_OWNER::Owner owner)
+    {
+        switch (owner)
+        {
+        case WEB_SERVER_OWNER::Owner::System:
+            return RUNTIME_EVIDENCE::Owner::System;
+        case WEB_SERVER_OWNER::Owner::Download:
+            return RUNTIME_EVIDENCE::Owner::Download;
+        case WEB_SERVER_OWNER::Owner::None:
+        default:
+            return RUNTIME_EVIDENCE::Owner::None;
+        }
+    }
+
+    struct HttpdTransactionContext
+    {
+        WEB_SERVER_OWNER::Owner owner;
+        bool d2bAlreadyPrepared;
+    };
+
+    httpd_handle_t HttpdHandleFromKey(std::uintptr_t rawServerHandleKey)
+    {
+        return reinterpret_cast<httpd_handle_t>(rawServerHandleKey);
+    }
+
+    bool StopHttpdCallback(void*, std::uintptr_t rawServerHandleKey)
+    {
+        return httpd_stop(HttpdHandleFromKey(rawServerHandleKey)) == ESP_OK;
+    }
+
+    void ClearHttpdWrapperAfterStopCallback(void*, std::uintptr_t)
+    {
+        // httpd_stop() has already consumed the raw handle.  Clear the
+        // published wrapper immediately, before lifecycle callbacks and
+        // owner release; no wrapper dereference or delete is performed here.
+        _http_server = nullptr;
+    }
+
+    void PrepareHttpdStopCallback(void* context, std::uintptr_t rawServerHandleKey)
+    {
+        const HttpdTransactionContext* transaction = static_cast<const HttpdTransactionContext*>(context);
+        if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System &&
+            !transaction->d2bAlreadyPrepared)
+            D2B_ESP::PrepareServerStop(HttpdHandleFromKey(rawServerHandleKey));
+    }
+
+    void AfterHttpdStopCallback(void* context, std::uintptr_t rawServerHandleKey)
+    {
+        const HttpdTransactionContext* transaction = static_cast<const HttpdTransactionContext*>(context);
+        if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System)
+        {
+            D2B_ESP::AfterServerStopped(HttpdHandleFromKey(rawServerHandleKey));
+            _activeSystemLiveIpv4.clear();
+            _activeSystemLiveApSsid.clear();
+        }
+    }
+
+    void FailedHttpdStopCallback(void* context, std::uintptr_t rawServerHandleKey)
+    {
+        const HttpdTransactionContext* transaction = static_cast<const HttpdTransactionContext*>(context);
+        if (transaction != nullptr && transaction->owner == WEB_SERVER_OWNER::Owner::System)
+            D2B_ESP::ServerStopFailed(HttpdHandleFromKey(rawServerHandleKey));
+    }
+
+    WEB_SERVER_OWNER::StartResult StartOwnedHttpServer(WEB_SERVER_OWNER::Owner owner,
+                                                       RUNTIME_EVIDENCE::Reason reason,
+                                                       bool installOriginAdmission,
+                                                       const char* activeIpv4)
+    {
+        const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
+        D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStart,
+                                               runtimeOwner,
+                                               reason,
+                                               _http_server_owner.generation());
+        const WEB_SERVER_OWNER::StartPreflightResult preflight =
+            WEB_SERVER_OWNER::StartPreflight(_http_server_owner, owner, _http_server != nullptr);
+        if (preflight != WEB_SERVER_OWNER::StartPreflightResult::Proceed)
+        {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Rejected,
+                                                   _http_server_owner.generation());
+            spdlog::error("port 80 already owned by another server lifecycle");
+            return preflight == WEB_SERVER_OWNER::StartPreflightResult::RetainedServerNeedsStopRetry
+                       ? WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry
+                       : WEB_SERVER_OWNER::StartResult::BusyOtherOwner;
+        }
+        if (!_http_server_owner.acquire(owner))
+        {
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Rejected,
+                                                   _http_server_owner.generation());
+            spdlog::error("port 80 owner acquisition raced with another lifecycle");
+            return WEB_SERVER_OWNER::StartResult::BusyOtherOwner;
+        }
+        const std::uint32_t generation = _http_server_owner.generation();
+        D2B_RUNTIME_EVIDENCE::SetServerGeneration(generation);
+
+        std::unique_ptr<OwnedPsychicHttpServer> ownedServer(new (std::nothrow) OwnedPsychicHttpServer);
+        if (!ownedServer)
+        {
+            const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                &_http_server_owner,
+                owner,
+                0,
+                0,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+            };
+            const WEB_SERVER_OWNER::PartialCleanupOutcome cleanup =
+                WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+            const bool released = cleanup.result == WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Failed,
+                                                   generation);
+            spdlog::error("failed to allocate port 80 server");
+            return released ? WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure
+                             : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+        }
+
+        ownedServer->server = nullptr;
+
+        if (owner == WEB_SERVER_OWNER::Owner::System)
+        {
+            ownedServer->onClose(
+                [](PsychicClient* client) { D2B_ESP::OnClientClosed(client->server(), client->socket()); });
+        }
+
+        ownedServer->config.stack_size =
+            owner == WEB_SERVER_OWNER::Owner::System
+                ? kSystemHttpdStackSizeBytes
+                : kDownloadHttpdStackSizeBytes;
+
+        if (installOriginAdmission &&
+            (owner != WEB_SERVER_OWNER::Owner::System || !ownedServer->installSystemLiveOrigin(activeIpv4)))
+        {
+            const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                &_http_server_owner,
+                owner,
+                0,
+                0,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+            };
+            const WEB_SERVER_OWNER::PartialCleanupOutcome cleanup =
+                WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+            spdlog::error("SystemLive expected Origin is unavailable or invalid");
+            return cleanup.result == WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure
+                       ? WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure
+                       : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+        }
+
+        if (installOriginAdmission)
+        {
+            const std::size_t effectiveCapacity = ownedServer->config.max_uri_handlers;
+            if (effectiveCapacity < VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount)
+            {
+                const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                    &_http_server_owner,
+                    owner,
+                    0,
+                    0,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                };
+                const WEB_SERVER_OWNER::PartialCleanupOutcome cleanup =
+                    WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+                spdlog::error("SystemLive URI capacity {} is below required {}",
+                              effectiveCapacity,
+                              VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+                return cleanup.result == WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure
+                           ? WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure
+                           : WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+            }
+            spdlog::info("SystemLive effective URI capacity {} required {} headroom {}",
+                         effectiveCapacity,
+                         VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount,
+                         effectiveCapacity - VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+        }
+
+        const esp_err_t listenResult = ownedServer->listen(80);
+        if (listenResult != ESP_OK)
+        {
+            spdlog::error("port 80 listen failed: {}", esp_err_to_name(listenResult));
+            const httpd_handle_t partialHandle = ownedServer->server;
+            WEB_SERVER_OWNER::PartialCleanupOutcome cleanup = {
+                WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry,
+                reinterpret_cast<std::uintptr_t>(ownedServer.get()),
+            };
+            if (partialHandle == nullptr)
+            {
+                const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                    &_http_server_owner,
+                    owner,
+                    0,
+                    0,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                };
+                cleanup = WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+            }
+            else
+            {
+                // Once httpd_start returned a handle, ESP-IDF owns the
+                // wrapper through global_user_ctx_free_fn.  Transfer that
+                // ownership before stopping; never delete the wrapper here.
+                OwnedPsychicHttpServer* retainedServer = ownedServer.release();
+                const WEB_SERVER_OWNER::TransactionRequest cleanupRequest = {
+                    &_http_server_owner,
+                    owner,
+                    reinterpret_cast<std::uintptr_t>(retainedServer),
+                    reinterpret_cast<std::uintptr_t>(partialHandle),
+                    nullptr,
+                    nullptr,
+                    StopHttpdCallback,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                };
+                cleanup = WEB_SERVER_OWNER::CleanupPartial(cleanupRequest);
+                _http_server = reinterpret_cast<PsychicHttpServer*>(cleanup.wrapperKey);
+                if (cleanup.result == WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry)
+                    spdlog::critical("failed to stop partially started port 80 server");
+            }
+            D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                                   runtimeOwner,
+                                                   RUNTIME_EVIDENCE::Reason::ServerStartFailed,
+                                                   RUNTIME_EVIDENCE::Result::Failed,
+                                                   generation);
+            return cleanup.result;
+        }
+
+        _http_server = ownedServer.release();
+        // A successful listen owns a live wrapper; only a stop failure marks
+        // this owner as retained.
+        D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStart,
+                                               runtimeOwner,
+                                               reason,
+                                               RUNTIME_EVIDENCE::Result::Succeeded,
+                                               generation);
+        return WEB_SERVER_OWNER::StartResult::Started;
+    }
+
+    WEB_SERVER_OWNER::StartResult MapApStartResult(WEB_SERVER_OWNER::ApStartResult result)
+    {
+        switch (result)
+        {
+        case WEB_SERVER_OWNER::ApStartResult::Started:
+            return WEB_SERVER_OWNER::StartResult::Started;
+        case WEB_SERVER_OWNER::ApStartResult::StaDisconnectFailed:
+        case WEB_SERVER_OWNER::ApStartResult::StartFailed:
+            return WEB_SERVER_OWNER::StartResult::ApStartFailed;
+        case WEB_SERVER_OWNER::ApStartResult::StopRetryRequired:
+        default:
+            return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        }
+    }
+
+    WEB_SERVER_OWNER::StopResult StopOwnedHttpServer(WEB_SERVER_OWNER::Owner owner,
+                                                     RUNTIME_EVIDENCE::Reason reason,
+                                                     bool d2bAlreadyPrepared = false)
+    {
+        const RUNTIME_EVIDENCE::Owner runtimeOwner = RuntimeOwner(owner);
+        D2B_RUNTIME_EVIDENCE::LogServerRequest(RUNTIME_EVIDENCE::Event::ServerStop,
+                                               runtimeOwner,
+                                               reason,
+                                               _http_server_owner.generation());
+        const std::uint32_t generation = _http_server_owner.generation();
+        if (owner == WEB_SERVER_OWNER::Owner::System &&
+            _http_server != nullptr &&
+            _http_server_owner.owner() == owner)
+        {
+            static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+        }
+        // Capture the raw handle while the PsychicHttp wrapper is valid.  No
+        // wrapper field or method is touched after a successful stop callback.
+        const std::uintptr_t wrapperKey = reinterpret_cast<std::uintptr_t>(_http_server);
+        std::uintptr_t rawServerHandleKey = 0;
+        if (_http_server != nullptr && _http_server_owner.owner() == owner)
+            rawServerHandleKey = reinterpret_cast<std::uintptr_t>(_http_server->server);
+        HttpdTransactionContext transactionContext = {owner, d2bAlreadyPrepared};
+        const WEB_SERVER_OWNER::TransactionRequest stopRequest = {
+            &_http_server_owner,
+            owner,
+            wrapperKey,
+            rawServerHandleKey,
+            &transactionContext,
+            PrepareHttpdStopCallback,
+            StopHttpdCallback,
+            ClearHttpdWrapperAfterStopCallback,
+            AfterHttpdStopCallback,
+            FailedHttpdStopCallback,
+        };
+        const WEB_SERVER_OWNER::StopTransactionOutcome outcome = WEB_SERVER_OWNER::StopOwned(stopRequest);
+        _http_server = reinterpret_cast<PsychicHttpServer*>(outcome.wrapperKey);
+        if (owner == WEB_SERVER_OWNER::Owner::System && WEB_SERVER_OWNER::IsStopSuccessful(outcome.result))
+            VIEWER_HTTP_ROUTES::Reset();
+        D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
+                                               runtimeOwner,
+                                               WEB_SERVER_OWNER::IsStopSuccessful(outcome.result)
+                                                   ? reason
+                                                   : RUNTIME_EVIDENCE::Reason::ServerStopFailed,
+                                               WEB_SERVER_OWNER::IsStopSuccessful(outcome.result)
+                                                   ? RUNTIME_EVIDENCE::Result::Completed
+                                                   : RUNTIME_EVIDENCE::Result::Failed,
+                                               generation);
+        return outcome.result;
+    }
+} // namespace
 
 /* -------------------------------------------------------------------------- */
 /*                                    Pages                                   */
@@ -98,9 +488,9 @@ public:
 
 void HAL_VAMeter::_web_server_page_loading()
 {
-    _web_server->on("/", [&](PsychicRequest* request) { return request->redirect("/syscfg"); });
+    _http_server->on("/", [&](PsychicRequest* request) { return request->redirect("/syscfg"); });
 
-    _web_server->on("/syscfg",
+    _http_server->on("/syscfg",
                     [&](PsychicRequest* request)
                     {
                         MyChunkResponse response(request,
@@ -110,7 +500,7 @@ void HAL_VAMeter::_web_server_page_loading()
                         return response.send();
                     });
 
-    _web_server->on("/favicon.ico",
+    _http_server->on("/favicon.ico",
                     [&](PsychicRequest* request)
                     {
                         MyChunkResponse response(request,
@@ -133,7 +523,7 @@ void HAL_VAMeter::_print_stack_high_water_mark()
 /* -------------------------------------------------------------------------- */
 void HAL_VAMeter::_web_server_api_loading()
 {
-    _web_server->on("/api/get_net_info",
+    _http_server->on("/api/get_net_info",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer;
@@ -147,7 +537,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(string_buffer.c_str());
                     });
 
-    _web_server->on("/api/set_syscfg",
+    _http_server->on("/api/set_syscfg",
                     HTTP_POST,
                     [&](PsychicRequest* request)
                     {
@@ -188,7 +578,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(200, "application/json", "{\"msg\":\"ok\"}");
                     });
 
-    _web_server->on("/api/get_wifi_list",
+    _http_server->on("/api/get_wifi_list",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer;
@@ -206,7 +596,7 @@ void HAL_VAMeter::_web_server_api_loading()
                         return request->reply(string_buffer.c_str());
                     });
 
-    _web_server->on("/api/get_syscfg",
+    _http_server->on("/api/get_syscfg",
                     [&](PsychicRequest* request)
                     {
                         std::string string_buffer = _create_config_json();
@@ -215,69 +605,55 @@ void HAL_VAMeter::_web_server_api_loading()
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 Web socket                                 */
-/* -------------------------------------------------------------------------- */
-POWER_MONITOR::PMData_t* _borrow_pm_data_daemon();
-void _return_pm_data_daemon();
-
-static void _ws_pm_data_daemon(void* param)
-{
-    char* string_buffer = new char[35];
-    POWER_MONITOR::PMData_t* pm_data = _borrow_pm_data_daemon();
-    _return_pm_data_daemon();
-
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    while (1)
-    {
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        _borrow_pm_data_daemon();
-        snprintf(string_buffer, 35, "{\"v\":%.4f,\"a\":%.7f}", pm_data->busVoltage, pm_data->shuntCurrent);
-        _return_pm_data_daemon();
-
-        // _ws_pm_data->sendAll("{\"v\":0.0001,\"a\":0.0000001}");
-        _ws_pm_data->sendAll(string_buffer);
-    }
-
-    delete[] string_buffer;
-    vTaskDelete(NULL);
-}
-
-void HAL_VAMeter::_web_server_ws_api_loading()
-{
-    _ws_pm_data = new PsychicWebSocketHandler;
-    _web_server->on("/api/ws/pm_data", _ws_pm_data);
-
-    // Callbacks
-    _ws_pm_data->onOpen(
-        [](PsychicWebSocketClient* client)
-        {
-            spdlog::info("[socket] connection #{} connected from {}", client->socket(), client->remoteIP().toString().c_str());
-            client->sendMessage("Hello!");
-        });
-
-    _ws_pm_data->onFrame(
-        [](PsychicWebSocketRequest* request, httpd_ws_frame* frame)
-        {
-            spdlog::info("[socket] #{} sent: {}", request->client()->socket(), (char*)frame->payload);
-            return request->reply(frame);
-        });
-
-    _ws_pm_data->onClose(
-        [](PsychicWebSocketClient* client)
-        { spdlog::info("[socket] connection #{} closed from {}", client->socket(), client->remoteIP().toString().c_str()); });
-
-    // Daemon
-    xTaskCreate(_ws_pm_data_daemon, "ws", 4000, NULL, 5, NULL);
-}
-
-/* -------------------------------------------------------------------------- */
 /*                                 Web server                                 */
 /* -------------------------------------------------------------------------- */
-bool HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender, bool autoWifiMode)
+WEB_SERVER_OWNER::StartResult HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender,
+                                                          WEB_SERVER_PROFILE::Profile profile,
+                                                          bool autoWifiMode,
+                                                          WebServerReason reason,
+                                                          VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
 {
-    // if (!connectWifi(onLogPageRender, false))
-    //     return false;
+    if (profile == WEB_SERVER_PROFILE::Profile::SystemConfig)
+    {
+        setBaseRelay(false);
+        const bool relayOff = !getBaseRelayState();
+        spdlog::info("SystemConfig Relay OFF command issued; software state off={}", relayOff);
+        if (!relayOff)
+        {
+            spdlog::critical("SystemConfig start rejected: Relay software state remains ON");
+            return WEB_SERVER_OWNER::StartResult::ApStartFailed;
+        }
+    }
+
+    const WEB_SERVER_PROFILE::RoutePolicy profilePolicy = WEB_SERVER_PROFILE::PolicyFor(profile);
+    if (profilePolicy.originRxRequired)
+    {
+        // Metadata is authoritative only for the current SystemLive
+        // lifecycle.  Clear any previous lifecycle before this attempt can
+        // acquire AP/HTTPD ownership.
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
+    }
+
+    // Reconcile the synchronous AP mode before any owner, STA, AP, or HTTPD
+    // side effect.  Retained or unknown AP state is a fail-closed recovery
+    // result even when the internal owner state is inactive.
+    if (!_ap_start_preflight())
+    {
+        spdlog::error("web server start rejected: AP stop retry required");
+        return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+    }
+
+    const WEB_SERVER_OWNER::StartPreflightResult preflight =
+        WEB_SERVER_OWNER::StartPreflight(_http_server_owner,
+                                         WEB_SERVER_OWNER::Owner::System,
+                                         _http_server != nullptr);
+    if (preflight != WEB_SERVER_OWNER::StartPreflightResult::Proceed)
+    {
+        return preflight == WEB_SERVER_OWNER::StartPreflightResult::RetainedServerNeedsStopRetry
+                   ? WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry
+                   : WEB_SERVER_OWNER::StartResult::BusyOtherOwner;
+    }
 
     // Auto wifi mode
     bool go_sta_mode = autoWifiMode;
@@ -301,43 +677,212 @@ HELL:
     else
     {
         onLogPageRender("start ap mode", true, true);
-        _start_ap_mode();
+        const WEB_SERVER_OWNER::StartResult apStart = MapApStartResult(_start_ap_mode());
+        if (apStart != WEB_SERVER_OWNER::StartResult::Started)
+            return apStart;
     }
 
     onLogPageRender("start web server", true, true);
-    // assert(_web_server == nullptr);
-    if (_web_server == nullptr)
+    const RUNTIME_EVIDENCE::Reason evidenceReason =
+        reason == WebServerReason::NetworkSettingsStart ? RUNTIME_EVIDENCE::Reason::NetworkSettingsStart
+                                                        : RUNTIME_EVIDENCE::Reason::OwnerAcquire;
+    const std::string activeSystemLiveIpv4 = profilePolicy.originRxRequired ? _get_ip() : std::string();
+    const WEB_SERVER_OWNER::StartResult ownedStart =
+        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::System,
+                             evidenceReason,
+                             profilePolicy.originRxRequired,
+                             activeSystemLiveIpv4.c_str());
+    if (ownedStart != WEB_SERVER_OWNER::StartResult::Started)
     {
-        _web_server = new PsychicHttpServer;
-        _web_server->listen(80);
+        if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(ownedStart))
+        {
+            const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+            if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+                return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        }
+        return ownedStart;
+    }
 
+    const auto rollbackSystemStart = [this]() -> WEB_SERVER_OWNER::StartResult
+    {
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
+        const WEB_SERVER_OWNER::StopResult cleanup =
+            StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, RUNTIME_EVIDENCE::Reason::ServerStartFailed);
+        if (!WEB_SERVER_OWNER::IsStopSuccessful(cleanup))
+            return WEB_SERVER_OWNER::StartResult::RetainedServerNeedsStopRetry;
+        const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+        if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+            return WEB_SERVER_OWNER::StartResult::RetainedApNeedsStopRetry;
+        return WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure;
+    };
+
+    if (profilePolicy.configurationPages)
         _web_server_page_loading();
+    if (profilePolicy.configurationApis)
         _web_server_api_loading();
-        // _web_server_ws_api_loading();
+
+    bool viewerRoutesInstalled = false;
+    if (profilePolicy.viewerRequired)
+    {
+        StaticAsset_t* staticAsset = AssetPool::GetStaticAsset();
+        if (staticAsset == nullptr || !VIEWER_HTTP_ROUTES::HasExpectedAssetIdentity(&staticAsset->WebPage))
+        {
+            spdlog::error("VIEWER_ASSETPOOL_IDENTITY_MISMATCH");
+            return rollbackSystemStart();
+        }
+        if (!VIEWER_HTTP_ROUTES::Register(_http_server->server, &staticAsset->WebPage, displayProfile))
+            return rollbackSystemStart();
+        viewerRoutesInstalled = true;
+    }
+
+    bool d2bRoutesInstalled = false;
+    if (profilePolicy.d2bRequired)
+    {
+        D2B_ESP::SetServerGeneration(_http_server_owner.generation());
+        if (!D2B_ESP::Register(_http_server->server, _http_server_owner.generation()))
+            return rollbackSystemStart();
+        d2bRoutesInstalled = true;
+    }
+
+    const bool routeProfileComplete =
+        (!profilePolicy.viewerRequired || viewerRoutesInstalled) &&
+        (!profilePolicy.d2bRequired || d2bRoutesInstalled) &&
+        (!profilePolicy.originRxRequired ||
+         VIEWER_ASSET_CONTRACT::kViewerRouteCount + VIEWER_ASSET_CONTRACT::kD2bRouteCount ==
+             VIEWER_ASSET_CONTRACT::kSystemLiveRouteCount);
+    if (!routeProfileComplete)
+    {
+        spdlog::error("SystemLive route/profile completeness gate failed");
+        return rollbackSystemStart();
+    }
+
+    if (profilePolicy.originRxRequired)
+    {
+        // Stage and validate all device-side QR authority while admission is
+        // still false.  activeSystemLiveIpv4 is the same trusted value already
+        // frozen into the O1-RX expected Origin for this server lifecycle.
+        const std::string activeSystemLiveApSsid = getApWifiSsid();
+        if (LIVE_SHARE_SESSION::BuildViewerUrl(activeSystemLiveIpv4).empty() ||
+            activeSystemLiveApSsid.empty() || activeSystemLiveApSsid.size() > 32U)
+        {
+            spdlog::error("SystemLive QR authority metadata validation failed");
+            return rollbackSystemStart();
+        }
+        _activeSystemLiveIpv4 = activeSystemLiveIpv4;
+        _activeSystemLiveApSsid = activeSystemLiveApSsid;
+
+        spdlog::info("SystemLive routes complete; arming admission readiness");
+        static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionReady();
+        return WEB_SERVER_OWNER::StartResult::Started;
     }
 
     spdlog::info("web server started");
-
-    return true;
+    return WEB_SERVER_OWNER::StartResult::Started;
 }
 
-bool HAL_VAMeter::stopWebServer()
+WEB_SERVER_OWNER::StopResult HAL_VAMeter::stopWebServer(WebServerReason reason)
 {
     spdlog::info("stop web server");
 
-    // Kill server
-    // feedTheDog();
-    // _web_server->stop();
-    // delay(200);
-    // feedTheDog();
-    // delete _web_server;
-    // delay(200);
-    // _web_server = nullptr;
+    const RUNTIME_EVIDENCE::Reason evidenceReason =
+        reason == WebServerReason::NetworkSettingsIntentionalStop
+            ? RUNTIME_EVIDENCE::Reason::NetworkSettingsIntentionalStop
+            : RUNTIME_EVIDENCE::Reason::OwnerRelease;
+    const WEB_SERVER_OWNER::StopResult serverResult =
+        StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System, evidenceReason);
+    if (serverResult == WEB_SERVER_OWNER::StopResult::RetryRequired ||
+        serverResult == WEB_SERVER_OWNER::StopResult::RejectedWrongOwner)
+        return serverResult;
 
-    // Stop ap
-    _stop_ap_mode();
+    const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+    if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+        return WEB_SERVER_OWNER::StopResult::ApStopFailed;
 
-    return true;
+    return serverResult;
+}
+
+LIVE_SHARE_SAFETY::Result
+HAL_VAMeter::terminateMeasurementSession(LIVE_SHARE_SAFETY::TerminationReason reason)
+{
+    struct MeasurementSafetyContext
+    {
+        HAL_VAMeter* hal;
+        bool d2bPrepared;
+    };
+
+    MeasurementSafetyContext context = {this, false};
+    const LIVE_SHARE_SAFETY::Callbacks callbacks = {
+        &context,
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            safety->hal->setBaseRelay(false);
+            const bool relayOff = !safety->hal->getBaseRelayState();
+            spdlog::info("measurement safety Relay OFF command issued; software state off={}", relayOff);
+            return relayOff;
+        },
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            if (_http_server != nullptr &&
+                _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::System &&
+                _http_server->server != nullptr)
+            {
+                D2B_ESP::PrepareServerStop(_http_server->server);
+            }
+            safety->d2bPrepared = true;
+            return true;
+        },
+        [](void*) -> bool
+        {
+            // C2A defines no orderly wire message and never snapshots the
+            // transport singleton from the application task.  The active
+            // socket may therefore close abruptly during HTTPD shutdown.
+            spdlog::info("measurement safety transport termination is bounded/no-wait");
+            return true;
+        },
+        [](void*) -> bool
+        {
+            if (_http_server != nullptr &&
+                _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::System)
+            {
+                static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+            }
+            return true;
+        },
+        [](void* opaque) -> LIVE_SHARE_SAFETY::HttpdStopDisposition
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            const WEB_SERVER_OWNER::StopResult result =
+                StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::System,
+                                    RUNTIME_EVIDENCE::Reason::OwnerRelease,
+                                    safety->d2bPrepared);
+            switch (result)
+            {
+            case WEB_SERVER_OWNER::StopResult::Stopped:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::Stopped;
+            case WEB_SERVER_OWNER::StopResult::AlreadyStopped:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::AlreadyStopped;
+            case WEB_SERVER_OWNER::StopResult::RejectedWrongOwner:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::RejectedWrongOwner;
+            case WEB_SERVER_OWNER::StopResult::RetryRequired:
+            case WEB_SERVER_OWNER::StopResult::ApStopFailed:
+            default:
+                return LIVE_SHARE_SAFETY::HttpdStopDisposition::RetryRequired;
+            }
+        },
+        [](void* opaque) -> bool
+        {
+            MeasurementSafetyContext* safety = static_cast<MeasurementSafetyContext*>(opaque);
+            return safety->hal->_stop_ap_mode() != WEB_SERVER_OWNER::ApStopResult::StopFailed;
+        },
+    };
+
+    const LIVE_SHARE_SAFETY::Result result = LIVE_SHARE_SAFETY::Execute(reason, callbacks);
+    if (result.hasCleanupDebt())
+        spdlog::error("measurement safety retained HTTPD/AP cleanup debt");
+    return result;
 }
 
 std::string HAL_VAMeter::getSystemConfigUrl()
@@ -348,96 +893,294 @@ std::string HAL_VAMeter::getSystemConfigUrl()
     return ret;
 }
 
+WEB_SERVER_OWNER::StartResult
+HAL_VAMeter::startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
+{
+    const OnLogPageRenderCallback_t noUiLog = [](const std::string&, bool, bool) {};
+    return startWebServer(noUiLog,
+                          WEB_SERVER_PROFILE::Profile::SystemLive,
+                          false,
+                          WebServerReason::Unspecified,
+                          displayProfile);
+}
+
+LIVE_SHARE_SESSION::TransportStopStatus HAL_VAMeter::beginSystemLiveStop()
+{
+    if (_http_server_owner.owner() != WEB_SERVER_OWNER::Owner::System)
+        return _http_server_owner.owner() == WEB_SERVER_OWNER::Owner::None
+                   ? LIVE_SHARE_SESSION::TransportStopStatus::NoOwner
+                   : LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    if (_http_server == nullptr || _http_server->server == nullptr)
+        return LIVE_SHARE_SESSION::TransportStopStatus::NoOwner;
+
+    // This is deliberately the first network action of ordinary Stop Sharing.
+    // The application task does not inspect or mutate the D2B owner/session.
+    static_cast<OwnedPsychicHttpServer*>(_http_server)->setSystemLiveAdmissionNotReady();
+    if (!D2B_ESP::RequestLocalStop(_http_server->server))
+        return LIVE_SHARE_SESSION::TransportStopStatus::Failed;
+    return LIVE_SHARE_SESSION::TransportStopStatus::Queued;
+}
+
+LIVE_SHARE_SESSION::TransportStopStatus HAL_VAMeter::pollSystemLiveStop()
+{
+    if (_http_server_owner.owner() != WEB_SERVER_OWNER::Owner::System ||
+        _http_server == nullptr || _http_server->server == nullptr)
+        return LIVE_SHARE_SESSION::TransportStopStatus::NoOwner;
+    return D2B_ESP::PollLocalStop(_http_server->server);
+}
+
+WEB_SERVER_OWNER::StopResult HAL_VAMeter::finishSystemLiveStop()
+{
+    const WEB_SERVER_OWNER::StopResult result = stopWebServer(WebServerReason::Unspecified);
+    if (result == WEB_SERVER_OWNER::StopResult::Stopped ||
+        result == WEB_SERVER_OWNER::StopResult::AlreadyStopped)
+    {
+        _activeSystemLiveIpv4.clear();
+        _activeSystemLiveApSsid.clear();
+    }
+    return result;
+}
+
+std::string HAL_VAMeter::getSystemLiveWifiSsid() { return _activeSystemLiveApSsid; }
+
+std::string HAL_VAMeter::getSystemLiveViewerUrl()
+{
+    return LIVE_SHARE_SESSION::BuildViewerUrl(_activeSystemLiveIpv4);
+}
+
 /* -------------------------------------------------------------------------- */
 /*                            Local Download Server                           */
 /* -------------------------------------------------------------------------- */
-static std::string _download_file_path;
-static std::string _download_file_name;
-static PsychicHttpServer* _download_server = nullptr;
-
-void HAL_VAMeter::startDownloadServer(const std::string& recordName)
+static LOCAL_CSV_DOWNLOAD::DownloadSelection _download_selection;
+namespace
 {
+    class ScopedFile
+    {
+    public:
+        explicit ScopedFile(FILE* file) : _file(file) {}
+        ~ScopedFile() { close(); }
+
+        FILE* get() const { return _file; }
+
+        int close()
+        {
+            if (_file == nullptr)
+                return 0;
+
+            FILE* file = _file;
+            _file = nullptr;
+            return fclose(file);
+        }
+
+    private:
+        FILE* _file;
+        ScopedFile(const ScopedFile&);
+        ScopedFile& operator=(const ScopedFile&);
+    };
+
+    struct ScopedBuffer
+    {
+        explicit ScopedBuffer(std::uint8_t* buffer) : value(buffer) {}
+        ~ScopedBuffer() { free(value); }
+
+        std::uint8_t* value;
+
+    private:
+        ScopedBuffer(const ScopedBuffer&);
+        ScopedBuffer& operator=(const ScopedBuffer&);
+    };
+
+    std::size_t ReadFileChunk(void* context, std::uint8_t* buffer, std::size_t bufferSize, bool* readFailed)
+    {
+        FILE* file = static_cast<FILE*>(context);
+        const std::size_t readSize = fread(buffer, 1, bufferSize, file);
+        *readFailed = ferror(file) != 0;
+        return readSize;
+    }
+
+    struct HttpChunkSender
+    {
+        PsychicResponse* response;
+        esp_err_t result;
+    };
+
+    bool SendHttpChunk(void* context, const std::uint8_t* data, std::size_t dataSize)
+    {
+        HttpChunkSender* sender = static_cast<HttpChunkSender*>(context);
+        sender->result = sender->response->sendChunk(const_cast<std::uint8_t*>(data), dataSize);
+        if (sender->result == ESP_OK)
+            taskYIELD();
+        return sender->result == ESP_OK;
+    }
+
+    bool FinishHttpChunks(void* context)
+    {
+        HttpChunkSender* sender = static_cast<HttpChunkSender*>(context);
+        sender->result = sender->response->finishChunking();
+        return sender->result == ESP_OK;
+    }
+} // namespace
+
+bool HAL_VAMeter::startDownloadServer(const std::string& recordName)
+{
+    // Reconcile the synchronous AP mode before validation, selection
+    // publication, owner acquisition, AP start, or HTTPD allocation.
+    if (!_ap_start_preflight())
+    {
+        spdlog::error("download server start rejected: AP stop retry required");
+        return false;
+    }
+
+    if (!LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(recordName))
+    {
+        spdlog::warn("reject local download for invalid record name: {}", recordName);
+        return false;
+    }
+
     spdlog::info("start download server for: {}", recordName);
 
-    // Start AP mode
-    _start_ap_mode();
+    const WEB_SERVER_OWNER::StartPreflightResult preflight =
+        WEB_SERVER_OWNER::StartPreflight(_http_server_owner,
+                                         WEB_SERVER_OWNER::Owner::Download,
+                                         _http_server != nullptr);
+    if (preflight != WEB_SERVER_OWNER::StartPreflightResult::Proceed)
+        return false;
 
-    // Store file path and name
-    _download_file_path = _fs_get_rec_file_path(recordName);
-    _download_file_name = recordName;
+    const std::string recordPath = _fs_get_rec_file_path(recordName);
+    _download_selection.set(recordName, recordPath);
 
-    // Start server if not running
-    if (_download_server == nullptr)
+    // Publish the complete selection before making the AP reachable.
+    const WEB_SERVER_OWNER::ApStartResult apStart = _start_ap_mode();
+    if (apStart != WEB_SERVER_OWNER::ApStartResult::Started)
     {
-        _download_server = new PsychicHttpServer;
-        _download_server->listen(80);
+        _download_selection.clear();
+        if (apStart == WEB_SERVER_OWNER::ApStartResult::StopRetryRequired)
+            spdlog::error("download server AP start cleanup retained: stop retry required");
+        return false;
+    }
 
-        // Add download endpoint
-        _download_server->on("/download/*",
+    const WEB_SERVER_OWNER::StartResult ownedStart =
+        StartOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download,
+                             RUNTIME_EVIDENCE::Reason::DownloadStart,
+                             false,
+                             nullptr);
+    if (ownedStart != WEB_SERVER_OWNER::StartResult::Started)
+    {
+        _download_selection.clear();
+        if (WEB_SERVER_OWNER::ShouldStopApAfterStartFailure(ownedStart))
+        {
+            const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+            if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+                spdlog::error("download server rollback retained AP: stop retry required");
+        }
+        return false;
+    }
+
+    // Add download endpoint
+    _http_server->on("/download/*",
                              [](PsychicRequest* request)
                              {
                                  spdlog::info("download request: {}", request->path().c_str());
 
-                                 // Open file
-                                 FILE* f = fopen(_download_file_path.c_str(), "r");
-                                 if (f == nullptr)
+                                 const LOCAL_CSV_DOWNLOAD::DownloadSelectionSnapshot selection =
+                                     _download_selection.snapshot();
+                                 const std::string& fileName = selection.name;
+                                 const std::string& filePath = selection.path;
+                                 const std::string requestPath = request->path().c_str();
+                                 static const std::string downloadPrefix = "/download/";
+
+                                 if (requestPath.compare(0, downloadPrefix.size(), downloadPrefix) != 0)
                                  {
-                                     spdlog::error("file not found: {}", _download_file_path);
+                                     spdlog::warn("download rejected unexpected path: {}", requestPath);
                                      return request->reply(404, "text/plain", "File not found");
                                  }
 
-                                 // Get file size
-                                 fseek(f, 0, SEEK_END);
-                                 size_t file_size = ftell(f);
-                                 fseek(f, 0, SEEK_SET);
-                                 spdlog::info("file size: {} bytes", file_size);
-
-                                 // Read file content
-                                 char* buffer = (char*)malloc(file_size + 1);
-                                 if (buffer == nullptr)
+                                 std::string requestedName;
+                                 const std::string encodedName = requestPath.substr(downloadPrefix.size());
+                                 if (!LOCAL_CSV_DOWNLOAD::DecodeUrlComponentOnce(encodedName, requestedName) ||
+                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(requestedName) ||
+                                     !LOCAL_CSV_DOWNLOAD::IsAllowedRecordName(fileName) || filePath.empty() ||
+                                     requestedName != fileName)
                                  {
-                                     fclose(f);
+                                     spdlog::warn("download rejected path/name mismatch: {}", requestPath);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+
+                                 ScopedFile file(fopen(filePath.c_str(), "rb"));
+                                 if (file.get() == nullptr)
+                                 {
+                                     spdlog::error("download fopen failed: {}", filePath);
+                                     return request->reply(404, "text/plain", "File not found");
+                                 }
+
+                                 const std::size_t bufferSize = LOCAL_CSV_DOWNLOAD::kStreamBufferSize;
+                                 ScopedBuffer buffer(static_cast<std::uint8_t*>(malloc(bufferSize)));
+                                 if (buffer.value == nullptr)
+                                 {
+                                     spdlog::error("download chunk buffer allocation failed");
                                      return request->reply(500, "text/plain", "Memory allocation failed");
                                  }
 
-                                 size_t read_size = fread(buffer, 1, file_size, f);
-                                 buffer[read_size] = '\0';
-                                 fclose(f);
-
                                  // Set Content-Disposition header for download
-                                 std::string header = "attachment; filename=\"" + _download_file_name + "\"";
+                                 const std::string header = "attachment; filename=\"" + fileName + "\"";
 
-                                 // Send response
                                  PsychicResponse response(request);
                                  response.setContentType("text/csv");
                                  response.addHeader("Content-Disposition", header.c_str());
-                                 response.setContent((uint8_t*)buffer, read_size);
-                                 esp_err_t result = response.send();
+                                 response.sendHeaders();
 
-                                 free(buffer);
-                                 spdlog::info("download response sent, result: {}", result);
-                                 return result;
-                             });
+                                 HttpChunkSender sender = {&response, ESP_OK};
+                                 LOCAL_CSV_DOWNLOAD::StreamStats stats = {0, 0, 0};
+                                 const LOCAL_CSV_DOWNLOAD::StreamResult streamResult =
+                                     LOCAL_CSV_DOWNLOAD::StreamChunks(ReadFileChunk,
+                                                                      file.get(),
+                                                                      SendHttpChunk,
+                                                                      &sender,
+                                                                      buffer.value,
+                                                                      bufferSize,
+                                                                      &stats);
 
-        spdlog::info("download server started");
-    }
+                                 const int closeResult = file.close();
+                                 if (streamResult != LOCAL_CSV_DOWNLOAD::StreamResult::Complete || closeResult != 0)
+                                 {
+                                     spdlog::error("download stream failed, stream result: {}, send result: {}, close result: {}, bytes read: {}, bytes sent: {}",
+                                                   static_cast<int>(streamResult),
+                                                   sender.result,
+                                                   closeResult,
+                                                   stats.bytesRead,
+                                                   stats.bytesSent);
+                                     return streamResult == LOCAL_CSV_DOWNLOAD::StreamResult::SendFailed ? sender.result : ESP_FAIL;
+                                 }
+
+                                 const LOCAL_CSV_DOWNLOAD::StreamResult finishResult =
+                                     LOCAL_CSV_DOWNLOAD::FinishChunks(FinishHttpChunks, &sender);
+                                 spdlog::info("download response finished, result: {}, bytes: {}, chunks: {}",
+                                              sender.result,
+                                              stats.bytesSent,
+                                              stats.chunksSent);
+                                 return finishResult == LOCAL_CSV_DOWNLOAD::StreamResult::Complete ? ESP_OK : sender.result;
+                         });
+
+    spdlog::info("download server started");
+    return true;
 }
 
 void HAL_VAMeter::stopDownloadServer()
 {
     spdlog::info("stop download server");
 
-    // Stop AP mode
-    _stop_ap_mode();
+    const WEB_SERVER_OWNER::StopResult serverResult =
+        StopOwnedHttpServer(WEB_SERVER_OWNER::Owner::Download, RUNTIME_EVIDENCE::Reason::DownloadIntentionalStop);
+    if (serverResult != WEB_SERVER_OWNER::StopResult::Stopped &&
+        serverResult != WEB_SERVER_OWNER::StopResult::AlreadyStopped)
+        return;
 
-    // Note: Server is kept alive for potential reuse
-    // If you want to fully stop:
-    // if (_download_server != nullptr)
-    // {
-    //     _download_server->stop();
-    //     delete _download_server;
-    //     _download_server = nullptr;
-    // }
+    _download_selection.clear();
+
+    const WEB_SERVER_OWNER::ApStopResult apStop = _stop_ap_mode();
+    if (apStop == WEB_SERVER_OWNER::ApStopResult::StopFailed)
+        spdlog::error("download server AP stop failed: stop retry required");
+
 }
 
 std::string HAL_VAMeter::getLocalIP() { return _get_ip(); }
