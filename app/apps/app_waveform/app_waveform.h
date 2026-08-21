@@ -6,6 +6,7 @@
 #include "view/view.h"
 #include "../app_power_monitor/view/live_share_view.h"
 #include "../../libs/live_share_controller/live_share_controller.h"
+#include "../../libs/viewer_asset_contract/viewer_asset_contract.h"
 #include <mooncake.h>
 
 namespace MOONCAKE
@@ -32,6 +33,8 @@ namespace MOONCAKE
                 VIEWS::WaveFormRecorder* view = nullptr;
                 VIEWS::LiveShareView* live_share_view = nullptr;
                 LIVE_SHARE_CONTROLLER::LiveShareController* live_share_controller = nullptr;
+                VIEWER_ASSET_CONTRACT::DisplayProfile display_profile =
+                    VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid;
             };
             Data_t _data;
             static WaveformMode_t _mode;

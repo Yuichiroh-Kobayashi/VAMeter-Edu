@@ -71,11 +71,51 @@ int main()
     Expect(Equal(routes[3].contentEncoding, kGzipEncoding), "CSS gzip Content-Encoding");
     Expect(Equal(routes[4].contentEncoding, kGzipEncoding), "JS gzip Content-Encoding");
 
-    Expect(std::strstr(kDeviceJson, "\"schema_version\":1") != nullptr, "device schema version");
-    Expect(std::strstr(kDeviceJson, kViewerBundleId) != nullptr, "device bundle ID");
-    Expect(std::strstr(kDeviceJson, "\"d2b_protocol\":\"d2b-stream/0.1\"") != nullptr, "device D2B protocol");
-    Expect(std::strstr(kDeviceJson, "\"d2b_stream\":\"live-vi\"") != nullptr, "device D2B stream");
-    Expect(kDeviceJsonBytes == std::strlen(kDeviceJson), "device JSON explicit byte length");
+    Expect(DisplayProfileForWaveformModeCode(1U) == DisplayProfile::Voltage,
+           "mode_volt_only maps to Voltage");
+    Expect(DisplayProfileForWaveformModeCode(2U) == DisplayProfile::Current,
+           "mode_current_only maps to Current");
+    Expect(DisplayProfileForWaveformModeCode(0U) == DisplayProfile::Both, "mode_both maps to Both");
+    Expect(DisplayProfileForWaveformModeCode(3U) == DisplayProfile::Invalid,
+           "unknown waveform mode does not fall back to Both");
+
+    const DisplayProfile profiles[] = {DisplayProfile::Voltage, DisplayProfile::Current, DisplayProfile::Both};
+    const char* const displayNames[] = {"Voltage", "Current", "Both"};
+    for (std::size_t index = 0; index < 3U; ++index)
+    {
+        char deviceJson[kDeviceJsonCapacity] = {};
+        std::size_t deviceJsonBytes = 0U;
+        Expect(BuildDeviceJson(profiles[index], deviceJson, sizeof(deviceJson), &deviceJsonBytes),
+               "device JSON builds for exact display profile");
+        Expect(deviceJsonBytes == std::strlen(deviceJson), "device JSON explicit byte length");
+        Expect(std::strstr(deviceJson, "\"schema_version\":1") != nullptr, "device schema version retained");
+        Expect(std::strstr(deviceJson, kViewerBundleId) != nullptr, "device bundle ID retained");
+        Expect(std::strstr(deviceJson, "\"d2b_protocol\":\"d2b-stream/0.1\"") != nullptr,
+               "device D2B protocol retained");
+        Expect(std::strstr(deviceJson, "\"d2b_stream\":\"live-vi\"") != nullptr,
+               "device D2B stream retained");
+        const std::string displayField = std::string("\"display_name\":\"") + displayNames[index] + "\"";
+        Expect(std::strstr(deviceJson, displayField.c_str()) != nullptr, "device exact display_name");
+        Expect(std::strstr(deviceJson, "mac") == nullptr, "device JSON has no MAC field");
+        Expect(std::strstr(deviceJson, "serial") == nullptr, "device JSON has no serial field");
+        Expect(std::strstr(deviceJson, "ssid") == nullptr, "device JSON has no SSID field");
+    }
+    char invalidJson[kDeviceJsonCapacity] = {};
+    std::size_t invalidJsonBytes = 0U;
+    Expect(!BuildDeviceJson(DisplayProfile::Invalid,
+                            invalidJson,
+                            sizeof(invalidJson),
+                            &invalidJsonBytes),
+           "invalid display profile fails closed");
+
+    DisplayProfileSession session;
+    Expect(session.begin(DisplayProfile::Voltage), "display profile starts once");
+    Expect(!session.begin(DisplayProfile::Current), "active display profile is immutable");
+    Expect(session.profile() == DisplayProfile::Voltage, "active profile remains unchanged");
+    session.end();
+    Expect(session.begin(DisplayProfile::Current), "new lifecycle can select a new profile");
+    session.end();
+    Expect(!session.begin(DisplayProfile::Invalid), "invalid profile cannot start a session");
 
     std::uint8_t bundleId[kBundleIdCapacity] = {};
     std::memcpy(bundleId, kViewerBundleId, kBundleIdCapacity);

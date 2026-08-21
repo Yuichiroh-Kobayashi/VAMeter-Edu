@@ -47,10 +47,37 @@ namespace VIEWER_ASSET_CONTRACT
     extern const char kDeviceViewerBundleIdField[];
     extern const char kDeviceD2bProtocolField[];
     extern const char kDeviceD2bStreamField[];
+    extern const char kDeviceDisplayNameField[];
     extern const char kD2bProtocolValue[];
     extern const char kD2bStreamValue[];
-    extern const char kDeviceJson[];
-    extern const std::size_t kDeviceJsonBytes;
+    static const std::size_t kDeviceJsonCapacity = 256U;
+
+    enum class DisplayProfile : std::uint8_t
+    {
+        Invalid = 0,
+        Voltage,
+        Current,
+        Both,
+    };
+
+    DisplayProfile DisplayProfileForWaveformModeCode(std::uint8_t modeCode);
+    const char* DisplayName(DisplayProfile profile);
+    bool BuildDeviceJson(DisplayProfile profile, char* output, std::size_t capacity, std::size_t* bytesWritten);
+
+    class DisplayProfileSession
+    {
+    public:
+        DisplayProfileSession();
+
+        bool begin(DisplayProfile profile);
+        void end();
+        bool active() const;
+        DisplayProfile profile() const;
+
+    private:
+        DisplayProfile _profile;
+        bool _active;
+    };
 
     struct RouteContract
     {

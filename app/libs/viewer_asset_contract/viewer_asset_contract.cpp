@@ -1,5 +1,6 @@
 #include "viewer_asset_contract.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace VIEWER_ASSET_CONTRACT
@@ -35,12 +36,83 @@ namespace VIEWER_ASSET_CONTRACT
     const char kDeviceViewerBundleIdField[] = "viewer_bundle_id";
     const char kDeviceD2bProtocolField[] = "d2b_protocol";
     const char kDeviceD2bStreamField[] = "d2b_stream";
+    const char kDeviceDisplayNameField[] = "display_name";
     const char kD2bProtocolValue[] = "d2b-stream/0.1";
     const char kD2bStreamValue[] = "live-vi";
-    const char kDeviceJson[] =
-        "{\"schema_version\":1,\"viewer_bundle_id\":\"042b48e37a7f18b71f1ba89b2188391a87413c7e38d79ef0b380822ce7e0b894\","
-        "\"d2b_protocol\":\"d2b-stream/0.1\",\"d2b_stream\":\"live-vi\"}";
-    const std::size_t kDeviceJsonBytes = sizeof(kDeviceJson) - 1U;
+
+    DisplayProfile DisplayProfileForWaveformModeCode(std::uint8_t modeCode)
+    {
+        switch (modeCode)
+        {
+        case 0U:
+            return DisplayProfile::Both;
+        case 1U:
+            return DisplayProfile::Voltage;
+        case 2U:
+            return DisplayProfile::Current;
+        default:
+            return DisplayProfile::Invalid;
+        }
+    }
+
+    const char* DisplayName(DisplayProfile profile)
+    {
+        switch (profile)
+        {
+        case DisplayProfile::Voltage:
+            return "Voltage";
+        case DisplayProfile::Current:
+            return "Current";
+        case DisplayProfile::Both:
+            return "Both";
+        case DisplayProfile::Invalid:
+        default:
+            return nullptr;
+        }
+    }
+
+    bool BuildDeviceJson(DisplayProfile profile, char* output, std::size_t capacity, std::size_t* bytesWritten)
+    {
+        const char* const displayName = DisplayName(profile);
+        if (displayName == nullptr || output == nullptr || capacity == 0U || bytesWritten == nullptr)
+            return false;
+
+        const int result = std::snprintf(output,
+                                         capacity,
+                                         "{\"schema_version\":1,\"viewer_bundle_id\":\"%s\","
+                                         "\"d2b_protocol\":\"%s\",\"d2b_stream\":\"%s\","
+                                         "\"display_name\":\"%s\"}",
+                                         kViewerBundleId,
+                                         kD2bProtocolValue,
+                                         kD2bStreamValue,
+                                         displayName);
+        if (result < 0 || static_cast<std::size_t>(result) >= capacity)
+            return false;
+
+        *bytesWritten = static_cast<std::size_t>(result);
+        return true;
+    }
+
+    DisplayProfileSession::DisplayProfileSession() : _profile(DisplayProfile::Invalid), _active(false) {}
+
+    bool DisplayProfileSession::begin(DisplayProfile profile)
+    {
+        if (_active || DisplayName(profile) == nullptr)
+            return false;
+        _profile = profile;
+        _active = true;
+        return true;
+    }
+
+    void DisplayProfileSession::end()
+    {
+        _profile = DisplayProfile::Invalid;
+        _active = false;
+    }
+
+    bool DisplayProfileSession::active() const { return _active; }
+
+    DisplayProfile DisplayProfileSession::profile() const { return _profile; }
 
     namespace
     {

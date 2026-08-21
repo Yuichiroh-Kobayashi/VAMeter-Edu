@@ -13,6 +13,7 @@ namespace VIEWER_HTTP_ROUTES
     {
         const char* const kTag = "VIEWER_HTTP";
         const WebPagePool_t* g_webPages = nullptr;
+        VIEWER_ASSET_CONTRACT::DisplayProfileSession g_displayProfileSession;
         httpd_uri_t g_routes[VIEWER_ASSET_CONTRACT::kViewerRouteCount] = {};
 
         esp_err_t SetCacheControl(httpd_req_t* request, const char* value)
@@ -98,12 +99,22 @@ namespace VIEWER_HTTP_ROUTES
 
         esp_err_t DeviceHandler(httpd_req_t* request)
         {
+            char deviceJson[VIEWER_ASSET_CONTRACT::kDeviceJsonCapacity] = {};
+            std::size_t deviceJsonBytes = 0U;
+            if (!g_displayProfileSession.active() ||
+                !VIEWER_ASSET_CONTRACT::BuildDeviceJson(
+                    g_displayProfileSession.profile(), deviceJson, sizeof(deviceJson), &deviceJsonBytes))
+            {
+                return httpd_resp_send_err(request,
+                                           HTTPD_500_INTERNAL_SERVER_ERROR,
+                                           "SystemLive display profile unavailable");
+            }
             return SendFixed(request,
                              VIEWER_ASSET_CONTRACT::kJsonMime,
                              nullptr,
                              VIEWER_ASSET_CONTRACT::kNoStoreCacheControl,
-                             reinterpret_cast<const std::uint8_t*>(VIEWER_ASSET_CONTRACT::kDeviceJson),
-                             VIEWER_ASSET_CONTRACT::kDeviceJsonBytes);
+                             reinterpret_cast<const std::uint8_t*>(deviceJson),
+                             deviceJsonBytes);
         }
 
         httpd_uri_t MakeUri(const char* uri, esp_err_t (*handler)(httpd_req_t*))
@@ -136,11 +147,18 @@ namespace VIEWER_HTTP_ROUTES
                VIEWER_ASSET_CONTRACT::IsExpectedBundleId(webPages->viewer_bundle_id, sizeof(webPages->viewer_bundle_id));
     }
 
-    bool Register(httpd_handle_t server, const WebPagePool_t* webPages)
+    bool Register(httpd_handle_t server,
+                  const WebPagePool_t* webPages,
+                  VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
     {
         if (server == nullptr || !HasExpectedAssetIdentity(webPages))
         {
             ESP_LOGE(kTag, "VIEWER_ASSETPOOL_IDENTITY_MISMATCH");
+            return false;
+        }
+        if (!g_displayProfileSession.begin(displayProfile))
+        {
+            ESP_LOGE(kTag, "SYSTEM_LIVE_DISPLAY_PROFILE_INVALID_OR_ACTIVE");
             return false;
         }
 
@@ -159,9 +177,16 @@ namespace VIEWER_HTTP_ROUTES
                     httpd_unregister_uri_handler(server, g_routes[registered].uri, g_routes[registered].method);
                 }
                 g_webPages = nullptr;
+                g_displayProfileSession.end();
                 return false;
             }
         }
         return true;
+    }
+
+    void Reset()
+    {
+        g_webPages = nullptr;
+        g_displayProfileSession.end();
     }
 } // namespace VIEWER_HTTP_ROUTES

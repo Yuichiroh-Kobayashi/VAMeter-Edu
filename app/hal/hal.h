@@ -25,6 +25,7 @@
 #endif
 #include "../libs/live_share_safety/live_share_safety.h"
 #include "../libs/live_share_session/live_share_session.h"
+#include "../libs/viewer_asset_contract/viewer_asset_contract.h"
 #include "../libs/web_server_owner/web_server_profile.h"
 #include "../libs/web_server_owner/web_server_results.h"
 
@@ -652,20 +653,25 @@ public:
     static WEB_SERVER_OWNER::StartResult StartWebServer(OnLogPageRenderCallback_t onLogPageRender,
                                                         WEB_SERVER_PROFILE::Profile profile,
                                                         bool autoWifiMode,
-                                                        WebServerReason reason = WebServerReason::Unspecified)
+                                                        WebServerReason reason = WebServerReason::Unspecified,
+                                                        VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                            VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid)
     {
-        return Get()->startWebServer(onLogPageRender, profile, autoWifiMode, reason);
+        return Get()->startWebServer(onLogPageRender, profile, autoWifiMode, reason, displayProfile);
     }
 
     virtual WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
                                                          WEB_SERVER_PROFILE::Profile profile,
                                                          bool autoWifiMode,
-                                                         WebServerReason reason = WebServerReason::Unspecified)
+                                                         WebServerReason reason = WebServerReason::Unspecified,
+                                                         VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                             VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid)
     {
         (void)reason;
         (void)onLogPageRender;
         (void)profile;
         (void)autoWifiMode;
+        (void)displayProfile;
         return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
     }
 
@@ -682,12 +688,15 @@ public:
     static std::string GetSystemConfigUrl() { return Get()->getSystemConfigUrl(); }
     virtual std::string getSystemConfigUrl() { return "http://192.168.4.1/syscfg"; }
 
-    static WEB_SERVER_OWNER::StartResult StartSystemLiveSharing()
+    static WEB_SERVER_OWNER::StartResult
+    StartSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
     {
-        return Get()->startSystemLiveSharing();
+        return Get()->startSystemLiveSharing(displayProfile);
     }
-    virtual WEB_SERVER_OWNER::StartResult startSystemLiveSharing()
+    virtual WEB_SERVER_OWNER::StartResult
+    startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
     {
+        (void)displayProfile;
         return WEB_SERVER_OWNER::StartResult::AllocationOrListenFailure;
     }
 

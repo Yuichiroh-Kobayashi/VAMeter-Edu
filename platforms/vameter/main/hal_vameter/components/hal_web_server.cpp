@@ -397,6 +397,8 @@ namespace
         };
         const WEB_SERVER_OWNER::StopTransactionOutcome outcome = WEB_SERVER_OWNER::StopOwned(stopRequest);
         _http_server = reinterpret_cast<PsychicHttpServer*>(outcome.wrapperKey);
+        if (owner == WEB_SERVER_OWNER::Owner::System && WEB_SERVER_OWNER::IsStopSuccessful(outcome.result))
+            VIEWER_HTTP_ROUTES::Reset();
         D2B_RUNTIME_EVIDENCE::LogServerResult(RUNTIME_EVIDENCE::Event::ServerStop,
                                                runtimeOwner,
                                                WEB_SERVER_OWNER::IsStopSuccessful(outcome.result)
@@ -608,7 +610,8 @@ void HAL_VAMeter::_web_server_api_loading()
 WEB_SERVER_OWNER::StartResult HAL_VAMeter::startWebServer(OnLogPageRenderCallback_t onLogPageRender,
                                                           WEB_SERVER_PROFILE::Profile profile,
                                                           bool autoWifiMode,
-                                                          WebServerReason reason)
+                                                          WebServerReason reason,
+                                                          VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
 {
     if (profile == WEB_SERVER_PROFILE::Profile::SystemConfig)
     {
@@ -728,7 +731,7 @@ HELL:
             spdlog::error("VIEWER_ASSETPOOL_IDENTITY_MISMATCH");
             return rollbackSystemStart();
         }
-        if (!VIEWER_HTTP_ROUTES::Register(_http_server->server, &staticAsset->WebPage))
+        if (!VIEWER_HTTP_ROUTES::Register(_http_server->server, &staticAsset->WebPage, displayProfile))
             return rollbackSystemStart();
         viewerRoutesInstalled = true;
     }
@@ -890,10 +893,15 @@ std::string HAL_VAMeter::getSystemConfigUrl()
     return ret;
 }
 
-WEB_SERVER_OWNER::StartResult HAL_VAMeter::startSystemLiveSharing()
+WEB_SERVER_OWNER::StartResult
+HAL_VAMeter::startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
 {
     const OnLogPageRenderCallback_t noUiLog = [](const std::string&, bool, bool) {};
-    return startWebServer(noUiLog, WEB_SERVER_PROFILE::Profile::SystemLive, false);
+    return startWebServer(noUiLog,
+                          WEB_SERVER_PROFILE::Profile::SystemLive,
+                          false,
+                          WebServerReason::Unspecified,
+                          displayProfile);
 }
 
 LIVE_SHARE_SESSION::TransportStopStatus HAL_VAMeter::beginSystemLiveStop()

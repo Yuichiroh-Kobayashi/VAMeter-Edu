@@ -42,5 +42,9 @@ The production transport is currently HTTP on port 80. No hostname or mDNS alias
 - The browser never controls Relay state, measurement mode, or measurement range.
 - `C_HYBRID` remains retained under the frozen `O1-RX + O3` direction.
 
+For the beta.1 lockstep device-hosted profile, AppWaveform selects a bounded display profile before SystemLive starts. `mode_volt_only`, `mode_current_only`, and `mode_both` map exactly to `Voltage`, `Current`, and `Both` in `/viewer/device.json`. The selected value is immutable for that active SystemLive lifecycle, and an unknown value fails closed rather than becoming `Both`. This required additive field does not change the current internal `schema_version` value of `1`; no explicit additive-field bump rule exists for this lockstep beta profile.
+
+Browser analog-style numeric presentation remains `DEFERRED_AFTER_BETA1`. Multi-client product policy remains `DEFERRED_AFTER_MULTI_CLIENT_PHYSICAL_VALIDATION`; the existing one-active-owner D2B safety contract is unchanged.
+
 Resource qualification for these profiles is governed by
 [`resource-budget.md`](resource-budget.md).

@@ -124,11 +124,14 @@ public:
     WEB_SERVER_OWNER::StartResult startWebServer(OnLogPageRenderCallback_t onLogPageRender,
                                                  WEB_SERVER_PROFILE::Profile profile,
                                                  bool autoWifiMode,
-                                                 WebServerReason reason = WebServerReason::Unspecified) override;
+                                                 WebServerReason reason = WebServerReason::Unspecified,
+                                                 VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile =
+                                                     VIEWER_ASSET_CONTRACT::DisplayProfile::Invalid) override;
     WEB_SERVER_OWNER::StopResult stopWebServer(WebServerReason reason = WebServerReason::Unspecified) override;
     std::string getSystemConfigUrl() override;
 
-    WEB_SERVER_OWNER::StartResult startSystemLiveSharing() override;
+    WEB_SERVER_OWNER::StartResult
+    startSystemLiveSharing(VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile) override;
     LIVE_SHARE_SESSION::TransportStopStatus beginSystemLiveStop() override;
     LIVE_SHARE_SESSION::TransportStopStatus pollSystemLiveStop() override;
     WEB_SERVER_OWNER::StopResult finishSystemLiveStop() override;

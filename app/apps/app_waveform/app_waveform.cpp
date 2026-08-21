@@ -19,7 +19,13 @@ using namespace SYSTEM::UI;
 
 namespace
 {
-    WEB_SERVER_OWNER::StartResult StartSystemLive(void*) { return HAL::StartSystemLiveSharing(); }
+    WEB_SERVER_OWNER::StartResult StartSystemLive(void* context)
+    {
+        if (context == nullptr)
+            return WEB_SERVER_OWNER::StartResult::RouteOrRegistrationFailure;
+        return HAL::StartSystemLiveSharing(
+            *static_cast<const VIEWER_ASSET_CONTRACT::DisplayProfile*>(context));
+    }
 
     LIVE_SHARE_SESSION::TransportStopStatus BeginSystemLiveStop(void*) { return HAL::BeginSystemLiveStop(); }
 
@@ -31,9 +37,11 @@ namespace
 
     std::uint8_t CurrentStationCount(void*) { return HAL::GetApStaNum(); }
 
-    LIVE_SHARE_CONTROLLER::TransportCallbacks MakeLiveShareCallbacks()
+    LIVE_SHARE_CONTROLLER::TransportCallbacks
+    MakeLiveShareCallbacks(VIEWER_ASSET_CONTRACT::DisplayProfile* displayProfile)
     {
         LIVE_SHARE_CONTROLLER::TransportCallbacks callbacks;
+        callbacks.context = displayProfile;
         callbacks.startSystemLive = StartSystemLive;
         callbacks.beginSystemLiveStop = BeginSystemLiveStop;
         callbacks.pollSystemLiveStop = PollSystemLiveStop;
@@ -45,6 +53,10 @@ namespace
 } // namespace
 
 AppWaveform::WaveformMode_t AppWaveform::_mode = AppWaveform::mode_both;
+
+static_assert(AppWaveform::mode_both == 0, "mode_both display-profile contract");
+static_assert(AppWaveform::mode_volt_only == 1, "mode_volt_only display-profile contract");
+static_assert(AppWaveform::mode_current_only == 2, "mode_current_only display-profile contract");
 
 const char* AppWaveform_Packer::getAppName() { return AssetPool::GetText().AppName_Waveform; }
 
@@ -60,7 +72,10 @@ void AppWaveform::onResume()
     spdlog::info("{} onResume", getAppName());
     _data.view = new VIEWS::WaveFormRecorder(AssetPool::GetColor().AppWaveform.primary, (int)_mode);
     _data.view->init();
-    _data.live_share_controller = new LIVE_SHARE_CONTROLLER::LiveShareController(MakeLiveShareCallbacks());
+    _data.display_profile =
+        VIEWER_ASSET_CONTRACT::DisplayProfileForWaveformModeCode(static_cast<std::uint8_t>(_mode));
+    _data.live_share_controller =
+        new LIVE_SHARE_CONTROLLER::LiveShareController(MakeLiveShareCallbacks(&_data.display_profile));
 
     // Footprint
     HAL::NvsSet(NVS_KEY_APP_HISTORY, 5);
