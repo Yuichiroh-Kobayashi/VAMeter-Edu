@@ -7,7 +7,7 @@ VAMeter-Edu documentation is organized by role. Current implementation behavior 
 - [`../README.md`](../README.md) and [`../README_ja.md`](../README_ja.md) are the public project and release entry points.
 - [`ai/`](ai/README.md) contains durable guidance for AI tools and human reviewers.
 - [`architecture/`](architecture/) contains current direct-browser architecture and resource contracts, plus compatibility documents for older V-I logger paths.
-- [`vi-logger/`](vi-logger/README.md) is a legacy index while role-based migration is in progress. Its current architecture, standards, and operations documents remain in place for this PR.
+- [`vi-logger/`](vi-logger/README.md) is a legacy mixed-generation index, not a single current product authority.
 - [`archive/`](archive/README.md) preserves dated handoffs, validation evidence, contest records, and superseded plans. Archive documents are historical evidence, not current normative contracts.
 
-PR-DOC1 only refreshes release-facing documentation and relocates dated or superseded material. PR-DOC2 will complete the canonical, role-based documentation migration; this index does not pre-empt that redesign.
+Current documentation must describe behavior implemented in current source and tests. Future product work belongs in GitHub Issues. The role-based current-documentation structure and remaining legacy migration are tracked in [VAMeter-Edu Issue #7](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/7).

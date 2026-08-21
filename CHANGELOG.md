@@ -10,18 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Device-hosted same-origin Viewer with Student / Professional modes, Voltage / Current / Both profiles, and 10 / 30 / 60 second display windows
-- Five-second educational recording with local CSV download
+
+### Changed
+
+- Fixed the fallback educational recording duration at five seconds; recorded CSV uses the existing local download workflow
 
 ### Validated
 
-- Physical Viewer qualification on Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari; electrical measurement accuracy was not re-qualified by these browser gates
+- Physical Viewer validation on Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari; these browser tests did not re-qualify electrical measurement accuracy
 
 ### Known limitations
 
 - Application and AssetPool binaries must be used as the matched `v2.0.0-beta.1` pair
 - Issue #3 remains open; gap-free CSV and uniform sampling are not claimed
-- Student Start / Stop simplification and analog-style numeric / `AnalogMeterProfile` support are post-beta; multi-client policy remains deferred
-- Static IRAM remains `16383 / 16384`, so resource status is **RESOURCE HOLD**
+- Static IRAM usage is `16383 / 16384` bytes; resource headroom is extremely limited and must be reviewed before adding firmware features
 - This is a beta prerelease, not stable `v2.0.0`
 
 ## [1.1.0] - 2026-01-01

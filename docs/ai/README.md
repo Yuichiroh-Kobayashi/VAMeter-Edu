@@ -46,8 +46,8 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
 
 ## Related document sets
 
-- [`../README.md`](../README.md) explains current document roles and the staged migration.
-- [`../vi-logger/README.md`](../vi-logger/README.md) is the legacy V-I logger index while migration is in progress.
+- [`../README.md`](../README.md) explains current document roles and links the tracked restructuring work.
+- [`../vi-logger/README.md`](../vi-logger/README.md) is the legacy mixed-generation V-I logger index; role-based restructuring is tracked in [VAMeter-Edu Issue #7](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/7).
 - [`../archive/validation/recording/2026-07-29-pr1-recorder-validation.md`](../archive/validation/recording/2026-07-29-pr1-recorder-validation.md) is the focused PR #1 physical-validation record.
 - [`../archive/README.md`](../archive/README.md) explains how dated handoffs, validations, and superseded plans are preserved as history and evidence.
 

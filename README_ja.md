@@ -30,7 +30,7 @@ VAMeter 本体が Wi-Fi アクセスポイントと same-origin Web Viewer を�
 - **Windows の Microsoft Edge 151** による実機ブラウザ検証
 - **iPad 第7世代 / iPadOS 18.7.9 / Safari** による実機 smoke 検証
 
-これらの browser gate が確認したのは device-hosted streaming と lifecycle です。電気測定精度を再認定したものでも、新しい校正証明でもありません。
+これらの browser test で確認したのは device-hosted streaming と lifecycle の動作です。電気測定精度を再認定したものでも、新しい校正証明でもありません。
 
 ### 教育用記録とローカルデータダウンロード
 
@@ -79,7 +79,7 @@ Hackster.io プロジェクトページから以下の情報を参照できま�
 
 この beta では、device-hosted same-origin Viewer、Student / Professional、Voltage / Current / Both、10 / 30 / 60 秒の表示時間幅、5秒の教育用 CSV workflow を追加・整理しました。
 
-application と AssetPool は同一 candidate の組み合わせです。**異なる version の binary を混在させないでください。** 書き込み前にダウンロードしたファイルを確認してください。
+公開した application と AssetPool は対応する release binary の組み合わせです。**異なる version の binary を混在させないでください。** 書き込み前にダウンロードしたファイルを確認してください。
 
 | Release identity | 値 |
 |---|---|
@@ -90,13 +90,10 @@ application と AssetPool は同一 candidate の組み合わせです。**異�
 | app SHA-256 | `9b872ea5cc483b361bba9550e1878b9036d205ee830fd84a0e321d3f3a732423` |
 | AssetPool SHA-256 | `1df4b81fba8b3f16baf1331f015cdb1fdc7214d66a215657ef752673b43c1c41` |
 
-beta の既知境界：
+現在の制約：
 
 - [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) は OPEN で、gap-free CSV も均一 sampling も保証しません。
-- multi-client の最終 product policy は deferred です。
-- Student の操作は beta 後に単一の Start / Stop へ簡略化する予定です。
-- analog-style numeric 表示と `AnalogMeterProfile` 設定は post-beta の作業です。
-- static IRAM は `16383 / 16384` で、release resource は **RESOURCE HOLD** です。
+- static IRAM 使用量は `16383 / 16384` bytes です。resource headroom は極めて小さく、firmware feature を追加する前に review が必要です。
 - この beta は安定版 `v2.0.0` ではありません。
 
 ### v1.1.0（2026-01-01）
@@ -140,14 +137,11 @@ parttool.py --port <ポート名> write_partition --partition-name=assetpool --i
 
 ---
 
-## 今後の開発予定
+## Roadmap
 
-- アクセシビリティ機能（音声読み上げ）
-- 多言語 UI
-- コンテキストに応じたヘルプボタン
-- 表示値補正（校正）ワークフローの改善・自動化
-
-コントリビューション歓迎です！
+- [Student の単一 Start / Stop と above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
+- [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
+- [Analog-meter pointer-matching presentation profile](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
 
 ---
 

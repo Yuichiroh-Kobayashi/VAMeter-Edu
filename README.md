@@ -25,7 +25,7 @@ VAMeter now provides its own Wi-Fi access point and same-origin Web Viewer. A st
 - Physical browser validation on **Microsoft Edge 151 for Windows**
 - Physical smoke validation on **iPad (7th generation), iPadOS 18.7.9, Safari**
 
-These browser gates qualified the device-hosted streaming and lifecycle paths. They did not re-qualify electrical measurement accuracy or provide a new calibration certificate.
+These browser tests validated the device-hosted streaming and lifecycle behavior. They did not re-qualify electrical measurement accuracy or provide a new calibration certificate.
 
 ### Educational Recording and Local Data Download
 
@@ -64,7 +64,7 @@ For hardware details, see the [Hackster.io project page](https://www.hackster.io
 
 This beta adds the device-hosted same-origin Viewer, the Student / Professional and Voltage / Current / Both views, selectable 10 / 30 / 60 second display windows, and the 5-second educational CSV workflow described above.
 
-The application and AssetPool binaries are a matched candidate. **Do not mix either binary with another version.** Verify the downloaded files before writing them:
+The published application and AssetPool binaries are a matched release pair. **Do not mix either binary with another version.** Verify the downloaded files before writing them:
 
 | Release identity | Value |
 |---|---|
@@ -75,13 +75,10 @@ The application and AssetPool binaries are a matched candidate. **Do not mix eit
 | app SHA-256 | `9b872ea5cc483b361bba9550e1878b9036d205ee830fd84a0e321d3f3a732423` |
 | AssetPool SHA-256 | `1df4b81fba8b3f16baf1331f015cdb1fdc7214d66a215657ef752673b43c1c41` |
 
-Known beta boundaries:
+Current limitations:
 
 - [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) is open; neither gap-free CSV nor uniform sampling is guaranteed.
-- Final multi-client product policy is deferred.
-- Student controls are planned to be simplified to a single Start / Stop control after beta.
-- Analog-style numeric display and `AnalogMeterProfile` configuration are post-beta work.
-- Static IRAM is `16383 / 16384`; release resources remain **RESOURCE HOLD**.
+- Static IRAM usage is `16383 / 16384` bytes; resource headroom is extremely limited and must be reviewed before adding firmware features.
 - This beta does not represent the stable `v2.0.0` release.
 
 ### v1.1.0 (2026-01-01)
@@ -91,6 +88,12 @@ Known beta boundaries:
 - **Bug fix**: Fixed an issue where waveform recording did not start after returning from Voltage/Current meter screens
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
+
+## Roadmap
+
+- [Student single Start / Stop control and above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
+- [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
+- [Analog-meter pointer-matching presentation profile](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
 
 ## Project Structure
 

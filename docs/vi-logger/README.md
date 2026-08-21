@@ -1,17 +1,16 @@
 # V-I logger documentation
 
-> **Status: LEGACY INDEX / MIGRATION IN PROGRESS**
+> **Status: LEGACY MIXED-GENERATION INDEX**
 
-`docs/vi-logger/` remains a temporary index for VAMeter-Edu V-I logger documentation. Historical validations and the superseded pre-beta D2B live-validation plan have moved to the [historical archive](../archive/README.md). Current architecture, standards, and operations documents remain here until PR-DOC2 completes the role-based canonical migration.
+`docs/vi-logger/` mixes documents from different implementation generations and is not a single current product authority. Historical validations and the superseded pre-beta D2B live-validation plan have moved to the [historical archive](../archive/README.md). The role-based current-documentation structure and remaining migration are tracked in [VAMeter-Edu Issue #7](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/7).
 
 ## Document roles
 
-- `architecture/` explains intended architecture, accepted behavior, and design rationale.
+- `architecture/` contains mixed-generation architecture and design rationale pending role-based classification.
 - `standards/` defines measurement semantics and other normative policies.
 - `operations/` contains hardware and operational validation plans.
-- `validation/` records focused test and physical-device evidence.
 
-Implementation contracts, physical evidence, and future designs must remain distinguishable. Current implementation behavior comes from merged code and tests; measurement semantics use the standards document together with HAL implementation; physical PASS/FAIL claims come from validation evidence; future work remains in architecture documents and open Issues.
+Implementation contracts, physical evidence, and future work must remain distinguishable. Current implementation behavior comes from merged code and tests; measurement semantics use the applicable standards document together with HAL implementation; physical PASS/FAIL claims come from focused evidence; future product work belongs in open GitHub Issues.
 
 The old files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` are compatibility stubs. Do not add new content to those stubs.
 
