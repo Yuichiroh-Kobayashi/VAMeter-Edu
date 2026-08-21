@@ -30,24 +30,24 @@ int main()
 
     Expect(kIndexBytes == 573U, "index capacity");
     Expect(kManifestBytes == 1363U, "manifest capacity");
-    Expect(kCssGzipBytes == 580U, "CSS gzip capacity");
-    Expect(kJsGzipBytes == 18790U, "JS gzip capacity");
+    Expect(kCssGzipBytes == 761U, "CSS gzip capacity");
+    Expect(kJsGzipBytes == 22578U, "JS gzip capacity");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 21306U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 25275U, "stored payload bytes");
     Expect(std::strlen(kViewerBundleId) == kBundleIdCharacters, "bundle ID length");
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
-    Expect(Equal(kIndexSha256, "1d3e9e7b09d47a1b52c2f584d6f95dae94944c47226ebf76da82b5b367aebbf7"), "index SHA-256");
+    Expect(Equal(kIndexSha256, "552d74ebddf18c360d09826bef04d4f40df886ac09e9ab464caae7c89fbc76f9"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
-    Expect(Equal(kCssGzipSha256, "5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166"), "JS SHA-256");
+    Expect(Equal(kCssGzipSha256, "9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd"), "CSS SHA-256");
+    Expect(Equal(kJsGzipSha256, "26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d"), "JS SHA-256");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
-        "/viewer/assets/app.5e7442c9aa36fbcb6f5b97b3ddedebc7792d0bc136dbcb0aa1a5f1e5af2cf7e9.css",
-        "/viewer/assets/app.b19cd742a1d7085934f9b89745d191e11a2c0b5a92798b8db292f37aaa357166.js",
+        "/viewer/assets/app.9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd.css",
+        "/viewer/assets/app.26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();
