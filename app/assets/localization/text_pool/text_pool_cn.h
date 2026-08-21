@@ -43,7 +43,7 @@ struct TextPool_cn_t
     char AppFiles_Option_Open[7] = "打开";
     char AppFiles_Option_Upload[12] = "下载 (QR)";
     char AppFiles_Option_Delete[7] = "删除";
-    char AppFiles_Confirm_Delete[19] = "删除此记录？";
+    char AppFiles_Confirm_Delete[8] = "Delete?";
     char AppFiles_Error_Delete[15] = "Delete\nfailed";
     char AppPowerMonitor_PageSingle_InputVolt[13] = "输入电压";
     char AppPowerMonitor_PageSingle_InputPower[13] = "输入功率";

@@ -39,7 +39,7 @@ AppFiles_Option_MscMode,MSC mode,MSC 模式,MSCモード
 AppFiles_Option_Open,Open,打开,開く
 AppFiles_Option_Upload,Download (QR),下载 (QR),ダウンロード (QR)
 AppFiles_Option_Delete,Delete,删除,削除
-AppFiles_Confirm_Delete,Delete?,删除此记录？,削除しますか
+AppFiles_Confirm_Delete,Delete?,Delete?,削除しますか
 AppFiles_Error_Delete,Delete\nfailed,Delete\nfailed,削除できません
 AppPowerMonitor_PageSingle_InputVolt,Input Volt.,输入电压,入力電圧
 AppPowerMonitor_PageSingle_InputPower,Input Pow,输入功率,入力パワー
