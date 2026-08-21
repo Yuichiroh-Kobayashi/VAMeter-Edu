@@ -1,19 +1,20 @@
 # V-I logger documentation
 
-`docs/vi-logger/` is the canonical home for VAMeter-Edu V-I logger documentation.
+> **Status: LEGACY MIXED-GENERATION INDEX**
+
+`docs/vi-logger/` mixes documents from different implementation generations and is not a single current product authority. Historical validations and the superseded pre-beta D2B live-validation plan have moved to the [historical archive](../archive/README.md). The role-based current-documentation structure and remaining migration are tracked in [VAMeter-Edu Issue #7](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/7).
 
 ## Document roles
 
-- `architecture/` explains intended architecture, accepted behavior, and design rationale.
+- `architecture/` contains mixed-generation architecture and design rationale pending role-based classification.
 - `standards/` defines measurement semantics and other normative policies.
 - `operations/` contains hardware and operational validation plans.
-- `validation/` records focused test and physical-device evidence.
 
-Implementation contracts, physical evidence, and future designs must remain distinguishable. Current implementation behavior comes from merged code and tests; measurement semantics use the standards document together with HAL implementation; physical PASS/FAIL claims come from validation evidence; future work remains in architecture documents and open Issues.
+Implementation contracts, physical evidence, and future work must remain distinguishable. Current implementation behavior comes from merged code and tests; measurement semantics use the applicable standards document together with HAL implementation; physical PASS/FAIL claims come from focused evidence; future product work belongs in open GitHub Issues.
 
 The old files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` are compatibility stubs. Do not add new content to those stubs.
 
-AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoffs under [`../handoffs/`](../handoffs/README.md) preserve history and evidence, but a handoff alone does not override current code, tests, canonical standards/architecture, or open Issues.
+AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoffs and validation evidence under [`../archive/`](../archive/README.md) preserve history, but archive material does not override current code, tests, standards/architecture, or open Issues.
 
 ## Architecture
 
@@ -28,8 +29,9 @@ AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoff
 ## Operations
 
 - [Battery and protection test plan](operations/battery_and_protection_test_plan.md)
-- [D2B V/I live-stream validation plan](operations/d2b_vi_live_validation_plan.md)
 
-## Validation
+## Historical validation and plans
 
-- [PR #1 recorder validation, 2026-07-29](validation/pr1_recorder_validation_2026-07-29.md)
+- [PR #1 recorder validation, 2026-07-29](../archive/validation/recording/2026-07-29-pr1-recorder-validation.md)
+- [Pre-beta D2B V/I live-stream validation plan](../archive/plans/d2b-vi-live-validation-pre-beta1.md)
+- [Archive index and complete move mapping](../archive/README.md)

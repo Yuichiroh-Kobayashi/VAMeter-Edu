@@ -28,6 +28,7 @@ python3 tests/d2b_vi_integration/validate_live_capture.py \
   --oracle "$HOME/Dev/Device-to-Browser-Data-Streaming" first.json second.json
 ```
 
-The complete physical-device and browser procedure, evidence fields, gates,
-and interpretation rules are in
-`docs/vi-logger/operations/d2b_vi_live_validation_plan.md`.
+The pre-beta physical-device/browser procedure originally used with this
+helper is preserved at
+`docs/archive/plans/d2b-vi-live-validation-pre-beta1.md`. It is historical
+evidence, not the current browser-qualification authority.
