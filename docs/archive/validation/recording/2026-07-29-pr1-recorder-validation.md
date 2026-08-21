@@ -2,7 +2,7 @@
 
 ## Scope and evidence
 
-This report extracts the physical validation evidence for PR #1 from the dated [Revision 9 handoff](../../handoffs/VAMeter-Edu_PR1_post-merge_handoff_2026-07-29_rev9.md). It intentionally omits the longer Git cleanup and branch-history narrative.
+This report extracts the physical validation evidence for PR #1 from the dated [Revision 9 handoff](../../handoffs/2026-07-29-pr1-post-merge-handoff-rev9.md). It intentionally omits the longer Git cleanup and branch-history narrative.
 
 Eight consecutive records, `REC-000.csv` through `REC-007.csv`, were created on physical VAMeter hardware and transferred through USB MSC.
 
@@ -62,4 +62,4 @@ The current recorder is suitable for low-speed change and steady-value classroom
 
 ## Checksums and provenance
 
-The authoritative per-file SHA256 list is in Section 18 of the [Revision 9 handoff](../../handoffs/VAMeter-Edu_PR1_post-merge_handoff_2026-07-29_rev9.md) and in `SHA256SUMS` beside the archived LabData.
+The authoritative per-file SHA256 list is in Section 18 of the [Revision 9 handoff](../../handoffs/2026-07-29-pr1-post-merge-handoff-rev9.md) and in `SHA256SUMS` beside the archived LabData.

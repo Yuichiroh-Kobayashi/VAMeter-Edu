@@ -1,10 +1,12 @@
 # VAMeter-Edu（日本語）
 
-[M5Stack VAMeter](https://docs.m5stack.com/en/products/sku/K136) 用の教育向けファームウェアです。
+[M5Stack VAMeter](https://docs.m5stack.com/en/products/sku/K136) 用の教育向けファームウェアです。日本の中学校で、実際の回路操作、電圧・電流の観察、短時間の明示的な記録、ローカル CSV のグラフ化を結び付けることを目的としています。
 
 目に見えない電気を、**波形表示(簡易オシロスコープ)** と **デジタル値** で可視化し、初学者の学習をサポートします。
 
 > **English version**: [README.md](README.md)
+
+> **最新のプレリリース:** [`v2.0.0-beta.1`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0-beta.1)（2026-08-21）。実機確認済みの beta であり、安定版 `v2.0.0` ではありません。
 
 ---
 
@@ -17,13 +19,27 @@
 - **固定表示モード**：誤操作によるページ切り替えを防止
 - **日本語UI**：教室での運用を想定した日本語表示
 
-### ローカルデータダウンロード（v1.1.0〜）
+### Device-hosted Viewer（`v2.0.0-beta.1`）
 
-VAMeter 本体が **Wi-Fi アクセスポイント(AP)** として動作し、画面に表示される **QRコード** からアクセスすることで、**CSV データを端末へ直接ダウンロード** できます。**インターネット接続やクラウドアカウントは不要** です。
+VAMeter 本体が Wi-Fi アクセスポイントと same-origin Web Viewer を提供します。生徒や教員は本体へ直接接続し、インターネット接続やクラウドアカウントなしで Viewer を開けます。
+
+- **Student / Professional** の表示モード
+- **Voltage / Current / Both** の測定プロファイル
+- **10 / 30 / 60 秒**の表示時間幅
+- device timestamp を使用し、欠落を補間せず invalid sample を 0 にしない波形表示
+- **Windows の Microsoft Edge 151** による実機ブラウザ検証
+- **iPad 第7世代 / iPadOS 18.7.9 / Safari** による実機 smoke 検証
+
+これらの browser gate が確認したのは device-hosted streaming と lifecycle です。電気測定精度を再認定したものでも、新しい校正証明でもありません。
+
+### 教育用記録とローカルデータダウンロード
+
+現在の fallback recorder は、手動開始した **5秒の教育用記録**を保存します。画面に表示される **QRコード** から、CSV データを端末へ直接ダウンロードできます。**インターネット接続やクラウドアカウントは不要** です。
 
 - 学校ネットワークのアクセス制限を回避しやすい
 - CSV は生徒端末側で表示・加工・共有が可能
 - ※ v1.1.0 では、従来の **EzData へのアップロード機能を廃止**し、ローカルダウンロード方式に変更しました
+- 同期 FAT 書き込みによる sampling stall は [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) として継続中で、**gap-free CSV は保証しません**
 
 また、複数台を同時に使用する教室運用を想定し、AP 名称の識別用に **AP サフィックス(01〜40)** を設定できます。
 
@@ -58,6 +74,30 @@ Hackster.io プロジェクトページから以下の情報を参照できま�
 ---
 
 ## ファームウェア
+
+### v2.0.0-beta.1（2026-08-21）
+
+この beta では、device-hosted same-origin Viewer、Student / Professional、Voltage / Current / Both、10 / 30 / 60 秒の表示時間幅、5秒の教育用 CSV workflow を追加・整理しました。
+
+application と AssetPool は同一 candidate の組み合わせです。**異なる version の binary を混在させないでください。** 書き込み前にダウンロードしたファイルを確認してください。
+
+| Release identity | 値 |
+|---|---|
+| Firmware released commit | `6f769485f5f1de119d7b7edcc38f724620dc2ac7` |
+| Viewer commit | `105bca2616ef372fe23ac0797f58b5c7383ee20c` |
+| D2B commit | `5411ba59a12882345d32218eda367bd6ba35ef5d` |
+| Viewer bundle | `cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5` |
+| app SHA-256 | `9b872ea5cc483b361bba9550e1878b9036d205ee830fd84a0e321d3f3a732423` |
+| AssetPool SHA-256 | `1df4b81fba8b3f16baf1331f015cdb1fdc7214d66a215657ef752673b43c1c41` |
+
+beta の既知境界：
+
+- [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) は OPEN で、gap-free CSV も均一 sampling も保証しません。
+- multi-client の最終 product policy は deferred です。
+- Student の操作は beta 後に単一の Start / Stop へ簡略化する予定です。
+- analog-style numeric 表示と `AnalogMeterProfile` 設定は post-beta の作業です。
+- static IRAM は `16383 / 16384` で、release resource は **RESOURCE HOLD** です。
+- この beta は安定版 `v2.0.0` ではありません。
 
 ### v1.1.0（2026-01-01）
 

@@ -1,6 +1,8 @@
 # V-I logger documentation
 
-`docs/vi-logger/` is the canonical home for VAMeter-Edu V-I logger documentation.
+> **Status: LEGACY INDEX / MIGRATION IN PROGRESS**
+
+`docs/vi-logger/` remains a temporary index for VAMeter-Edu V-I logger documentation. Historical validations and the superseded pre-beta D2B live-validation plan have moved to the [historical archive](../archive/README.md). Current architecture, standards, and operations documents remain here until PR-DOC2 completes the role-based canonical migration.
 
 ## Document roles
 
@@ -13,7 +15,7 @@ Implementation contracts, physical evidence, and future designs must remain dist
 
 The old files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` are compatibility stubs. Do not add new content to those stubs.
 
-AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoffs under [`../handoffs/`](../handoffs/README.md) preserve history and evidence, but a handoff alone does not override current code, tests, canonical standards/architecture, or open Issues.
+AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoffs and validation evidence under [`../archive/`](../archive/README.md) preserve history, but archive material does not override current code, tests, standards/architecture, or open Issues.
 
 ## Architecture
 
@@ -28,8 +30,9 @@ AI-tool-wide durable rules live under [`../ai/`](../ai/README.md). Dated handoff
 ## Operations
 
 - [Battery and protection test plan](operations/battery_and_protection_test_plan.md)
-- [D2B V/I live-stream validation plan](operations/d2b_vi_live_validation_plan.md)
 
-## Validation
+## Historical validation and plans
 
-- [PR #1 recorder validation, 2026-07-29](validation/pr1_recorder_validation_2026-07-29.md)
+- [PR #1 recorder validation, 2026-07-29](../archive/validation/recording/2026-07-29-pr1-recorder-validation.md)
+- [Pre-beta D2B V/I live-stream validation plan](../archive/plans/d2b-vi-live-validation-pre-beta1.md)
+- [Archive index and complete move mapping](../archive/README.md)

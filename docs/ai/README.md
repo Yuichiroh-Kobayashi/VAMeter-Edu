@@ -46,9 +46,10 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
 
 ## Related document sets
 
-- [`../vi-logger/README.md`](../vi-logger/README.md) indexes the canonical V-I logger architecture, standards, operations, and validation documents.
-- [`../vi-logger/validation/pr1_recorder_validation_2026-07-29.md`](../vi-logger/validation/pr1_recorder_validation_2026-07-29.md) is the focused PR #1 physical-validation record.
-- [`../handoffs/README.md`](../handoffs/README.md) explains how dated handoffs should be used as history and evidence.
+- [`../README.md`](../README.md) explains current document roles and the staged migration.
+- [`../vi-logger/README.md`](../vi-logger/README.md) is the legacy V-I logger index while migration is in progress.
+- [`../archive/validation/recording/2026-07-29-pr1-recorder-validation.md`](../archive/validation/recording/2026-07-29-pr1-recorder-validation.md) is the focused PR #1 physical-validation record.
+- [`../archive/README.md`](../archive/README.md) explains how dated handoffs, validations, and superseded plans are preserved as history and evidence.
 
 ## Update policy
 
