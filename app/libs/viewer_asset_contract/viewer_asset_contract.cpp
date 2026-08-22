@@ -5,17 +5,17 @@
 
 namespace VIEWER_ASSET_CONTRACT
 {
-    const char kViewerBundleId[] = "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5";
-    const char kIndexSha256[] = "552d74ebddf18c360d09826bef04d4f40df886ac09e9ab464caae7c89fbc76f9";
-    const char kManifestSha256[] = "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5";
-    const char kCssGzipSha256[] = "9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd";
-    const char kJsGzipSha256[] = "26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d";
+    const char kViewerBundleId[] = "6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca";
+    const char kIndexSha256[] = "53924d7af7617fdbec7b3d240835082702b72ea1971b8b4051d89bb7c05089d3";
+    const char kManifestSha256[] = "6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca";
+    const char kCssGzipSha256[] = "d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf";
+    const char kJsGzipSha256[] = "3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a";
 
     const char kRootRoute[] = "/";
     const char kViewerRoute[] = "/viewer/";
     const char kManifestRoute[] = "/viewer/asset-manifest.json";
-    const char kCssRoute[] = "/viewer/assets/app.9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd.css";
-    const char kJsRoute[] = "/viewer/assets/app.26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d.js";
+    const char kCssRoute[] = "/viewer/assets/app.d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf.css";
+    const char kJsRoute[] = "/viewer/assets/app.3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a.js";
     const char kDeviceRoute[] = "/viewer/device.json";
 
     const char kHtmlMime[] = "text/html; charset=utf-8";

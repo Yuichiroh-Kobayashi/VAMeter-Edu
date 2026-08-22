@@ -6,6 +6,15 @@ browser Viewer, released as part of `v2.0.0-beta.1`. See
 [`../architecture/systemlive-lifecycle-and-ownership.md`](../architecture/systemlive-lifecycle-and-ownership.md)
 for the underlying route/session architecture.
 
+The source after `v2.0.0-beta.1` contains a pending physical-qualification candidate for
+Viewer Public Status Standard R1. Its exact Viewer source is
+`84136a22ed6ea00f428f8c1c430dc76ec615caf4` and its bundle ID is
+`6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca`.
+Host and firmware-build qualification do not make this candidate deployed: until the
+matching application and AssetPool are written and browser-qualified on a physical
+device, the released `v2.0.0-beta.1` bundle and its historical physical evidence remain
+the deployed product authority.
+
 ## What it is
 
 VAMeter now hosts the Viewer itself: the device serves the Viewer's HTML/CSS/JS bundle and
