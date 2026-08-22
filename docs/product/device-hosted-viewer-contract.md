@@ -6,14 +6,21 @@ browser Viewer, released as part of `v2.0.0-beta.1`. See
 [`../architecture/systemlive-lifecycle-and-ownership.md`](../architecture/systemlive-lifecycle-and-ownership.md)
 for the underlying route/session architecture.
 
-The source after `v2.0.0-beta.1` contains a pending physical-qualification candidate for
-Viewer Public Status Standard R1. Its exact Viewer source is
-`84136a22ed6ea00f428f8c1c430dc76ec615caf4` and its bundle ID is
+The source after `v2.0.0-beta.1` contains the Viewer Public Status Standard R1 candidate.
+Its exact physically tested Firmware source is
+`8ac66922735b9634f7a440dbf0ae1dff0784789f`, its exact Viewer source is
+`84136a22ed6ea00f428f8c1c430dc76ec615caf4`, and its bundle ID is
 `6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca`.
-Host and firmware-build qualification do not make this candidate deployed: until the
-matching application and AssetPool are written and browser-qualified on a physical
-device, the released `v2.0.0-beta.1` bundle and its historical physical evidence remain
-the deployed product authority.
+The candidate application and AssetPool were written and independently read back with
+exact identity, then targeted device-hosted integration was manually passed on Windows
+Edge and iPad Safari, including start/stop behavior, reconnect cleanup, and rollback.
+This result is **PASS WITH EVIDENCE GAPS**, not full browser qualification: oracle-backed
+browser capture, screenshots/DevTools evidence, long soak, gap/backpressure, and other
+full-qualification cases were not performed. The session ended after restoring the
+known-good `v2.0.0-beta.1` application + AssetPool pair, so the PR #14 candidate is not
+currently deployed. The historical beta.1 pair remains the deployed product authority
+until full qualification and a release decision are completed. See the
+[targeted physical validation record](../archive/validation/d2b/2026-08-22-public-status-r1-viewer-targeted-physical-validation.md).
 
 ## What it is
 
