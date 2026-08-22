@@ -14,8 +14,8 @@ SystemConfig authority must not be carried into SystemLive as a write surface.
 
 - device-hosted Viewer;
 - D2B index, capability, status, and measurement stream;
-- no configuration write APIs;
-- no `/download/*`;
+- no configuration pages or configuration APIs (read or write) — `WEB_SERVER_PROFILE::PolicyFor(SystemLive)` sets both `configurationPages` and `configurationApis` to `false`, so routes such as `/syscfg` are never registered while SystemLive is active, not merely write-restricted;
+- no `/download/*` (`downloadRoutesAllowed` is `false`);
 - valid measurement runtime/model/session state before stream admission;
 - O1-RX admission under the canonical [Origin policy](origin-admission-policy.md).
 
@@ -40,11 +40,11 @@ The production transport is currently HTTP on port 80. No hostname or mDNS alias
 - Supported Viewer modes remain Student and Professional only; there is no Presentation mode.
 - D2B envelope, stream, measurement, and unit semantics are unchanged by the service-profile split.
 - The browser never controls Relay state, measurement mode, or measurement range.
-- `C_HYBRID` remains retained under the frozen `O1-RX + O3` direction.
+- `C_HYBRID` remains retained under the current `O1-RX + O3` architecture.
 
-For the beta.1 lockstep device-hosted profile, AppWaveform selects a bounded display profile before SystemLive starts. `mode_volt_only`, `mode_current_only`, and `mode_both` map exactly to `Voltage`, `Current`, and `Both` in `/viewer/device.json`. The selected value is immutable for that active SystemLive lifecycle, and an unknown value fails closed rather than becoming `Both`. This required additive field does not change the current internal `schema_version` value of `1`; no explicit additive-field bump rule exists for this lockstep beta profile.
+For the released `v2.0.0-beta.1` device-hosted profile, AppWaveform selects a bounded display profile before SystemLive starts. `mode_volt_only`, `mode_current_only`, and `mode_both` map exactly to `Voltage`, `Current`, and `Both` in `/viewer/device.json`. The selected value is immutable for that active SystemLive lifecycle, and an unknown value fails closed rather than becoming `Both`. This additive field does not change the current internal `schema_version` value of `1`; no explicit additive-field bump rule exists yet for this beta profile.
 
-Browser analog-style numeric presentation remains `DEFERRED_AFTER_BETA1`. Multi-client product policy remains `DEFERRED_AFTER_MULTI_CLIENT_PHYSICAL_VALIDATION`; the existing one-active-owner D2B safety contract is unchanged.
+Browser analog-style numeric presentation (pointer-matching) is not implemented; see [`measurement-and-presentation-semantics.md`](../standards/measurement-and-presentation-semantics.md#analog-pointer-matching-current-boundary) for the current boundary and [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9) for the roadmap item. Multi-client product policy beyond the existing one-active-owner D2B safety contract is not yet defined; it is under investigation in [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8), which must preserve the existing one-active-owner D2B safety contract while unresolved. See [`systemlive-lifecycle-and-ownership.md`](systemlive-lifecycle-and-ownership.md) for that contract's implementation.
 
 Resource qualification for these profiles is governed by
 [`resource-budget.md`](resource-budget.md).

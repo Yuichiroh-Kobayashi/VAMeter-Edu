@@ -28,7 +28,8 @@ python3 tests/d2b_vi_integration/validate_live_capture.py \
   --oracle "$HOME/Dev/Device-to-Browser-Data-Streaming" first.json second.json
 ```
 
-The pre-beta physical-device/browser procedure originally used with this
-helper is preserved at
-`docs/archive/plans/d2b-vi-live-validation-pre-beta1.md`. It is historical
-evidence, not the current browser-qualification authority.
+The current physical-device/browser qualification procedure that uses this
+helper is `docs/validation/browser-physical-qualification.md`. The pre-`beta.1`
+procedure this helper was originally built for is preserved as historical
+evidence at `docs/archive/plans/d2b-vi-live-validation-pre-beta1.md`; it is
+not the current browser-qualification authority.

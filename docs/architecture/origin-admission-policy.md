@@ -1,6 +1,8 @@
 # Direct-browser Origin admission policy
 
-This document is the canonical security policy for direct-browser WebSocket admission. G2 freezes `O1-RX + O3`, retains `C_HYBRID`, makes P1 and P2 mandatory, keeps O2 as a conditional fallback only, and reserves O4 as the last resort.
+This document is the canonical security policy for direct-browser WebSocket admission. The
+current architecture is `O1-RX + O3`, retaining `C_HYBRID`, with P1 and P2 mandatory. O2
+remains a conditional fallback only, and O4 is reserved as the last resort.
 
 ## Threat model and security boundary
 
@@ -82,13 +84,19 @@ A terminal violation returns socket failure without returning the header-complet
 
 ## Fixed bounds
 
-- Maximum accepted Origin value: 191 bytes.
-- Per-session O1-RX state design ceiling: 64 bytes, excluding allocator metadata.
+- Maximum accepted Origin value: 191 bytes (`ORIGIN_ADMISSION::kMaximumOriginBytes`).
+- Per-session O1-RX state ceiling: 64 bytes, excluding allocator metadata, enforced at
+  compile time by `static_assert(sizeof(State) <= 64, ...)` in `app/libs/origin_admission/origin_admission.h`.
 - No full-header or replay buffer.
 
-These are implementation ceilings, not measured resource cost. Actual IRAM, DRAM, BSS, flash, heap, and stack effects require later measurement under the
+The 64-byte and 191-byte values are compile-time-enforced ceilings on this scanner's own
+state and accepted Origin length. They are not a measurement of actual linked IRAM, DRAM,
+BSS, flash, heap, or stack cost; those effects require measurement under the
 [resource budget](resource-budget.md) and the validation hierarchy in
 [`../ai/build-and-validation.md`](../ai/build-and-validation.md).
 
 Route and topology ownership is defined by
-[`direct-browser-service-profiles.md`](direct-browser-service-profiles.md). No O1-RX implementation or qualification is established by this architecture freeze.
+[`direct-browser-service-profiles.md`](direct-browser-service-profiles.md). This O1-RX
+scanner is implemented in `app/libs/origin_admission/`; its resource and runtime
+qualification beyond the compile-time size ceiling above follows the process in
+[resource budget](resource-budget.md).

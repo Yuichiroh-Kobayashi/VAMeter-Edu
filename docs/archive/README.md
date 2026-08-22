@@ -18,6 +18,16 @@ Dates are intentionally retained in archive filenames so that evidence remains t
 | `docs/vi-logger/validation/d2b_stop_failure_recovery_offline_validation_2026-08-02.md` | [`docs/archive/validation/d2b/2026-08-02-stop-failure-recovery-offline.md`](validation/d2b/2026-08-02-stop-failure-recovery-offline.md) |
 | `docs/vi-logger/validation/pr1_recorder_validation_2026-07-29.md` | [`docs/archive/validation/recording/2026-07-29-pr1-recorder-validation.md`](validation/recording/2026-07-29-pr1-recorder-validation.md) |
 | `docs/vi-logger/operations/d2b_vi_live_validation_plan.md` | [`docs/archive/plans/d2b-vi-live-validation-pre-beta1.md`](plans/d2b-vi-live-validation-pre-beta1.md) |
+| `docs/vi-logger/architecture/vi_logger_product_definition.md` | [`docs/archive/design/vi-logger-product-definition.md`](design/vi-logger-product-definition.md) |
+| `docs/vi-logger/architecture/internal_excitation_measurement_design.md` | [`docs/archive/design/internal-excitation-measurement-design.md`](design/internal-excitation-measurement-design.md) |
+| `docs/vi-logger/operations/battery_and_protection_test_plan.md` | [`docs/archive/design/battery-and-protection-test-plan.md`](design/battery-and-protection-test-plan.md) |
+| `docs/vi-logger/standards/measurement_semantics_policy.md` | [`docs/archive/design/measurement-semantics-policy-future-draft.md`](design/measurement-semantics-policy-future-draft.md) |
+
+`docs/vi-logger/architecture/local_csv_download.md` and `docs/vi-logger/operations/d2b_runtime_evidence.md` described current, implemented behavior rather than a historical or future draft; their content was migrated (not archived) into [`docs/product/educational-recording-and-local-download.md`](../product/educational-recording-and-local-download.md) and [`docs/operations/d2b-runtime-diagnostics.md`](../operations/d2b-runtime-diagnostics.md) respectively.
+
+## Historical design drafts
+
+`docs/archive/design/` preserves design drafts for an unimplemented internal-excitation ("next-generation") V-I logger concept. None of it is implemented and none of it is current product authority. It is not an abandoned idea: science teachers have requested an internally-powered classroom V-I experiment device, and this remains a real, still-requested future requirement — but it is paused because it requires a large hardware redesign (internal power source, hardware-level protection circuitry, battery selection) rather than a firmware feature. It is tracked in [VAMeter-Edu Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11). Each document carries a `HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY — PAUSED, TRACKED FUTURE REQUIREMENT` banner; treat their content as historical design exploration and reference material for Issue #11, not as a committed specification, and do not begin implementation without an explicit task request.
 
 ## Using handoffs and validation evidence
 

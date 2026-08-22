@@ -93,7 +93,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 - [Student single Start / Stop control and above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
 - [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
-- [Analog-meter pointer-matching presentation profile](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
+- [Analog-meter answer-check display correction](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
 
 ## Project Structure
 
