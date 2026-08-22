@@ -6,6 +6,8 @@
 #include <app.h>
 #include "hal_desktop/hal_desktop.hpp"
 
+#include <cstdlib>
+
 void setup()
 {
     APP::SetupCallback_t callback;
@@ -17,14 +19,17 @@ void setup()
         */
         // デスクトップでは .bin があればそれを優先、無ければ内蔵スタブにフォールバック
         if (auto from_bin = AssetPool::GetStaticAssetFromBin()) {
-            AssetPool::InjectStaticAsset(from_bin);
+            if (!AssetPool::InjectStaticAsset(from_bin))
+                std::exit(EXIT_FAILURE);
         } else {
             // 無ければ作って注入し、同時に bin を出力（desktop/build/ に生成されます）
             auto asset = AssetPool::CreateStaticAsset();
-            AssetPool::InjectStaticAsset(asset);
+            if (asset == nullptr || !AssetPool::InjectStaticAsset(asset))
+                std::exit(EXIT_FAILURE);
 #if defined(LGFX_SDL)
             // 実行カレントディレクトリに書き出し（例：platforms/desktop/build）
-            AssetPool::DumpStaticAsset("AssetPool-VAMeter.bin", asset);
+            if (!AssetPool::DumpStaticAsset("AssetPool-VAMeter.bin", asset))
+                std::exit(EXIT_FAILURE);
 #endif
         }
     };

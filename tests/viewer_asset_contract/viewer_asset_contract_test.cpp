@@ -30,24 +30,26 @@ int main()
 
     Expect(kIndexBytes == 573U, "index capacity");
     Expect(kManifestBytes == 1363U, "manifest capacity");
-    Expect(kCssGzipBytes == 761U, "CSS gzip capacity");
-    Expect(kJsGzipBytes == 22578U, "JS gzip capacity");
+    Expect(kCssGzipBytes == 756U, "CSS gzip payload bytes");
+    Expect(kJsGzipBytes == 22566U, "JS gzip payload bytes");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 25275U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 25258U, "stored payload bytes");
     Expect(std::strlen(kViewerBundleId) == kBundleIdCharacters, "bundle ID length");
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
-    Expect(Equal(kIndexSha256, "552d74ebddf18c360d09826bef04d4f40df886ac09e9ab464caae7c89fbc76f9"), "index SHA-256");
+    Expect(Equal(kIndexSha256, "53924d7af7617fdbec7b3d240835082702b72ea1971b8b4051d89bb7c05089d3"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
-    Expect(Equal(kCssGzipSha256, "9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d"), "JS SHA-256");
+    Expect(Equal(kCssGzipSha256, "d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf"), "CSS SHA-256");
+    Expect(Equal(kJsGzipSha256, "3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a"), "JS SHA-256");
+    Expect(!Equal(kViewerBundleId, "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5"),
+           "released beta.1 bundle is not the current source candidate");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
-        "/viewer/assets/app.9b4bee7dbff86be783cb570d0776a6dfb4b49cae300128a1dbc13e03d30181cd.css",
-        "/viewer/assets/app.26b707d12a964f8e0ddd1eac50737b81dccc8d45e2162a3196e88b488770366d.js",
+        "/viewer/assets/app.d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf.css",
+        "/viewer/assets/app.3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();

@@ -24,6 +24,17 @@
 
 AssetPool* AssetPool::_asset_pool = nullptr;
 
+static_assert(VIEWER_ASSET_CONTRACT::kIndexBytes <= sizeof(((WebPagePool_t*)nullptr)->viewer_index_html),
+              "Viewer index exceeds its fixed AssetPool slot");
+static_assert(VIEWER_ASSET_CONTRACT::kManifestBytes <= sizeof(((WebPagePool_t*)nullptr)->viewer_asset_manifest),
+              "Viewer manifest exceeds its fixed AssetPool slot");
+static_assert(VIEWER_ASSET_CONTRACT::kCssGzipBytes <= sizeof(((WebPagePool_t*)nullptr)->viewer_css_gzip),
+              "Viewer CSS exceeds its fixed AssetPool slot");
+static_assert(VIEWER_ASSET_CONTRACT::kJsGzipBytes <= sizeof(((WebPagePool_t*)nullptr)->viewer_js_gzip),
+              "Viewer JavaScript exceeds its fixed AssetPool slot");
+static_assert(VIEWER_ASSET_CONTRACT::kBundleIdCapacity == sizeof(((WebPagePool_t*)nullptr)->viewer_bundle_id),
+              "Viewer bundle ID must fill its fixed AssetPool slot");
+
 AssetPool* AssetPool::Get()
 {
     if (_asset_pool == nullptr)
@@ -213,6 +224,13 @@ static bool _copy_viewer_file_exact(const char* environmentVariable, uint8_t* ta
 static bool _copy_viewer_assets(StaticAsset_t* assetPool)
 {
     using namespace VIEWER_ASSET_CONTRACT;
+
+    std::memset(assetPool->WebPage.viewer_index_html, 0, sizeof(assetPool->WebPage.viewer_index_html));
+    std::memset(assetPool->WebPage.viewer_asset_manifest, 0, sizeof(assetPool->WebPage.viewer_asset_manifest));
+    std::memset(assetPool->WebPage.viewer_css_gzip, 0, sizeof(assetPool->WebPage.viewer_css_gzip));
+    std::memset(assetPool->WebPage.viewer_js_gzip, 0, sizeof(assetPool->WebPage.viewer_js_gzip));
+    std::memset(assetPool->WebPage.viewer_bundle_id, 0, sizeof(assetPool->WebPage.viewer_bundle_id));
+
     if (!_copy_viewer_file_exact(kIndexEnvironmentVariable, assetPool->WebPage.viewer_index_html, kIndexBytes) ||
         !_copy_viewer_file_exact(kManifestEnvironmentVariable, assetPool->WebPage.viewer_asset_manifest, kManifestBytes) ||
         !_copy_viewer_file_exact(kCssGzipEnvironmentVariable, assetPool->WebPage.viewer_css_gzip, kCssGzipBytes) ||
