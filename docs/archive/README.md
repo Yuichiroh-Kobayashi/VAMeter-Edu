@@ -27,7 +27,7 @@ Dates are intentionally retained in archive filenames so that evidence remains t
 
 ## Historical design drafts
 
-`docs/archive/design/` preserves design drafts for product directions that were never implemented, most describing an unimplemented internal-excitation ("next-generation") V-I logger concept. Each carries a `HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY` banner. No GitHub Issue currently tracks that concept as active roadmap work; do not treat its presence in the archive as a committed future direction.
+`docs/archive/design/` preserves design drafts for an unimplemented internal-excitation ("next-generation") V-I logger concept. None of it is implemented and none of it is current product authority. It is not an abandoned idea: science teachers have requested an internally-powered classroom V-I experiment device, and this remains a real, still-requested future requirement — but it is paused because it requires a large hardware redesign (internal power source, hardware-level protection circuitry, battery selection) rather than a firmware feature. It is tracked in [VAMeter-Edu Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11). Each document carries a `HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY — PAUSED, TRACKED FUTURE REQUIREMENT` banner; treat their content as historical design exploration and reference material for Issue #11, not as a committed specification, and do not begin implementation without an explicit task request.
 
 ## Using handoffs and validation evidence
 

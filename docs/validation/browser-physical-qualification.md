@@ -1,18 +1,24 @@
 # Browser physical qualification
 
 This is the current procedure for qualifying the device-hosted Viewer and D2B live stream
-against a real VAMeter and real browsers. It supersedes the pre-`beta.1` framing of the
-historical
-[D2B V/I live-stream validation plan](../archive/plans/d2b-vi-live-validation-pre-beta1.md)
-while reusing its procedure; that document remains as the historical record of what was
-run for the `v2.0.0-beta.1` qualification. See
-[`v2.0.0-beta.1` release notes](../releases/v2.0.0-beta.1.md) for the recorded outcome and
+against a real VAMeter and real browsers. It is adapted from, and supersedes as current
+authority, the historical
+[D2B V/I live-stream validation plan](../archive/plans/d2b-vi-live-validation-pre-beta1.md),
+which was pre-`beta.1` planning material. That archived plan is historical planning
+evidence for what was intended before the Viewer/SystemLive implementation existed; it is
+not a record of what was actually executed for `v2.0.0-beta.1`. The actual `v2.0.0-beta.1`
+physical-validation outcome (Windows Edge 151, iPad 7th generation iPadOS 18.7.9 Safari) is
+its own separate evidence, recorded in the
+[`v2.0.0-beta.1` CHANGELOG entry](../../CHANGELOG.md) and
+[release notes](../releases/v2.0.0-beta.1.md); this procedure does not retroactively claim
+to be what was followed to produce that earlier evidence. See
 [`tests/d2b_vi_integration/README.md`](../../tests/d2b_vi_integration/README.md) for the
 capture tooling this procedure uses.
 
 This procedure does not authorize firmware or AssetPool flashing, device-storage writes,
-calibration changes, dependency changes, recorder changes, or Issue #2/#3 work by itself;
-those each require their own explicit authorization. The protocol repository's
+calibration changes, dependency changes, recorder changes, or Issue #3 work by itself;
+those each require their own explicit authorization. Issue #2 (calibration persistence) is
+closed as not planned and is not applicable here. The protocol repository's
 specification, schemas, golden vectors, Python validator, and browser reference parser
 remain the oracle for D2B protocol conformance. A disagreement with the oracle is a
 product failure until evidence proves an oracle defect; do not change schemas or vectors
@@ -58,9 +64,13 @@ test shortcut — see
 1. With an operator present, boot the approved firmware normally.
 2. Join the VAMeter-Edu access point and open the device-hosted Viewer in the browser
    under test.
-3. Confirm `/d2b/v0/capabilities` and `/d2b/v0/status` are reachable while `/syscfg`
-   remains functional, and confirm no Download-profile server is active at the same time
-   (see [`../architecture/direct-browser-service-profiles.md`](../architecture/direct-browser-service-profiles.md)).
+3. Confirm `/d2b/v0/capabilities` and `/d2b/v0/status` are reachable, and confirm
+   configuration pages/APIs (e.g. `/syscfg`) and the Download surface are *not* reachable
+   while SystemLive is active. `WEB_SERVER_PROFILE::PolicyFor(SystemLive)` sets
+   `configurationPages`/`configurationApis`/`downloadRoutesAllowed` to `false` and only
+   registers Viewer/D2B routes; observing a reachable `/syscfg` or download route during
+   SystemLive is a fail, not an expected condition. See
+   [`../architecture/direct-browser-service-profiles.md`](../architecture/direct-browser-service-profiles.md).
 4. Keep the serial log visible for watchdog, allocation, send-failure, owner, and
    stack-high-water evidence (see
    [`../operations/d2b-runtime-diagnostics.md`](../operations/d2b-runtime-diagnostics.md)).

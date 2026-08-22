@@ -109,12 +109,13 @@ This is a deliberate education-first decision, not an unfinished UI.
 
 Do not mix these into unrelated recorder changes:
 
-- GitHub Issue #2: persistent calibration storage redesign and reintegration.
 - GitHub Issue #3: decouple sampling from synchronous FAT writes.
-- internal-excitation hardware implementation;
-- battery/protection hardware validation;
+- internal-excitation hardware implementation (paused; [Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11));
+- battery/protection hardware validation (paused with the above; see [Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11));
 - project-wide HelpEvent transport;
 - CI.
+
+GitHub Issue #2 (persistent calibration storage / `cal_store` redesign and reintegration) is closed as not planned; it is not active or upcoming work. Measurement-pipeline calibration changes are not currently planned.
 
 ## USB-C `mode_both` compatibility behavior
 

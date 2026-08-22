@@ -18,7 +18,8 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - educational purpose;
   - branch and scope boundaries;
   - accepted PR #1 behavior;
-  - separate Issues #2 and #3;
+  - Issue #3 (open) and Issue #2 (closed, not planned);
+  - paused internal-excitation V-I logger future direction (Issue #11);
   - device-hosted direct-browser product direction, now implemented and released as `v2.0.0-beta.1`.
 - `recorder-and-measurement-contracts.md`
   - UI, CSV, timing, storage, lifecycle, Files/download invariants;

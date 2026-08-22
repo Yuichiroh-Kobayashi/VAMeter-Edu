@@ -14,8 +14,8 @@ SystemConfig authority must not be carried into SystemLive as a write surface.
 
 - device-hosted Viewer;
 - D2B index, capability, status, and measurement stream;
-- no configuration write APIs;
-- no `/download/*`;
+- no configuration pages or configuration APIs (read or write) — `WEB_SERVER_PROFILE::PolicyFor(SystemLive)` sets both `configurationPages` and `configurationApis` to `false`, so routes such as `/syscfg` are never registered while SystemLive is active, not merely write-restricted;
+- no `/download/*` (`downloadRoutesAllowed` is `false`);
 - valid measurement runtime/model/session state before stream admission;
 - O1-RX admission under the canonical [Origin policy](origin-admission-policy.md).
 

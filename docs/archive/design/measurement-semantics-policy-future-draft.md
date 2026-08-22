@@ -1,11 +1,17 @@
-> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY**
+> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY — PAUSED, TRACKED FUTURE REQUIREMENT**
 >
 > This document is preserved as a historical design draft. Most of it (measurement-path
 > taxonomy for internal excitation, science/technology/heat-logger UI modes, sign-convention
 > and validity-state vocabulary for an active-output device) describes an unimplemented
-> future measurement-semantics concept. No source, test, or current documentation implements
-> that concept, and it is not a normative contract. No GitHub Issue currently tracks it as
-> active roadmap work.
+> future measurement-semantics concept for the internal-excitation V-I logger direction. No
+> source, test, or current documentation implements that concept, and it is not a normative
+> contract.
+>
+> This is a real, still-requested future requirement, not an abandoned idea — see
+> [VAMeter-Edu Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11),
+> which is paused pending a hardware redesign. Treat the content below as historical
+> design exploration and reference material for that Issue, not as a committed
+> specification.
 >
 > Section 9.1 ("現行PR #1実装の電流値契約") is the one part of this draft that already
 > described *current*, implemented behavior at the time it was written. That current-behavior
