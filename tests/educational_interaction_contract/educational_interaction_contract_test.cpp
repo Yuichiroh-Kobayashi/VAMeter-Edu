@@ -406,5 +406,5 @@ int main()
     TestRetainedDebtAndRecovery();
     TestLifecycleAndNoStaleOwner();
     TestSideHoldAndInvariant();
-    std::cout << "educational_ui_rev2_test U01-U32 PASS\n";
+    std::cout << "educational_interaction_contract_test U01-U32 PASS\n";
 }
