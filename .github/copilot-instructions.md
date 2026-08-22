@@ -17,7 +17,7 @@
 
 ## Completion guardrails
 
-- Preserve classroom-first behavior: explicit controls, fixed 10-second recording, safe recoverable errors, and simple CSV.
+- Preserve classroom-first behavior: explicit controls, fixed 5-second fallback recording, safe recoverable errors, and simple CSV.
 - Keep shared HAL declarations and desktop/VAMeter implementations consistent.
 - When changing measurement or recorder code, preserve the contracts in `docs/ai/recorder-and-measurement-contracts.md`.
 - Do not synthesize `elapsed_ms` from row number or force samples onto a uniform timeline.

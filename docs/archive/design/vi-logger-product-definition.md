@@ -1,3 +1,14 @@
+> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY**
+>
+> This document is preserved as a historical design draft. It describes an unimplemented
+> internal-excitation V-I logger product concept that predates and is separate from the
+> current VAMeter-Edu implementation. No source, test, or current documentation implements
+> this concept. It does not define current product behavior, and it is not a normative
+> contract. No GitHub Issue currently tracks this concept as active roadmap work; treat the
+> content below as historical exploration, not a committed future direction.
+>
+> Original path: `docs/vi-logger/architecture/vi_logger_product_definition.md`
+
 # VI Logger 製品定義ドラフト
 
 ステータス: ドラフト / 未確定
@@ -47,7 +58,7 @@
 - `README_ja.md`
 - `CHANGELOG.md`
 
-初期ドラフト作成時には存在しなかった文書（現在のcanonical構成は[`../README.md`](../README.md)を参照）:
+初期ドラフト作成時には存在しなかった文書（現在のcanonical構成は[`../../ai/README.md`](../../ai/README.md)を参照）:
 
 - `AGENTS.md`
 - `.github/copilot-instructions.md`
@@ -434,24 +445,12 @@ REC 互換性ゲート:
 - REC CSV 検証なしのチャンク転送移行
 - さらなるレビューなしに最終版として扱われる製品定義
 
-## 19. 関連文書の整備状況
+## 19. 関連文書の整備状況（アーカイブ時点）
 
-作成済み:
+このドラフトが参照していた計画文書は、いずれも同じ historical design draft として `docs/archive/design/` に保存されている:
 
-- `docs/vi-logger/standards/measurement_semantics_policy.md`
-- `docs/vi-logger/architecture/internal_excitation_measurement_design.md`
-- `docs/vi-logger/operations/battery_and_protection_test_plan.md`
+- [`measurement-semantics-policy-future-draft.md`](measurement-semantics-policy-future-draft.md)（旧 `docs/vi-logger/standards/measurement_semantics_policy.md` の未実装部分）
+- [`internal-excitation-measurement-design.md`](internal-excitation-measurement-design.md)
+- [`battery-and-protection-test-plan.md`](battery-and-protection-test-plan.md)
 
-未作成・今後の候補:
-
-- `docs/vi-logger/standards/csv_logging_policy.md`
-- `docs/vi-logger/architecture/thermal_energy_logging_plan.md`
-- `docs/vi-logger/operations/r_bulb_measurement_test_plan.md`
-- `docs/vi-logger/operations/heat_generation_experiment_test_plan.md`
-
-オプションの参照文書:
-
-- `docs/references/motor_observe_lessons.md`
-- `docs/references/vameter_measurement_path_notes.md`
-
-参照文書は教訓のみをまとめるべきである。Motor ObserveやMAKER-DRIVEをアクティブな次期メインライン仕様として再導入しない。
+`docs/vi-logger/standards/csv_logging_policy.md`、`docs/vi-logger/architecture/thermal_energy_logging_plan.md` などの「未作成・今後の候補」文書はドラフト当時から作成されておらず、アーカイブ移設時点でも存在しない。

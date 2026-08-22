@@ -33,9 +33,9 @@ In order:
   - stable baseline;
   - primary worktree should normally stay here and clean.
 - `dev/vi-logger`
-  - active integration branch for the educational V-I logger;
-  - contains PR #1 plus product, measurement-semantics, protection, and internal-excitation design documents;
-  - merging this branch to `main` is broader than merging PR #1 alone.
+  - historical branch that hosted PR #1 plus product, measurement-semantics, protection, and internal-excitation design documents;
+  - its recorder/CSV behavior reached `main` independently, through the later `v2.0.0-beta.1` release lineage, not through a formal merge of this branch;
+  - the branch itself remains un-merged and is not required for current work; its design-draft documents are preserved as historical drafts under [`../archive/`](../archive/README.md#historical-design-drafts).
 - `dev/local-csv-streaming`
   - historical PR #1 head;
   - retained for traceability;
@@ -44,19 +44,30 @@ In order:
 
 Do not hard-code current branch SHAs into general AI instructions. Verify current refs before any branch operation.
 
-## Active direct-browser product direction
+## Device-hosted direct-browser Viewer
 
-Device-hosted browser viewing is an active product direction alongside, not inside, the V-I logger integration history. The frozen G2 architecture is `O1-RX + O3`: bounded pre-parser Origin admission for the D2B WebSocket combined with a device-hosted same-origin production Viewer and a separately bounded external-development profile.
+The device-hosted browser Viewer is implemented and released as part of `v2.0.0-beta.1`
+(2026-08-21), with physical validation on Windows Edge 151 and an iPad 7th generation
+running iPadOS 18.7.9 Safari. See the
+[device-hosted Viewer contract](../product/device-hosted-viewer-contract.md) for the
+current product behavior and the
+[`v2.0.0-beta.1` release record](../releases/v2.0.0-beta.1.md) for the release itself. The
+architecture is `O1-RX + O3`: bounded pre-parser Origin admission for the D2B WebSocket
+combined with a device-hosted same-origin production Viewer and a separately bounded
+external-development profile.
 
 The durable boundaries are:
 
-- D2B wire and measurement semantics remain separate and frozen; the G2 decision does not redefine them.
+- D2B wire and measurement semantics remain separate from the service-profile split; see
+  [measurement-and-presentation semantics](../standards/measurement-and-presentation-semantics.md).
 - Origin is an admission-control gate, not authentication. P1 and P2 remain mandatory under the authoritative [Origin admission policy](../architecture/origin-admission-policy.md).
 - SystemConfig, SystemLive, and Download remain separated as defined by the [direct-browser service profiles](../architecture/direct-browser-service-profiles.md).
-- Static and runtime resource qualification remains an explicit gate under the [resource budget](../architecture/resource-budget.md).
-- Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior. They are not current product implementation or G3 authorization.
+- Static and runtime resource qualification is tracked in the [resource budget](../architecture/resource-budget.md), which now records the actual `v2.0.0-beta.1` application/AssetPool sizes.
+- Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior from before the Viewer was implemented; they are superseded by the current source and the `v2.0.0-beta.1` release evidence above, not current product implementation authority.
 
-G3 implementation remains unauthorized until an explicit post-review decision.
+Multi-client D2B stream policy beyond the existing one-active-owner safety contract is
+under investigation in [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8).
+Analog pointer-matching presentation is tracked in [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9).
 
 ## PR #1 accepted scope
 
@@ -103,8 +114,7 @@ Do not mix these into unrelated recorder changes:
 - internal-excitation hardware implementation;
 - battery/protection hardware validation;
 - project-wide HelpEvent transport;
-- CI;
-- formal `dev/vi-logger` to `main` integration.
+- CI.
 
 ## USB-C `mode_both` compatibility behavior
 

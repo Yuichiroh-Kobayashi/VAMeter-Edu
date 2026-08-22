@@ -1,3 +1,21 @@
+> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY**
+>
+> This document is preserved as a historical design draft. Most of it (measurement-path
+> taxonomy for internal excitation, science/technology/heat-logger UI modes, sign-convention
+> and validity-state vocabulary for an active-output device) describes an unimplemented
+> future measurement-semantics concept. No source, test, or current documentation implements
+> that concept, and it is not a normative contract. No GitHub Issue currently tracks it as
+> active roadmap work.
+>
+> Section 9.1 ("現行PR #1実装の電流値契約") is the one part of this draft that already
+> described *current*, implemented behavior at the time it was written. That current-behavior
+> content has been re-verified against current source and is now the current, durable
+> authority in
+> [`docs/standards/measurement-and-presentation-semantics.md`](../../standards/measurement-and-presentation-semantics.md).
+> Follow that document, not this section, for current measurement-and-presentation rules.
+>
+> Original path: `docs/vi-logger/standards/measurement_semantics_policy.md`
+
 # 測定セマンティクス方針ドラフト
 
 ステータス: ドラフト / 未確定
@@ -180,6 +198,10 @@ CSVでは次を満たす必要がある。
 - 符号規約と値の有効性状態を記録する方針を検討する。ただし列名は本ドラフトでは確定しない。
 
 ### 9.1 現行PR #1実装の電流値契約
+
+> このセクションが書かれた時点では現行実装の説明だったが、現在の current authority は
+> [`docs/standards/measurement-and-presentation-semantics.md`](../../standards/measurement-and-presentation-semantics.md)
+> であり、本文はarchiveされた当時の記述として保存している。
 
 次は将来設計ではなく、merge commit `c9bb8ca`時点の現行実装を説明する。
 

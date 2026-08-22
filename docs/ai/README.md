@@ -19,7 +19,7 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - branch and scope boundaries;
   - accepted PR #1 behavior;
   - separate Issues #2 and #3;
-  - PostContest direct-browser product direction and evidence boundaries.
+  - device-hosted direct-browser product direction, now implemented and released as `v2.0.0-beta.1`.
 - `recorder-and-measurement-contracts.md`
   - UI, CSV, timing, storage, lifecycle, Files/download invariants;
   - known sampling limitation.
@@ -37,19 +37,32 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - mutable-ref review rules and fetch-helper limitations.
 - [`physical-validation-and-rollback.md`](physical-validation-and-rollback.md)
   - authoritative physical candidate, device identity, flash, capture, rollback, and STOP rules.
+- [`../product/device-hosted-viewer-contract.md`](../product/device-hosted-viewer-contract.md)
+  - current device-hosted Viewer product contract (Student/Professional, display profiles, fail-closed behavior).
+- [`../product/educational-recording-and-local-download.md`](../product/educational-recording-and-local-download.md)
+  - current classroom recorder, CSV, and local-download contract.
+- [`../standards/measurement-and-presentation-semantics.md`](../standards/measurement-and-presentation-semantics.md)
+  - authoritative raw/processed/display/CSV/D2B value semantics.
 - [`../architecture/origin-admission-policy.md`](../architecture/origin-admission-policy.md)
-  - authoritative direct-browser Origin threat model, admission policy, and frozen O1-RX architecture.
+  - authoritative direct-browser Origin threat model and O1-RX admission policy.
 - [`../architecture/direct-browser-service-profiles.md`](../architecture/direct-browser-service-profiles.md)
   - authoritative separation of SystemConfig, SystemLive, and Download route/security profiles.
+- [`../architecture/systemlive-lifecycle-and-ownership.md`](../architecture/systemlive-lifecycle-and-ownership.md)
+  - HTTPD server-generation and D2B stream-ownership state machines.
+- [`../architecture/viewer-assetpool-integration.md`](../architecture/viewer-assetpool-integration.md)
+  - byte-exact Viewer bundle / AssetPool integration contract.
 - [`../architecture/resource-budget.md`](../architecture/resource-budget.md)
-  - authoritative direct-browser static, AssetPool, and runtime resource qualification boundaries.
+  - authoritative direct-browser static, AssetPool, and runtime resource facts.
+- [`../operations/d2b-runtime-diagnostics.md`](../operations/d2b-runtime-diagnostics.md)
+  - current `D2B_DIAG` log field reference.
+- [`../validation/browser-physical-qualification.md`](../validation/browser-physical-qualification.md)
+  - current browser/Viewer physical-qualification procedure.
 
 ## Related document sets
 
-- [`../README.md`](../README.md) explains current document roles and links the tracked restructuring work.
-- [`../vi-logger/README.md`](../vi-logger/README.md) is the legacy mixed-generation V-I logger index; role-based restructuring is tracked in [VAMeter-Edu Issue #7](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/7).
+- [`../README.md`](../README.md) explains current document roles.
 - [`../archive/validation/recording/2026-07-29-pr1-recorder-validation.md`](../archive/validation/recording/2026-07-29-pr1-recorder-validation.md) is the focused PR #1 physical-validation record.
-- [`../archive/README.md`](../archive/README.md) explains how dated handoffs, validations, and superseded plans are preserved as history and evidence.
+- [`../archive/README.md`](../archive/README.md) explains how dated handoffs, validations, historical design drafts, and superseded plans are preserved as history and evidence.
 
 ## Update policy
 

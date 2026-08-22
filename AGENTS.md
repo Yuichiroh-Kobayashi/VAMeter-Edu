@@ -25,14 +25,12 @@ Prefer classroom clarity, safe failure, data preservation, and explainable measu
 
 ## Current development scope
 
-- Stable baseline branch: `main`.
-- The educational V-I logger remains an active integration stream on `dev/vi-logger`; it is not the umbrella for every current product direction.
-- PR #1, `fix(recorder): harden classroom waveform recording`, is merged into `dev/vi-logger`.
-- `dev/vi-logger` is not automatically equivalent to an approved `main` release. It also contains product/design documentation and a build-path change.
+- Stable baseline branch: `main`. Current release: `v2.0.0-beta.1` (2026-08-21); see `docs/releases/v2.0.0-beta.1.md`.
+- `dev/vi-logger` is a historical branch that hosted PR #1 plus product/design documentation; its recorder/CSV behavior reached `main` through the later `v2.0.0-beta.1` release lineage, not a formal merge of that branch. Current work does not need to start from it.
 - High-priority known issue: GitHub Issue #3, recorder sampling stalls during synchronous FAT writes.
 - Calibration persistence is separate work: GitHub Issue #2.
 - Do not begin Issue #2 or Issue #3 implementation unless the task explicitly requests it.
-- Device-hosted direct-browser viewing is a separate active product direction. G2 freezes `O1-RX + O3`; implementation and G3 work still require explicit authorization.
+- The device-hosted direct-browser Viewer (`O1-RX + O3` architecture) is implemented and released as part of `v2.0.0-beta.1`, with physical validation on Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari. See `docs/product/device-hosted-viewer-contract.md`. Multi-client policy beyond the existing one-active-owner D2B safety contract (Issue #8) and analog pointer-matching presentation (Issue #9) remain open.
 
 Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
 
@@ -41,7 +39,7 @@ Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
 - Before changing direct-browser behavior or Origin handling, read `docs/architecture/origin-admission-policy.md` and `docs/architecture/direct-browser-service-profiles.md`.
 - Before any resource-sensitive change, read `docs/architecture/resource-budget.md`.
 - Before any physical flash, readback, rollback, or device test, read `docs/ai/physical-validation-and-rollback.md`.
-- `O1-RX + O3` is the frozen G2 architecture. Origin is browser-origin admission control, not authentication.
+- `O1-RX + O3` is the current direct-browser architecture. Origin is browser-origin admission control, not authentication.
 - P1 and P2 are mandatory. Never weaken the production Origin policy to make external development easier.
 - Dependency, worktree, build, evidence, physical-safety, and rollback invariants remain mandatory.
 - Internal orchestration details, agent runtime metadata, model names, thread identifiers, or reviewer metadata must never become Project or Firmware Gates.
@@ -73,10 +71,14 @@ Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
 - `platforms/vameter/main/hal_vameter/components/`: VAMeter HAL implementation, including recorder, filesystem, and web server.
 - `tests/local_csv_download/`: download/name/selection host tests.
 - `tests/recorder_followup/`: recorder lifecycle, CSV, and waveform-scale regression tests.
-- `docs/vi-logger/`: canonical V-I logger architecture, standards, operations, and validation evidence.
-- `docs/handoffs/`: dated handoff and evidence documents; these are not normative contracts by themselves.
+- `docs/product/`: current, implemented product contracts (device-hosted Viewer, educational recording/local download).
+- `docs/standards/`: current, durable normative rules (measurement-and-presentation semantics).
+- `docs/architecture/`: current direct-browser architecture, ownership/lifecycle, and resource contracts.
+- `docs/operations/`: current operational guidance, such as runtime diagnostics.
+- `docs/validation/`: current physical-qualification procedures.
+- `docs/releases/`: per-release records.
+- `docs/archive/`: dated handoffs, validation evidence, and historical/future design drafts; these are not normative contracts by themselves. Start with `docs/archive/README.md`.
 - `docs/ai/`: durable contracts shared by AI tools. Start with `docs/ai/README.md`.
-- Direct-browser documents under `docs/architecture/` are authoritative for their named scope. Other legacy files under `docs/architecture/`, `docs/standards/`, and `docs/operations/` may be compatibility stubs; follow them to the canonical `docs/vi-logger/` document.
 
 ## Pre-work checks
 
@@ -93,7 +95,7 @@ git worktree list --porcelain
 
 - Confirm the intended repository and worktree.
 - The primary checkout should normally remain on `main`.
-- Development should occur in a linked worktree for `dev/vi-logger` or an Issue branch.
+- Development should occur in an Issue-specific or task-specific linked worktree.
 - Do not try to `git switch dev/vi-logger` in the primary checkout when that branch is already used by its linked worktree. Change directory to the linked worktree instead.
 - When running branch-changing commands in multi-worktree setups, use `git -C <exact-worktree-path>` and verify the branch before and after the command.
 - Stop on an unexpected dirty tree, untracked file, local-only commit, branch divergence, or worktree mapping.

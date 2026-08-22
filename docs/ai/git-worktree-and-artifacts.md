@@ -6,7 +6,7 @@ Use host-independent paths under the user's home directory:
 
 ```text
 ~/Dev/VAMeter-Edu/                           # primary, main only
-~/Dev/worktrees/VAMeter-Edu/dev-vi-logger/   # active integration branch
+~/Dev/worktrees/VAMeter-Edu/dev-vi-logger/   # historical branch; current work does not require it
 ~/Dev/worktrees/VAMeter-Edu/issue-<n>-<slug>/
 ~/LabData/VAMeter-Edu/<date>-<purpose>/
 ~/Artifacts/VAMeter-Edu/<commit-or-release>/
@@ -18,10 +18,10 @@ Do not encode a machine name or user-specific absolute path in tracked project g
 ## Primary and linked worktrees
 
 - Keep the primary checkout on `main` and clean.
-- Use a dedicated linked worktree for `dev/vi-logger`.
-- Use Issue-specific linked worktrees for new work.
+- Use Issue-specific linked worktrees for new work; `main` already carries the current V-I logger/recorder and device-hosted Viewer behavior, so new work does not need to start from `dev/vi-logger`.
+- `dev/vi-logger` is a historical, un-merged branch retained for traceability; if a task explicitly targets it, use a dedicated linked worktree for it.
 - The same local branch should not be checked out in two worktrees.
-- If `git switch dev/vi-logger` is rejected because the branch is already used, this is expected. Change directory to the linked worktree.
+- If `git switch dev/vi-logger` is rejected because the branch is already used by its existing linked worktree, this is expected. Change directory to the linked worktree.
 - Use `git worktree list --porcelain` to inspect branch/path mappings.
 
 For branch-changing commands, prefer:

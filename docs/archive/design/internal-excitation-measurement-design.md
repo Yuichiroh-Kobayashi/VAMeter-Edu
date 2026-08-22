@@ -1,3 +1,14 @@
+> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY**
+>
+> This document is preserved as a historical design draft. It describes an unimplemented
+> internal-excitation (active-output) measurement concept that is separate from the current
+> VAMeter-Edu implementation. No source, test, or current documentation implements this
+> concept. It does not define current product behavior, and it is not a normative contract.
+> No GitHub Issue currently tracks this concept as active roadmap work; treat the content
+> below as historical exploration, not a committed future direction.
+>
+> Original path: `docs/vi-logger/architecture/internal_excitation_measurement_design.md`
+
 # 内部励起測定設計ドラフト
 
 ステータス: ドラフト / 未確定 / ハードウェア未検証

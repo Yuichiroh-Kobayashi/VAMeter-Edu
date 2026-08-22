@@ -1,3 +1,16 @@
+> **HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY**
+>
+> This document is preserved as a historical design draft. It describes an unimplemented
+> battery/protection test plan for the internal-excitation concept described in
+> [`internal-excitation-measurement-design.md`](internal-excitation-measurement-design.md).
+> No hardware, firmware, or current documentation implements this concept, and no test
+> described here has been executed against current VAMeter-Edu hardware. It does not define
+> current product behavior, and it is not a normative contract. No GitHub Issue currently
+> tracks this concept as active roadmap work; treat the content below as historical
+> exploration, not a committed future direction.
+>
+> Original path: `docs/vi-logger/operations/battery_and_protection_test_plan.md`
+
 # 電池・保護試験計画ドラフト
 
 ステータス: ドラフト / 未確定 / 未検証

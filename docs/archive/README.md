@@ -18,6 +18,16 @@ Dates are intentionally retained in archive filenames so that evidence remains t
 | `docs/vi-logger/validation/d2b_stop_failure_recovery_offline_validation_2026-08-02.md` | [`docs/archive/validation/d2b/2026-08-02-stop-failure-recovery-offline.md`](validation/d2b/2026-08-02-stop-failure-recovery-offline.md) |
 | `docs/vi-logger/validation/pr1_recorder_validation_2026-07-29.md` | [`docs/archive/validation/recording/2026-07-29-pr1-recorder-validation.md`](validation/recording/2026-07-29-pr1-recorder-validation.md) |
 | `docs/vi-logger/operations/d2b_vi_live_validation_plan.md` | [`docs/archive/plans/d2b-vi-live-validation-pre-beta1.md`](plans/d2b-vi-live-validation-pre-beta1.md) |
+| `docs/vi-logger/architecture/vi_logger_product_definition.md` | [`docs/archive/design/vi-logger-product-definition.md`](design/vi-logger-product-definition.md) |
+| `docs/vi-logger/architecture/internal_excitation_measurement_design.md` | [`docs/archive/design/internal-excitation-measurement-design.md`](design/internal-excitation-measurement-design.md) |
+| `docs/vi-logger/operations/battery_and_protection_test_plan.md` | [`docs/archive/design/battery-and-protection-test-plan.md`](design/battery-and-protection-test-plan.md) |
+| `docs/vi-logger/standards/measurement_semantics_policy.md` | [`docs/archive/design/measurement-semantics-policy-future-draft.md`](design/measurement-semantics-policy-future-draft.md) |
+
+`docs/vi-logger/architecture/local_csv_download.md` and `docs/vi-logger/operations/d2b_runtime_evidence.md` described current, implemented behavior rather than a historical or future draft; their content was migrated (not archived) into [`docs/product/educational-recording-and-local-download.md`](../product/educational-recording-and-local-download.md) and [`docs/operations/d2b-runtime-diagnostics.md`](../operations/d2b-runtime-diagnostics.md) respectively.
+
+## Historical design drafts
+
+`docs/archive/design/` preserves design drafts for product directions that were never implemented, most describing an unimplemented internal-excitation ("next-generation") V-I logger concept. Each carries a `HISTORICAL DESIGN DRAFT — NOT IMPLEMENTED — NOT CURRENT PRODUCT AUTHORITY` banner. No GitHub Issue currently tracks that concept as active roadmap work; do not treat its presence in the archive as a committed future direction.
 
 ## Using handoffs and validation evidence
 
