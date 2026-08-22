@@ -117,7 +117,7 @@ change what the device measures or streams.
   control as current behavior.
 - Multi-client D2B stream policy is tracked in
   [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8).
-- Analog pointer-matching presentation is tracked in
+- Analog-meter answer-check display correction is tracked in
   [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9); see
   [`../standards/measurement-and-presentation-semantics.md`](../standards/measurement-and-presentation-semantics.md#analog-pointer-matching-current-boundary)
   for the current boundary.

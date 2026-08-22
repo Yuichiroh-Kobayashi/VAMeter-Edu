@@ -67,7 +67,7 @@ The durable boundaries are:
 
 Multi-client D2B stream policy beyond the existing one-active-owner safety contract is
 under investigation in [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8).
-Analog pointer-matching presentation is tracked in [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9).
+Analog-meter answer-check display correction is tracked in [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9).
 
 ## PR #1 accepted scope
 

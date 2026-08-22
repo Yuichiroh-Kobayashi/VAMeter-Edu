@@ -69,13 +69,15 @@ high-water が含まれる。これらは診断用の runtime evidence であり
 では繰り返さない。
 
 ESP-IDF の static resource review は、dedicated 16 KiB IRAM display と full linker segment の両方を
-区別して記録する。G2 Track B で観測された dedicated static IRAM は 16,383 / 16,384 bytes、
-remaining 1 byte であり HOLD である。これは full `iram0_0_seg` overflow と同義ではない一方、
-production resource qualification でもない。authoritative build evidence には
+区別して記録する。`v2.0.0-beta.1` で確認済みの dedicated static IRAM は 16,383 / 16,384 bytes、
+remaining 1 byte である。これは full `iram0_0_seg` overflow と同義ではない。ただし専用 static
+IRAM headroom は事実上残っていないため、resource-sensitive な変更では exact ELF/map delta、
+full IRAM/shared D/IRAM、flash/partition、runtime stack/heap、physical qualification を個別に
+再確認する。authoritative build evidence には
 application/bootloader/partition の successful link、`iram0_0_seg` overflow がないこと、
 linker map における full `iram0_0_seg` remaining headroom、shared D/IRAM remaining capacity、
-同一基準 build との差分を含める。詳細は
-[`../architecture/resource-budget.md`](../architecture/resource-budget.md) に従い、1 byte の表示から
+同一基準 build との差分を含める。current resource authority は
+[`../architecture/resource-budget.md`](../architecture/resource-budget.md) であり、1 byte の表示から
 IRAM 配置変更や production acceptance を推論しない。
 
 A desktop PASS does not prove:

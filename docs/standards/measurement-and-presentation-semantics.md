@@ -117,8 +117,9 @@ value as authoritative and investigate the display path, not the reverse.
 VAMeter-Edu's Training Probe supports reading an analog meter's pointer and then checking
 that reading against the device's digital value. No pointer-matching correction —
 adjusting the digital value to compensate for an individual analog meter's pointer
-offset — is implemented. Future work on a pointer-matching presentation profile is tracked
-in [VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9); this
+offset — is implemented. This future work is tracked as the analog-meter answer-check
+display correction in
+[VAMeter-Edu Issue #9](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9); this
 document does not define a schema or behavior for it ahead of that work.
 
 ## Related historical draft

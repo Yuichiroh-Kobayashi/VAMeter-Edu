@@ -141,7 +141,7 @@ parttool.py --port <ポート名> write_partition --partition-name=assetpool --i
 
 - [Student の単一 Start / Stop と above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
 - [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
-- [Analog-meter pointer-matching presentation profile](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
+- [アナログ計器の答え合わせ用表示補正](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
 
 ---
 

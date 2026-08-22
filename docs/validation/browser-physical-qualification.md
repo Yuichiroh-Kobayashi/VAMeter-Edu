@@ -42,8 +42,16 @@ successful build is not evidence that its binary is on-device.
 
 ## Preflight gates
 
-1. Confirm the application image uses less than 85% of its partition; stop at 90% or any
-   partition overflow, and treat 85%+ as review-required.
+1. Record the exact application image size and the application partition's capacity and
+   free bytes. Any partition overflow is stop. Record the difference against the exact
+   approved/released baseline (see
+   [`../architecture/resource-budget.md`](../architecture/resource-budget.md#current-resource-facts-v200-beta1)
+   for the current `v2.0.0-beta.1` figures); a resource-sensitive increase is
+   review-required under
+   [`../architecture/resource-budget.md`](../architecture/resource-budget.md). Do not
+   invent a percentage threshold beyond the measured baseline. Static IRAM, the full
+   linker segment, flash partition layout, and AssetPool are separate constraints and must
+   be evaluated on their own terms, not inferred from the application-partition figure.
 2. Confirm no tracked changes to `sdkconfig`, partition definitions,
    `dependencies.lock`, or the dependency repositories.
 3. Run the oracle Python validator; it must pass all schemas and vectors.
