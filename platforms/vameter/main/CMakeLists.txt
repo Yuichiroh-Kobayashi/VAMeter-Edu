@@ -5,6 +5,13 @@ file(GLOB_RECURSE APP_LAYER_SRCS
 )
 
 list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/measurement_pipeline/src/.*")
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/f15_observation/.*")
+
+if(CONFIG_VAMETER_F15_OBSERVATION)
+    list(APPEND APP_LAYER_SRCS
+        ../../../app/libs/f15_observation/f15_observation.cpp
+    )
+endif()
 
 set(APP_LAYER_INCS
     ../../../app
@@ -14,6 +21,14 @@ file(GLOB_RECURSE HAL_VAMETER_SRCS
     ./hal_vameter/*.c
     ./hal_vameter/*.cpp
 )
+
+list(FILTER HAL_VAMETER_SRCS EXCLUDE REGEX ".*/f15_observation_device.cpp")
+
+if(CONFIG_VAMETER_F15_OBSERVATION)
+    list(APPEND HAL_VAMETER_SRCS
+        ./hal_vameter/components/f15_observation_device.cpp
+    )
+endif()
 
 idf_component_register(
     SRCS

@@ -1,0 +1,14 @@
+menu "VAMeter qualification options"
+
+config VAMETER_F15_OBSERVATION
+    bool "Enable F15 signed-current observation harness"
+    default n
+    help
+        Qualification-only observation harness for Issue #15 P1/P2 evidence.
+        It publishes final PMD measurement metadata into a bounded non-blocking
+        queue and drains deterministic diagnostics from a lower-priority task.
+        This option does not implement reverse-current detection, relay action,
+        a fault state, or any production threshold. Leave disabled for normal
+        product builds.
+
+endmenu
