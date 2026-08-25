@@ -5,6 +5,13 @@ file(GLOB_RECURSE APP_LAYER_SRCS
 )
 
 list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/measurement_pipeline/src/.*")
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/signed_current_observation/.*")
+
+if(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION)
+    list(APPEND APP_LAYER_SRCS
+        ../../../app/libs/signed_current_observation/signed_current_observation.cpp
+    )
+endif()
 
 set(APP_LAYER_INCS
     ../../../app
@@ -14,6 +21,14 @@ file(GLOB_RECURSE HAL_VAMETER_SRCS
     ./hal_vameter/*.c
     ./hal_vameter/*.cpp
 )
+
+list(FILTER HAL_VAMETER_SRCS EXCLUDE REGEX ".*/signed_current_observation_device.cpp")
+
+if(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION)
+    list(APPEND HAL_VAMETER_SRCS
+        ./hal_vameter/components/signed_current_observation_device.cpp
+    )
+endif()
 
 idf_component_register(
     SRCS

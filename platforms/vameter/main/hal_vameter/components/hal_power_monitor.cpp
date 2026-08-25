@@ -12,6 +12,10 @@
 #include "../utils/INA226/src/INA226.h"
 #include "d2b_vi_producer.h"
 #include "libs/d2b_vi/d2b_acquisition.h"
+#include <sdkconfig.h>
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
+#include "signed_current_observation_device.h"
+#endif
 #include "hal/gpio_types.h"
 #include "hal/hal.h"
 #include <freertos/FreeRTOS.h>
@@ -242,7 +246,22 @@ void _set_pm_data_daemon_current_offset(const float& offset)
 
 static bool _is_reverse_measuring = false;
 
-static std::uint32_t _handle_basic_data_update()
+enum class CurrentMeasurementRange : std::uint8_t
+{
+    Low,
+    High,
+};
+
+struct BasicDataUpdateResult
+{
+    std::uint32_t validMask = 0;
+    CurrentMeasurementRange currentRange = CurrentMeasurementRange::Low;
+    bool currentReadSucceeded = false;
+    bool overflowReadSucceeded = false;
+    bool overflowAsserted = false;
+};
+
+static BasicDataUpdateResult _handle_basic_data_update()
 {
     float busVoltage = 0.0F;
     const bool busVoltageReadSucceeded = _ina226_hc->readBusVoltageChecked(busVoltage);
@@ -251,6 +270,7 @@ static std::uint32_t _handle_basic_data_update()
 
     bool currentReadSucceeded = false;
     INA226* selectedCurrentSensor = nullptr;
+    CurrentMeasurementRange selectedCurrentRange = CurrentMeasurementRange::Low;
 
     // spdlog::info("{} {}", _ina226_lc->readShuntVoltage(), _ina226_hc->readShuntCurrent());
 
@@ -281,6 +301,7 @@ HELL:
         if (_pm_data_daemon->shuntCurrent < 0.0f)
             _pm_data_daemon->shuntCurrent = 0.0f;
         selectedCurrentSensor = _ina226_lc;
+        selectedCurrentRange = CurrentMeasurementRange::Low;
     }
     else
     {
@@ -304,16 +325,23 @@ HELL:
             // If not, interrupt will change to high current mode for us
         }
         selectedCurrentSensor = _ina226_hc;
+        selectedCurrentRange = CurrentMeasurementRange::High;
     }
 
     bool overflow = false;
     const bool overflowReadSucceeded = selectedCurrentSensor->readMathOverflowChecked(overflow);
-    return D2B::BuildViValidMask(busVoltageReadSucceeded,
-                                 _pm_data_daemon->busVoltage,
-                                 currentReadSucceeded,
-                                 _pm_data_daemon->shuntCurrent,
-                                 overflowReadSucceeded,
-                                 overflow);
+    BasicDataUpdateResult result;
+    result.validMask = D2B::BuildViValidMask(busVoltageReadSucceeded,
+                                             _pm_data_daemon->busVoltage,
+                                             currentReadSucceeded,
+                                             _pm_data_daemon->shuntCurrent,
+                                             overflowReadSucceeded,
+                                             overflow);
+    result.currentRange = selectedCurrentRange;
+    result.currentReadSucceeded = currentReadSucceeded;
+    result.overflowReadSucceeded = overflowReadSucceeded;
+    result.overflowAsserted = overflow;
+    return result;
 }
 
 static constexpr int _pm_data_daemon_update_interval = 35;
@@ -429,16 +457,37 @@ static void _power_monitor_daemon(void* param)
         // Update pm data
         xSemaphoreTake(_pm_data_handle_mutex, portMAX_DELAY);
 
-        const std::uint32_t d2bValidMask = _handle_basic_data_update();
+        const BasicDataUpdateResult updateResult = _handle_basic_data_update();
         _handle_avg_update();
         _handle_peak_and_min_update();
         _handle_capacity_and_energy_update();
         _handle_time_tag_update(_time_count_start);
 
-        D2B_PRODUCER::Tap(static_cast<std::uint64_t>(esp_timer_get_time()),
-                          d2bValidMask,
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
+        // Qualification builds share one monotonic timestamp between OBS and the existing D2B tap.
+        // The OBS-disabled branch retains the normal-product timestamp call at the D2B tap itself.
+        const std::uint64_t publishTimestampUs = static_cast<std::uint64_t>(esp_timer_get_time());
+        const SIGNED_CURRENT_OBS::CurrentRange observationRange =
+            updateResult.currentRange == CurrentMeasurementRange::Low ? SIGNED_CURRENT_OBS::CurrentRange::Low
+                                                                      : SIGNED_CURRENT_OBS::CurrentRange::High;
+        SIGNED_CURRENT_OBS_DEVICE::Publish(publishTimestampUs,
+                                           _pm_data_daemon->shuntCurrent,
+                                           _pm_data_daemon->busVoltage,
+                                           updateResult.validMask,
+                                           observationRange,
+                                           updateResult.currentReadSucceeded,
+                                           updateResult.overflowReadSucceeded,
+                                           updateResult.overflowAsserted);
+        D2B_PRODUCER::Tap(publishTimestampUs,
+                          updateResult.validMask,
                           _pm_data_daemon->busVoltage,
                           _pm_data_daemon->shuntCurrent);
+#else
+        D2B_PRODUCER::Tap(static_cast<std::uint64_t>(esp_timer_get_time()),
+                          updateResult.validMask,
+                          _pm_data_daemon->busVoltage,
+                          _pm_data_daemon->shuntCurrent);
+#endif
 
         xSemaphoreGive(_pm_data_handle_mutex);
     }
@@ -457,6 +506,9 @@ void HAL_VAMeter::_power_monitor_start_daemon()
     _pm_data_daemon = new POWER_MONITOR::PMData_t;
     _ina226_hc = _ina226_hc;
     _ina226_lc = _ina226_lc;
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
+    (void)SIGNED_CURRENT_OBS_DEVICE::Start();
+#endif
     xTaskCreate(_power_monitor_daemon, "PMD", 4028, NULL, 1, NULL);
 }
 
