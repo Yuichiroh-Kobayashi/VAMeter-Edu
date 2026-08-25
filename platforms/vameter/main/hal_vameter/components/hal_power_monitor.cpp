@@ -13,9 +13,8 @@
 #include "d2b_vi_producer.h"
 #include "libs/d2b_vi/d2b_acquisition.h"
 #include <sdkconfig.h>
-#if defined(CONFIG_VAMETER_F15_OBSERVATION) && CONFIG_VAMETER_F15_OBSERVATION
-#include "f15_observation_device.h"
-#include <esp_log.h>
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
+#include "signed_current_observation_device.h"
 #endif
 #include "hal/gpio_types.h"
 #include "hal/hal.h"
@@ -464,21 +463,21 @@ static void _power_monitor_daemon(void* param)
         _handle_capacity_and_energy_update();
         _handle_time_tag_update(_time_count_start);
 
-#if defined(CONFIG_VAMETER_F15_OBSERVATION) && CONFIG_VAMETER_F15_OBSERVATION
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
         // Qualification builds share one monotonic timestamp between OBS and the existing D2B tap.
         // The OBS-disabled branch retains the normal-product timestamp call at the D2B tap itself.
         const std::uint64_t publishTimestampUs = static_cast<std::uint64_t>(esp_timer_get_time());
-        const F15_OBS::CurrentRange observationRange =
-            updateResult.currentRange == CurrentMeasurementRange::Low ? F15_OBS::CurrentRange::Low
-                                                                      : F15_OBS::CurrentRange::High;
-        F15_OBS_DEVICE::Publish(publishTimestampUs,
-                                _pm_data_daemon->shuntCurrent,
-                                _pm_data_daemon->busVoltage,
-                                updateResult.validMask,
-                                observationRange,
-                                updateResult.currentReadSucceeded,
-                                updateResult.overflowReadSucceeded,
-                                updateResult.overflowAsserted);
+        const SIGNED_CURRENT_OBS::CurrentRange observationRange =
+            updateResult.currentRange == CurrentMeasurementRange::Low ? SIGNED_CURRENT_OBS::CurrentRange::Low
+                                                                      : SIGNED_CURRENT_OBS::CurrentRange::High;
+        SIGNED_CURRENT_OBS_DEVICE::Publish(publishTimestampUs,
+                                           _pm_data_daemon->shuntCurrent,
+                                           _pm_data_daemon->busVoltage,
+                                           updateResult.validMask,
+                                           observationRange,
+                                           updateResult.currentReadSucceeded,
+                                           updateResult.overflowReadSucceeded,
+                                           updateResult.overflowAsserted);
         D2B_PRODUCER::Tap(publishTimestampUs,
                           updateResult.validMask,
                           _pm_data_daemon->busVoltage,
@@ -507,9 +506,8 @@ void HAL_VAMeter::_power_monitor_start_daemon()
     _pm_data_daemon = new POWER_MONITOR::PMData_t;
     _ina226_hc = _ina226_hc;
     _ina226_lc = _ina226_lc;
-#if defined(CONFIG_VAMETER_F15_OBSERVATION) && CONFIG_VAMETER_F15_OBSERVATION
-    if (!F15_OBS_DEVICE::Start())
-        ESP_LOGE("f15-obs", "F15_OBS_DRAIN_START_FAILED");
+#if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
+    (void)SIGNED_CURRENT_OBS_DEVICE::Start();
 #endif
     xTaskCreate(_power_monitor_daemon, "PMD", 4028, NULL, 1, NULL);
 }

@@ -1,8 +1,8 @@
-#include "f15_observation.h"
+#include "signed_current_observation.h"
 
 #include <cstdio>
 
-namespace F15_OBS
+namespace SIGNED_CURRENT_OBS
 {
     const char* CurrentRangeToken(CurrentRange range)
     {
@@ -28,7 +28,7 @@ namespace F15_OBS
 
         const int length = std::snprintf(output,
                                          outputCapacity,
-                                         "F15_OBS v=1 seq=%llu timestamp_us=%llu current_A=%+.9e bus_V=%+.9e "
+                                         "SIGNED_CURRENT_OBS v=1 seq=%llu timestamp_us=%llu current_A=%+.9e bus_V=%+.9e "
                                          "valid_mask=0x%08lx range=%s current_read_ok=%u overflow_read_ok=%u "
                                          "overflow=%u dropped_total=%llu",
                                          static_cast<unsigned long long>(record.sequence),
@@ -50,4 +50,4 @@ namespace F15_OBS
         outputLength = static_cast<std::size_t>(length);
         return true;
     }
-} // namespace F15_OBS
+} // namespace SIGNED_CURRENT_OBS

@@ -1,4 +1,4 @@
-#include "f15_observation.h"
+#include "signed_current_observation.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -15,15 +15,15 @@ namespace
         }
     }
 
-    F15_OBS::ObservationRecord MakeRecord(std::uint64_t sequence)
+    SIGNED_CURRENT_OBS::ObservationRecord MakeRecord(std::uint64_t sequence)
     {
-        const F15_OBS::ObservationRecord record = {
+        const SIGNED_CURRENT_OBS::ObservationRecord record = {
             sequence,
             1000 + sequence,
             -0.0125F,
             5.0F,
             0,
-            F15_OBS::CurrentRange::High,
+            SIGNED_CURRENT_OBS::CurrentRange::High,
             false,
             true,
             true,
@@ -33,13 +33,14 @@ namespace
 
     void TestFormattingPreservesIndependentState()
     {
-        const F15_OBS::ObservationRecord record = MakeRecord(7);
+        const SIGNED_CURRENT_OBS::ObservationRecord record = MakeRecord(7);
         char output[320] = {};
         std::size_t outputLength = 0;
-        Expect(F15_OBS::FormatObservation(record, 3, output, sizeof(output), outputLength),
+        Expect(SIGNED_CURRENT_OBS::FormatObservation(record, 3, output, sizeof(output), outputLength),
                "record formats into bounded output");
-        const char* expected = "F15_OBS v=1 seq=7 timestamp_us=1007 current_A=-1.250000019e-02 bus_V=+5.000000000e+00 "
-                               "valid_mask=0x00000000 range=HC current_read_ok=0 overflow_read_ok=1 overflow=1 dropped_total=3";
+        const char* expected =
+            "SIGNED_CURRENT_OBS v=1 seq=7 timestamp_us=1007 current_A=-1.250000019e-02 bus_V=+5.000000000e+00 "
+            "valid_mask=0x00000000 range=HC current_read_ok=0 overflow_read_ok=1 overflow=1 dropped_total=3";
         Expect(std::strcmp(output, expected) == 0, "format is deterministic and machine-readable");
         Expect(outputLength == std::strlen(expected), "formatter reports exact length");
         Expect(std::strstr(output, "current_A=-1.250000019e-02") != nullptr,
@@ -48,12 +49,12 @@ namespace
         Expect(std::strstr(output, "current_read_ok=0 overflow_read_ok=1 overflow=1") != nullptr,
                "read and overflow states remain independent");
 
-        F15_OBS::ObservationRecord independent = record;
+        SIGNED_CURRENT_OBS::ObservationRecord independent = record;
         independent.validMask = 0x02;
         independent.currentReadSucceeded = true;
         independent.overflowReadSucceeded = false;
         independent.overflowAsserted = false;
-        Expect(F15_OBS::FormatObservation(independent, 4, output, sizeof(output), outputLength),
+        Expect(SIGNED_CURRENT_OBS::FormatObservation(independent, 4, output, sizeof(output), outputLength),
                "independent state combination formats");
         Expect(std::strstr(output, "valid_mask=0x00000002") != nullptr, "valid mask is not derived by formatter");
         Expect(std::strstr(output, "current_read_ok=1 overflow_read_ok=0 overflow=0") != nullptr,
@@ -62,15 +63,15 @@ namespace
 
     void TestRangeTokens()
     {
-        Expect(std::strcmp(F15_OBS::CurrentRangeToken(F15_OBS::CurrentRange::Low), "LC") == 0,
+        Expect(std::strcmp(SIGNED_CURRENT_OBS::CurrentRangeToken(SIGNED_CURRENT_OBS::CurrentRange::Low), "LC") == 0,
                "low-current range token is deterministic");
-        Expect(std::strcmp(F15_OBS::CurrentRangeToken(F15_OBS::CurrentRange::High), "HC") == 0,
+        Expect(std::strcmp(SIGNED_CURRENT_OBS::CurrentRangeToken(SIGNED_CURRENT_OBS::CurrentRange::High), "HC") == 0,
                "high-current range token is deterministic");
     }
 
     void TestBoundedDropWithoutOverwrite()
     {
-        F15_OBS::ObservationRing<3> ring;
+        SIGNED_CURRENT_OBS::ObservationRing<3> ring;
         Expect(ring.tryPush(MakeRecord(10)), "first record accepted");
         Expect(ring.tryPush(MakeRecord(11)), "second record accepted");
         Expect(ring.tryPush(MakeRecord(12)), "third record accepted at capacity");
@@ -80,7 +81,7 @@ namespace
         Expect(ring.queuedCount() == 3, "rejected record does not change queue occupancy");
         Expect(ring.droppedRecordCount() == 1, "OBS-specific drop counter increments");
 
-        F15_OBS::ObservationRecord popped = {};
+        SIGNED_CURRENT_OBS::ObservationRecord popped = {};
         Expect(ring.tryPop(popped) && popped.sequence == 10, "full queue does not overwrite oldest record");
         Expect(ring.tryPop(popped) && popped.sequence == 11, "second retained record remains ordered");
         Expect(ring.tryPop(popped) && popped.sequence == 12, "third retained record remains ordered");
@@ -95,7 +96,7 @@ namespace
     {
         char output[16] = {};
         std::size_t outputLength = 99;
-        Expect(!F15_OBS::FormatObservation(MakeRecord(1), 0, output, sizeof(output), outputLength),
+        Expect(!SIGNED_CURRENT_OBS::FormatObservation(MakeRecord(1), 0, output, sizeof(output), outputLength),
                "undersized output buffer fails closed");
         Expect(outputLength == 0, "failed formatter exposes no partial length");
         Expect(output[sizeof(output) - 1] == '\0', "failed formatter remains terminated");
@@ -108,6 +109,6 @@ int main()
     TestRangeTokens();
     TestBoundedDropWithoutOverwrite();
     TestBoundedFormatterFailure();
-    std::puts("f15_observation_test: PASS");
+    std::puts("signed_current_observation_test: PASS");
     return 0;
 }

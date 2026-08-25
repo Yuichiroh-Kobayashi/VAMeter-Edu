@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace F15_OBS
+namespace SIGNED_CURRENT_OBS
 {
     enum class CurrentRange : std::uint8_t
     {
@@ -37,9 +37,9 @@ namespace F15_OBS
     template <std::size_t Capacity>
     class ObservationRing
     {
-        static_assert(Capacity > 0, "F15 OBS ring capacity must be nonzero");
+        static_assert(Capacity > 0, "signed-current observation ring capacity must be nonzero");
         static_assert(Capacity <= std::numeric_limits<std::uint32_t>::max(),
-                      "F15 OBS ring capacity exceeds the index domain");
+                      "signed-current observation ring capacity exceeds the index domain");
 
     public:
         // This bounded ring is single-producer/single-consumer. The producer owns
@@ -81,10 +81,7 @@ namespace F15_OBS
             const std::uint32_t head = _head.load(std::memory_order_acquire);
             return static_cast<std::uint32_t>(tail - head);
         }
-        std::uint64_t droppedRecordCount() const
-        {
-            return _droppedRecordCount.load(std::memory_order_relaxed);
-        }
+        std::uint64_t droppedRecordCount() const { return _droppedRecordCount.load(std::memory_order_relaxed); }
 
     private:
         ObservationRecord _records[Capacity];
@@ -92,4 +89,4 @@ namespace F15_OBS
         std::atomic<std::uint32_t> _tail;
         std::atomic<std::uint32_t> _droppedRecordCount;
     };
-} // namespace F15_OBS
+} // namespace SIGNED_CURRENT_OBS

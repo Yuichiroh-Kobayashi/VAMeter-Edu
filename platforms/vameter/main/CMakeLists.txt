@@ -5,11 +5,11 @@ file(GLOB_RECURSE APP_LAYER_SRCS
 )
 
 list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/measurement_pipeline/src/.*")
-list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/f15_observation/.*")
+list(FILTER APP_LAYER_SRCS EXCLUDE REGEX ".*/app/libs/signed_current_observation/.*")
 
-if(CONFIG_VAMETER_F15_OBSERVATION)
+if(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION)
     list(APPEND APP_LAYER_SRCS
-        ../../../app/libs/f15_observation/f15_observation.cpp
+        ../../../app/libs/signed_current_observation/signed_current_observation.cpp
     )
 endif()
 
@@ -22,11 +22,11 @@ file(GLOB_RECURSE HAL_VAMETER_SRCS
     ./hal_vameter/*.cpp
 )
 
-list(FILTER HAL_VAMETER_SRCS EXCLUDE REGEX ".*/f15_observation_device.cpp")
+list(FILTER HAL_VAMETER_SRCS EXCLUDE REGEX ".*/signed_current_observation_device.cpp")
 
-if(CONFIG_VAMETER_F15_OBSERVATION)
+if(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION)
     list(APPEND HAL_VAMETER_SRCS
-        ./hal_vameter/components/f15_observation_device.cpp
+        ./hal_vameter/components/signed_current_observation_device.cpp
     )
 endif()
 

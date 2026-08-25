@@ -1,7 +1,7 @@
 menu "VAMeter qualification options"
 
-config VAMETER_F15_OBSERVATION
-    bool "Enable F15 signed-current observation harness"
+config VAMETER_SIGNED_CURRENT_OBSERVATION
+    bool "Enable signed-current observation harness"
     default n
     help
         Qualification-only observation harness for Issue #15 P1/P2 evidence.
