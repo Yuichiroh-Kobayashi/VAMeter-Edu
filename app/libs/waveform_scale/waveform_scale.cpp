@@ -91,6 +91,15 @@ namespace WAVEFORM_SCALE
         return range;
     }
 
+    Range IncludePositiveFiniteValue(const Range& range, float value)
+    {
+        Range result;
+        result.top = std::isfinite(range.top) ? std::max(0.0f, range.top) : 0.0f;
+        if (std::isfinite(value))
+            result.top = std::max(result.top, value);
+        return result;
+    }
+
     float ClampToRange(float value, const Range& range)
     {
         if (!std::isfinite(value) || !std::isfinite(range.bottom) || !std::isfinite(range.top) || range.top <= range.bottom)

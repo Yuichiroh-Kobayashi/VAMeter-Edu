@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(current_waveform_clip_test LANGUAGES CXX)
+add_executable(current_waveform_clip_test current_waveform_clip_test.cpp)
+target_include_directories(current_waveform_clip_test PRIVATE ../../app/libs/current_waveform_clip)
+target_compile_features(current_waveform_clip_test PRIVATE cxx_std_11)
+target_compile_options(current_waveform_clip_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME current_waveform_clip_test COMMAND current_waveform_clip_test)
