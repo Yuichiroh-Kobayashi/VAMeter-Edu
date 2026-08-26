@@ -6,7 +6,9 @@
 #include "view.h"
 #include "../../../hal/hal.h"
 #include "../../../assets/assets.h"
+#include "../../../libs/current_waveform_clip/current_waveform_clip.h"
 #include "../../utils/system/system.h"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <mooncake.h>
@@ -254,20 +256,16 @@ void Waveform::_update_chart_y_zoom(bool applyChartZoom)
     else if (_mode == 0 && _input_props.min_a != 114514 &&
              (_input_props.min_a != _input_props.last_min_a || _input_props.max_a != _input_props.last_max_a))
     {
-        _chart_props.current_a_y_range_top = _input_props.max_a;
-        _chart_props.current_a_y_range_bottom = _input_props.min_a;
-        const float span = _chart_props.current_a_y_range_top - _chart_props.current_a_y_range_bottom;
+        _chart_props.current_a_y_range_top = std::max(0.0f, _input_props.max_a);
+        _chart_props.current_a_y_range_bottom = 0.0f;
+        const float span = _chart_props.current_a_y_range_top;
         if (span < _chart_a_min_y_range_small)
         {
-            const float midPoint = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
-            _chart_props.current_a_y_range_top = midPoint + _chart_a_min_y_range_small / 2;
-            _chart_props.current_a_y_range_bottom = _chart_props.current_a_y_range_top - _chart_a_min_y_range_small;
+            _chart_props.current_a_y_range_top = _chart_a_min_y_range_small;
         }
         else if (span < _chart_a_min_y_range_big)
         {
-            const float midPoint = (_input_props.max_a - _input_props.min_a) / 2 + _input_props.min_a;
-            _chart_props.current_a_y_range_top = midPoint + _chart_a_min_y_range_big / 2;
-            _chart_props.current_a_y_range_bottom = _chart_props.current_a_y_range_top - _chart_a_min_y_range_big;
+            _chart_props.current_a_y_range_top = _chart_a_min_y_range_big;
         }
         if (applyChartZoom)
             _chart_props.chart_a.moveYIntoRange(_chart_props.current_a_y_range_bottom, _chart_props.current_a_y_range_top);
@@ -504,7 +502,6 @@ void Waveform::_render_wave()
     if (_mode != 2)
     {
         _chart_props.p_x = 0;
-        _chart_props.last_p.reset();
         _chart_props.stop_render = false;
         _input_props.max_v = 0;
         _input_props.min_v = 114514;
@@ -569,6 +566,7 @@ void Waveform::_render_wave()
         _chart_props.stop_render = false;
         _input_props.max_a = -114514;
         _input_props.min_a = 114514;
+        CURRENT_WAVEFORM_CLIP::Sample previousSample;
         _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
             if (value > _input_props.max_a)
                 _input_props.max_a = value;
@@ -578,23 +576,24 @@ void Waveform::_render_wave()
             // Pass if out of range
             if (_chart_props.stop_render)
                 return;
-            if (_chart_props.last_p.x > 240)
-            {
-                _chart_props.stop_render = true;
-                return;
-            }
-
-            // Get chart point
-            WAVEFORM_SCALE::Range visibleRange;
-            visibleRange.bottom = _chart_props.current_a_y_range_bottom;
-            visibleRange.top = _chart_props.current_a_y_range_top;
-            const float visibleValue = WAVEFORM_SCALE::ClampToRange(value, visibleRange);
-            _chart_props.new_p = _chart_props.chart_a.getChartPoint(static_cast<float>(_chart_props.p_x), visibleValue);
-            _chart_props.new_p.x -= _chart_props.temp_buffer;
+            CURRENT_WAVEFORM_CLIP::Sample currentSample;
+            currentSample.x = static_cast<float>(_chart_props.p_x);
+            currentSample.current = value;
+            currentSample.valid = std::isfinite(value);
 
             // Render
-            if (_chart_props.p_x != 0 && _chart_props.last_p.x <= 240)
+            CURRENT_WAVEFORM_CLIP::Segment visibleSegment;
+            if (CURRENT_WAVEFORM_CLIP::ClipToPositiveDomain(previousSample, currentSample, visibleSegment))
             {
+                WAVEFORM_SCALE::Range visibleRange;
+                visibleRange.bottom = _chart_props.current_a_y_range_bottom;
+                visibleRange.top = _chart_props.current_a_y_range_top;
+                const float startValue = WAVEFORM_SCALE::ClampToRange(visibleSegment.start.current, visibleRange);
+                const float endValue = WAVEFORM_SCALE::ClampToRange(visibleSegment.end.current, visibleRange);
+                _chart_props.last_p = _chart_props.chart_a.getChartPoint(visibleSegment.start.x, startValue);
+                _chart_props.new_p = _chart_props.chart_a.getChartPoint(visibleSegment.end.x, endValue);
+                _chart_props.last_p.x -= _chart_props.temp_buffer;
+                _chart_props.new_p.x -= _chart_props.temp_buffer;
                 // Fake width
                 for (int i = 0; i < 3; i++)
                 {
@@ -610,7 +609,7 @@ void Waveform::_render_wave()
                                             AssetPool::GetColor().AppWaveform.colorLineA);
                 }
             }
-            _chart_props.last_p = _chart_props.new_p;
+            previousSample = currentSample;
             _chart_props.p_x++;
             // spdlog::info("{} {} {}", chart_x, current_p.x, current_p.y);
 
