@@ -1,5 +1,6 @@
 #include "reverse_current_detector.h"
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -47,6 +48,20 @@ namespace
         Check(hold.observe(false, -100.0F), State::Candidate, 2, false, "invalid does not increment");
         Check(hold.observe(true, -0.5F), State::Latched, 3, true, "third valid latches");
     }
+    void TestNonFiniteMeasurementsHoldCandidate()
+    {
+        const float nonFiniteMeasurements[] = {std::numeric_limits<float>::quiet_NaN(),
+                                               std::numeric_limits<float>::infinity(),
+                                               -std::numeric_limits<float>::infinity()};
+        const char* messages[] = {
+            "valid NaN holds candidate", "valid positive infinity holds candidate", "valid negative infinity holds candidate"};
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            Detector detector(kConfig);
+            Check(detector.observe(true, -0.5F), State::Candidate, 1, false, "candidate before non-finite value");
+            Check(detector.observe(true, nonFiniteMeasurements[index]), State::Candidate, 1, false, messages[index]);
+        }
+    }
     void TestConfiguration()
     {
         Detector one({-1.0F, 1});
@@ -61,7 +76,11 @@ namespace
         {
             Detector detector(configuration);
             Expect(!detector.isConfigurationValid(), "invalid configuration");
-            Check(detector.observe(true, -std::numeric_limits<float>::max()), State::Normal, 0, false, "fails closed");
+            Check(detector.observe(true, -std::numeric_limits<float>::max()),
+                  State::Normal,
+                  0,
+                  false,
+                  "invalid configuration is inert");
         }
     }
 } // namespace
@@ -70,6 +89,7 @@ int main()
 {
     TestValuesAndLatch();
     TestResetAndInvalidHold();
+    TestNonFiniteMeasurementsHoldCandidate();
     TestConfiguration();
     std::puts("reverse_current_detector_test: PASS");
 }

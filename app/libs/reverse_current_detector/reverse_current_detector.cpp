@@ -18,7 +18,7 @@ namespace REVERSE_CURRENT_DETECTOR
     {
         if (!_configurationValid || _state == State::Latched)
             return result();
-        if (!measurementValid)
+        if (!measurementValid || !std::isfinite(signedCurrentA))
             return result();
         if (signedCurrentA <= _configuration.negativeThresholdA)
         {
