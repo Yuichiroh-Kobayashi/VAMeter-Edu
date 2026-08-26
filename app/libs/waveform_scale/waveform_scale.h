@@ -39,6 +39,7 @@ namespace WAVEFORM_SCALE
     void UpdateVoltageAutoScale(AutoScaleState& state, float positivePeak);
     void UpdateCurrentAutoScale(AutoScaleState& state, float positivePeak);
     Range PositiveRange(float valuePerDiv);
+    Range IncludePositiveFiniteValue(const Range& range, float value);
     float ClampToRange(float value, const Range& range);
 
     std::string FormatVoltageScaleReadout(std::size_t index);

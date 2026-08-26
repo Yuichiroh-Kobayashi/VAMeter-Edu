@@ -240,7 +240,7 @@ void Waveform::_update_chart_y_zoom(bool applyChartZoom)
             if (sampleIndex++ < skipCount)
                 return;
             const float valueA = value / _pm_data_a_scale;
-            if (valueA > positivePeak)
+            if (std::isfinite(valueA) && valueA > positivePeak)
                 positivePeak = valueA;
         });
         WAVEFORM_SCALE::UpdateCurrentAutoScale(_current_scale, positivePeak);
@@ -290,10 +290,12 @@ void Waveform::_update_chart_y_zoom_with_third_value(const float& thirdV, const 
         _chart_props.chart_v.moveYIntoRange(_chart_props.current_v_y_range_bottom, _chart_props.current_v_y_range_top);
 
     // A
-    if (thirdA < _chart_props.current_a_y_range_bottom)
-        _chart_props.current_a_y_range_bottom = thirdA;
-    else if (thirdA > _chart_props.current_a_y_range_top)
-        _chart_props.current_a_y_range_top = thirdA;
+    WAVEFORM_SCALE::Range currentRange;
+    currentRange.bottom = _chart_props.current_a_y_range_bottom;
+    currentRange.top = _chart_props.current_a_y_range_top;
+    currentRange = WAVEFORM_SCALE::IncludePositiveFiniteValue(currentRange, thirdA);
+    _chart_props.current_a_y_range_bottom = currentRange.bottom;
+    _chart_props.current_a_y_range_top = currentRange.top;
     // spdlog::info("a {} {}", _chart_props.current_v_y_range_bottom, _chart_props.current_v_y_range_top);
     if (_chart_props.current_a_y_range_bottom != _chart_props.current_a_y_range_top)
         _chart_props.chart_a.moveYIntoRange(_chart_props.current_a_y_range_bottom, _chart_props.current_a_y_range_top);
@@ -502,6 +504,7 @@ void Waveform::_render_wave()
     if (_mode != 2)
     {
         _chart_props.p_x = 0;
+        _chart_props.last_p.reset();
         _chart_props.stop_render = false;
         _input_props.max_v = 0;
         _input_props.min_v = 114514;
@@ -568,10 +571,13 @@ void Waveform::_render_wave()
         _input_props.min_a = 114514;
         CURRENT_WAVEFORM_CLIP::Sample previousSample;
         _input_props.pm_data_buffer_a.peekAll([&](const float& value) {
-            if (value > _input_props.max_a)
-                _input_props.max_a = value;
-            if (value < _input_props.min_a)
-                _input_props.min_a = value;
+            if (std::isfinite(value))
+            {
+                if (value > _input_props.max_a)
+                    _input_props.max_a = value;
+                if (value < _input_props.min_a)
+                    _input_props.min_a = value;
+            }
 
             // Pass if out of range
             if (_chart_props.stop_render)
@@ -579,6 +585,8 @@ void Waveform::_render_wave()
             CURRENT_WAVEFORM_CLIP::Sample currentSample;
             currentSample.x = static_cast<float>(_chart_props.p_x);
             currentSample.current = value;
+            // The waveform buffer carries floats rather than acquisition-validity
+            // metadata, so firmware continuity is presently derived from finiteness.
             currentSample.valid = std::isfinite(value);
 
             // Render

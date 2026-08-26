@@ -250,6 +250,19 @@ namespace
         CHECK(Near(ClampToRange(negativeMeasurement, currentRange), 0.0f));
         CHECK(Near(ClampToRange(1000.0f, currentRange), currentRange.top));
         CHECK(std::isfinite(ClampToRange(std::numeric_limits<float>::infinity(), currentRange)));
+
+        Range expanded = IncludePositiveFiniteValue(currentRange, -1.0f);
+        CHECK(Near(expanded.bottom, 0.0f));
+        CHECK(Near(expanded.top, currentRange.top));
+        expanded = IncludePositiveFiniteValue(expanded, currentRange.top + 1.0f);
+        CHECK(Near(expanded.bottom, 0.0f));
+        CHECK(Near(expanded.top, currentRange.top + 1.0f));
+        const Range finiteRange = IncludePositiveFiniteValue(expanded, std::numeric_limits<float>::infinity());
+        CHECK(Near(finiteRange.bottom, 0.0f));
+        CHECK(Near(finiteRange.top, expanded.top));
+        const Range nanRange = IncludePositiveFiniteValue(expanded, std::numeric_limits<float>::quiet_NaN());
+        CHECK(Near(nanRange.bottom, 0.0f));
+        CHECK(Near(nanRange.top, expanded.top));
     }
 
     struct TrackedResource
