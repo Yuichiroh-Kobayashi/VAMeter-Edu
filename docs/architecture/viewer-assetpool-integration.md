@@ -11,7 +11,7 @@ for the served Viewer's product-level behavior and
 
 `VIEWER_ASSET_CONTRACT` (`viewer_asset_contract.h`) fixes an exact expected byte length for
 each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1363), `kCssGzipBytes` (830),
-`kJsGzipBytes` (24874), for a total `kStoredPayloadBytes` of 27640 bytes, plus a
+`kJsGzipBytes` (24958), for a total `kStoredPayloadBytes` of 27724 bytes, plus a
 64-character bundle ID (`kBundleIdCharacters`) stored with its NUL terminator in a
 65-byte field (`kBundleIdCapacity`).
 
@@ -39,7 +39,7 @@ The fixed `kViewerBundleId` bytes (not read from a file) are copied directly int
 `WebPage.viewer_bundle_id`.
 
 The raw `WebPagePool_t` storage capacities are 573 bytes for index, 1363 for manifest, 830
-for CSS gzip, 24874 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
+for CSS gzip, 24958 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
 require each expected payload length to fit its fixed slot. Generation clears only these
 Viewer slots before exact copies.
 
@@ -74,11 +74,20 @@ requires physical-device validation before being treated as deployed.
 
 ## Current source intake candidate after `v2.0.0-beta.1`
 
-The current source contract identifies the reviewed Graph View bundle as
-`4789b3bf99e923a859a38f6accbdc23a41e9f718099b4b56a7f7d2f13470009d`. The firmware
-source and host contract tests do not by themselves prove that an AssetPool containing
-those exact reviewed bytes has been generated, written, or physically qualified. New
-firmware and its newly generated AssetPool must be treated as a matched deployment; mixed
-old/new firmware and AssetPool layouts are not supported. This source intake does not
-replace the historical physical qualification of the released `v2.0.0-beta.1` bundle
-`cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5`.
+The current source contract identifies the frozen fbe7 candidate bundle as
+`fbe7f2a9033e8f957d0460ec8ff929298e2073de3e292037846237cab6422701`. Its exact Viewer
+source is commit `ad92cf8a7fda9d5c4d46ffb9253ae6d384eba010`, tree
+`027de66229a77248d66d744ea9b98b7e15033f35`. The bundle was byte-identical across two
+runs in its recorded Node 18 build environment, and its frozen byte identity was verified
+before Firmware intake.
+
+This is an **unqualified browser candidate**. Browser qualification is currently
+**BLOCKED / NOT RUN**, and the fbe7 candidate is not browser-qualified, physically
+qualified, production-qualified, release-qualified, or release-ready. The superseded
+PR #20 source contract for bundle
+`4789b3bf99e923a859a38f6accbdc23a41e9f718099b4b56a7f7d2f13470009d` is historical
+only; any qualification associated with that earlier bundle is not evidence for fbe7.
+Firmware and its newly generated AssetPool must be treated as a matched deployment;
+mixed old/new firmware and AssetPool layouts are not supported. This source intake also
+does not replace the historical physical qualification of the released `v2.0.0-beta.1`
+bundle `cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5`.

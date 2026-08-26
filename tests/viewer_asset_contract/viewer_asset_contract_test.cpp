@@ -49,9 +49,9 @@ int main()
     Expect(kIndexBytes == 573U, "index capacity");
     Expect(kManifestBytes == 1363U, "manifest capacity");
     Expect(kCssGzipBytes == 830U, "CSS gzip payload bytes");
-    Expect(kJsGzipBytes == 24874U, "JS gzip payload bytes");
+    Expect(kJsGzipBytes == 24958U, "JS gzip payload bytes");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 27640U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 27724U, "stored payload bytes");
     Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_index_html) == kIndexBytes, "index physical slot");
     Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_asset_manifest) == kManifestBytes, "manifest physical slot");
     Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_css_gzip) == kCssGzipBytes, "CSS physical slot");
@@ -61,19 +61,19 @@ int main()
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
     Expect(kViewerBundleId[kBundleIdCharacters] == '\0', "bundle ID NUL terminator");
-    Expect(Equal(kIndexSha256, "73c3581e78a761913bfdbbf449cec1a08cd5b57ce71a816aad1d267126e71436"), "index SHA-256");
+    Expect(Equal(kIndexSha256, "d19182296e250e4eb5443eabcdb6a9ad1cf67ffae90b51bb25f27995579d6039"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
     Expect(Equal(kCssGzipSha256, "1fbcc3ae1fca202d5e3e4858cc74d5a9d4b07d18f921c7fe0981e1c08fa9a741"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "93c79ff1f847bf56308a60686fd3c91382d1ba659762d59067a0d947c44f77ae"), "JS SHA-256");
-    Expect(Equal(kViewerBundleId, "4789b3bf99e923a859a38f6accbdc23a41e9f718099b4b56a7f7d2f13470009d"),
-           "reviewed Graph View bundle ID");
+    Expect(Equal(kJsGzipSha256, "aac86498c7bb562a9a111bb501be5f4585336f0c153ce809007c2a2b7efe505d"), "JS SHA-256");
+    Expect(Equal(kViewerBundleId, "fbe7f2a9033e8f957d0460ec8ff929298e2073de3e292037846237cab6422701"),
+           "frozen fbe7 candidate bundle ID");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
         "/viewer/assets/app.1fbcc3ae1fca202d5e3e4858cc74d5a9d4b07d18f921c7fe0981e1c08fa9a741.css",
-        "/viewer/assets/app.93c79ff1f847bf56308a60686fd3c91382d1ba659762d59067a0d947c44f77ae.js",
+        "/viewer/assets/app.aac86498c7bb562a9a111bb501be5f4585336f0c153ce809007c2a2b7efe505d.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();
@@ -147,8 +147,11 @@ int main()
     Expect(!IsExpectedBundleId(bundleId, sizeof(bundleId)), "mismatched bundle ID rejected");
 
     WebPagePool_t mismatchedAssetPool = {};
-    std::memcpy(mismatchedAssetPool.viewer_bundle_id, kViewerBundleId, kBundleIdCapacity);
-    mismatchedAssetPool.viewer_bundle_id[0] ^= 1U;
+    const char staleBundleId[] = "4789b3bf99e923a859a38f6accbdc23a41e9f718099b4b56a7f7d2f13470009d";
+    static_assert(sizeof(staleBundleId) == kBundleIdCapacity, "stale bundle ID storage size");
+    std::memcpy(mismatchedAssetPool.viewer_bundle_id, staleBundleId, sizeof(staleBundleId));
+    Expect(!IsExpectedBundleId(mismatchedAssetPool.viewer_bundle_id, sizeof(mismatchedAssetPool.viewer_bundle_id)),
+           "stale 4789 bundle ID rejected");
     gRegisteredRouteCount = 0U;
     Expect(!VIEWER_HTTP_ROUTES::Register(reinterpret_cast<httpd_handle_t>(1), &mismatchedAssetPool, DisplayProfile::Voltage),
            "mismatched AssetPool registration fails closed");
