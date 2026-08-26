@@ -12,6 +12,7 @@
 #include "../utils/INA226/src/INA226.h"
 #include "d2b_vi_producer.h"
 #include "libs/d2b_vi/d2b_acquisition.h"
+#include "libs/d2b_vi/vi_acquisition_timestamp.h"
 #include <sdkconfig.h>
 #if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
 #include "signed_current_observation_device.h"
@@ -255,6 +256,7 @@ enum class CurrentMeasurementRange : std::uint8_t
 struct BasicDataUpdateResult
 {
     std::uint32_t validMask = 0;
+    std::uint64_t sampleTimestampUs = 0;
     CurrentMeasurementRange currentRange = CurrentMeasurementRange::Low;
     bool currentReadSucceeded = false;
     bool overflowReadSucceeded = false;
@@ -265,6 +267,7 @@ static BasicDataUpdateResult _handle_basic_data_update()
 {
     float busVoltage = 0.0F;
     const bool busVoltageReadSucceeded = _ina226_hc->readBusVoltageChecked(busVoltage);
+    D2B::ViAcquisitionTimestamp acquisitionTimestamp(static_cast<std::uint64_t>(esp_timer_get_time()));
     _pm_data_daemon->busVoltage = busVoltage;
     _pm_data_daemon->busPower = _ina226_hc->readBusPower();
 
@@ -279,6 +282,7 @@ HELL:
     {
         float shuntVoltage = 0.0F;
         currentReadSucceeded = _ina226_lc->readShuntVoltageChecked(shuntVoltage);
+        acquisitionTimestamp.acceptCurrentCandidate(static_cast<std::uint64_t>(esp_timer_get_time()));
         _pm_data_daemon->shuntVoltage = shuntVoltage;
 
         // It should be the same, but readShuntCurrent() not
@@ -308,6 +312,7 @@ HELL:
         _pm_data_daemon->shuntVoltage = _ina226_hc->readShuntVoltage();
         float shuntCurrent = 0.0F;
         currentReadSucceeded = _ina226_hc->readShuntCurrentChecked(shuntCurrent);
+        acquisitionTimestamp.acceptCurrentCandidate(static_cast<std::uint64_t>(esp_timer_get_time()));
         _pm_data_daemon->shuntCurrent = shuntCurrent;
 
         // If higher than 1mA, quit reverse measuring
@@ -331,6 +336,7 @@ HELL:
     bool overflow = false;
     const bool overflowReadSucceeded = selectedCurrentSensor->readMathOverflowChecked(overflow);
     BasicDataUpdateResult result;
+    result.sampleTimestampUs = acquisitionTimestamp.sampleTimestampUs();
     result.validMask = D2B::BuildViValidMask(busVoltageReadSucceeded,
                                              _pm_data_daemon->busVoltage,
                                              currentReadSucceeded,
@@ -464,13 +470,12 @@ static void _power_monitor_daemon(void* param)
         _handle_time_tag_update(_time_count_start);
 
 #if defined(CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION) && CONFIG_VAMETER_SIGNED_CURRENT_OBSERVATION
-        // Qualification builds share one monotonic timestamp between OBS and the existing D2B tap.
-        // The OBS-disabled branch retains the normal-product timestamp call at the D2B tap itself.
-        const std::uint64_t publishTimestampUs = static_cast<std::uint64_t>(esp_timer_get_time());
+        // Qualification OBS and D2B share the logical V/I sample timestamp: the
+        // midpoint of the software-observed acquisition completion boundaries.
         const SIGNED_CURRENT_OBS::CurrentRange observationRange =
             updateResult.currentRange == CurrentMeasurementRange::Low ? SIGNED_CURRENT_OBS::CurrentRange::Low
                                                                       : SIGNED_CURRENT_OBS::CurrentRange::High;
-        SIGNED_CURRENT_OBS_DEVICE::Publish(publishTimestampUs,
+        SIGNED_CURRENT_OBS_DEVICE::Publish(updateResult.sampleTimestampUs,
                                            _pm_data_daemon->shuntCurrent,
                                            _pm_data_daemon->busVoltage,
                                            updateResult.validMask,
@@ -478,12 +483,12 @@ static void _power_monitor_daemon(void* param)
                                            updateResult.currentReadSucceeded,
                                            updateResult.overflowReadSucceeded,
                                            updateResult.overflowAsserted);
-        D2B_PRODUCER::Tap(publishTimestampUs,
+        D2B_PRODUCER::Tap(updateResult.sampleTimestampUs,
                           updateResult.validMask,
                           _pm_data_daemon->busVoltage,
                           _pm_data_daemon->shuntCurrent);
 #else
-        D2B_PRODUCER::Tap(static_cast<std::uint64_t>(esp_timer_get_time()),
+        D2B_PRODUCER::Tap(updateResult.sampleTimestampUs,
                           updateResult.validMask,
                           _pm_data_daemon->busVoltage,
                           _pm_data_daemon->shuntCurrent);
