@@ -143,13 +143,16 @@ namespace VIEWER_HTTP_ROUTES
 
     bool HasExpectedAssetIdentity(const WebPagePool_t* webPages)
     {
-        return webPages != nullptr &&
-               VIEWER_ASSET_CONTRACT::IsExpectedBundleId(webPages->viewer_bundle_id, sizeof(webPages->viewer_bundle_id));
+        using namespace VIEWER_ASSET_CONTRACT;
+        return webPages != nullptr && IsExpectedBundleId(webPages->viewer_bundle_id, sizeof(webPages->viewer_bundle_id)) &&
+               MatchesSha256(webPages->viewer_index_html, sizeof(webPages->viewer_index_html), kIndexBytes, kIndexSha256) &&
+               MatchesSha256(
+                   webPages->viewer_asset_manifest, sizeof(webPages->viewer_asset_manifest), kManifestBytes, kManifestSha256) &&
+               MatchesSha256(webPages->viewer_css_gzip, sizeof(webPages->viewer_css_gzip), kCssGzipBytes, kCssGzipSha256) &&
+               MatchesSha256(webPages->viewer_js_gzip, sizeof(webPages->viewer_js_gzip), kJsGzipBytes, kJsGzipSha256);
     }
 
-    bool Register(httpd_handle_t server,
-                  const WebPagePool_t* webPages,
-                  VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
+    bool Register(httpd_handle_t server, const WebPagePool_t* webPages, VIEWER_ASSET_CONTRACT::DisplayProfile displayProfile)
     {
         if (server == nullptr || !HasExpectedAssetIdentity(webPages))
         {
