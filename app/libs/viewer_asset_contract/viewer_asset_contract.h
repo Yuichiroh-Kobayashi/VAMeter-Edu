@@ -6,10 +6,10 @@
 namespace VIEWER_ASSET_CONTRACT
 {
     static const std::size_t kIndexBytes = 573U;
-    static const std::size_t kManifestBytes = 1363U;
-    static const std::size_t kCssGzipBytes = 756U;
-    static const std::size_t kJsGzipBytes = 22566U;
-    static const std::size_t kStoredPayloadBytes = 25258U;
+    static const std::size_t kManifestBytes = 1364U;
+    static const std::size_t kCssGzipBytes = 2385U;
+    static const std::size_t kJsGzipBytes = 25809U;
+    static const std::size_t kStoredPayloadBytes = 30131U;
     static const std::size_t kBundleIdCharacters = 64U;
     static const std::size_t kBundleIdCapacity = 65U;
     static const std::size_t kViewerRouteCount = 6U;
@@ -90,4 +90,6 @@ namespace VIEWER_ASSET_CONTRACT
 
     const RouteContract* ViewerRoutes();
     bool IsExpectedBundleId(const std::uint8_t* bytes, std::size_t capacity);
+    bool
+    MatchesSha256(const std::uint8_t* bytes, std::size_t bytesCount, std::size_t expectedBytes, const char* expectedSha256);
 } // namespace VIEWER_ASSET_CONTRACT

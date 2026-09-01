@@ -10,8 +10,8 @@ for the served Viewer's product-level behavior and
 ## Fixed byte-exact contract
 
 `VIEWER_ASSET_CONTRACT` (`viewer_asset_contract.h`) fixes an exact expected byte length for
-each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1363), `kCssGzipBytes` (756),
-`kJsGzipBytes` (22566), for a total `kStoredPayloadBytes` of 25258 bytes, plus a
+each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1364), `kCssGzipBytes` (2385),
+`kJsGzipBytes` (25809), for a total `kStoredPayloadBytes` of 30131 bytes, plus a
 64-character bundle ID (`kBundleIdCharacters`) stored with its NUL terminator in a
 65-byte field (`kBundleIdCapacity`).
 
@@ -38,18 +38,19 @@ compiled-in byte-exact contract fails AssetPool generation outright.
 The fixed `kViewerBundleId` bytes (not read from a file) are copied directly into
 `WebPage.viewer_bundle_id`.
 
-The raw `WebPagePool_t` storage capacities remain the released `v2.0.0-beta.1` layout:
-573 bytes for index, 1363 for manifest, 761 for CSS gzip, 22578 for JavaScript gzip, and
-65 for the bundle ID. Compile-time assertions require each expected payload length to fit
-its fixed slot. Generation clears only these Viewer slots before exact copies, so unused
-CSS/JavaScript tail bytes are deterministic without changing served lengths or later raw
-field offsets.
+The raw `WebPagePool_t` storage capacities are 573 bytes for index, 1364 for manifest, 2385
+for CSS gzip, 25809 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
+require each expected payload length to fit its fixed slot. Generation clears only these
+Viewer slots before exact copies.
 
 ## Runtime integrity check
 
 `IsExpectedBundleId()` compares a candidate bundle-ID buffer (exactly
 `kBundleIdCapacity` bytes, NUL-terminated at `kBundleIdCharacters`) against the compiled
-`kViewerBundleId` before the stored Viewer bundle is trusted at runtime. This is the same
+`kViewerBundleId`. Before any Viewer route is registered, `HasExpectedAssetIdentity()`
+also SHA-256 verifies all four fixed-size stored representations against the compiled
+contract. A stale ID, malformed ID, short/missing input at generation, or same-size
+mutated representation fails closed with no Viewer routes. The bundle ID is the same
 identifier surfaced to the browser as `viewer_bundle_id` in `/viewer/device.json` (see the
 [Viewer contract](../product/device-hosted-viewer-contract.md#devicejsondisplay_name)).
 
@@ -74,13 +75,21 @@ regeneration and flashing requirements in
 [`../ai/build-and-validation.md`](../ai/build-and-validation.md) apply, and any such change
 requires physical-device validation before being treated as deployed.
 
-## Current source candidate after `v2.0.0-beta.1`
+## Current source intake candidate after `v2.0.0-beta.1`
 
-The current source candidate uses Viewer source commit
-`84136a22ed6ea00f428f8c1c430dc76ec615caf4`, D2B authority
-`b30ad676922af73448952d5a9cac312467a944f9`, and bundle ID
-`6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca`.
-It adopts Public Status Standard R1 on the Viewer side. This is a source/host/build
-candidate pending physical AssetPool write and browser qualification; it does not replace
-the historical physical qualification of the released `v2.0.0-beta.1` bundle
-`cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5`.
+The current source contract identifies final Viewer PR #12 bundle
+`4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`. Its product-byte
+authority is Viewer source commit `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`, tree
+`8f8426e9af1649f68e66e4f8f432d1b91452e38d`; a later merge commit is not substituted for
+that authority. The exact bundle was byte-identical across two runs under Viewer Build
+Environment V1 and has separate Viewer-side browser qualification.
+
+This Firmware intake inherits only that exact Viewer-side qualification. It does not
+establish that these bytes have been written to or served by an actual VAMeter. The
+previous PR #20 `fbe7f2...` intake remains superseded historical chronology, and the
+earlier `6fe499...`, `4789...`, and released beta.1 identities retain only their own
+recorded evidence. None is evidence for device-hosted delivery of `4422530b...`.
+Firmware and its newly generated AssetPool must be treated as a matched deployment;
+mixed old/new firmware and AssetPool layouts are not supported. This source intake also
+does not replace the historical physical qualification of the released `v2.0.0-beta.1`
+bundle `cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5`.

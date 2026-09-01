@@ -1,4 +1,6 @@
 #include "viewer_asset_contract.h"
+#include "viewer_http_routes.h"
+#include "assets/web/types.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -7,6 +9,8 @@
 
 namespace
 {
+    std::size_t gRegisteredRouteCount = 0U;
+
     void Expect(bool condition, const char* message)
     {
         if (!condition)
@@ -19,6 +23,20 @@ namespace
     bool Equal(const char* left, const char* right) { return std::strcmp(left, right) == 0; }
 } // namespace
 
+extern "C" esp_err_t httpd_register_uri_handler(httpd_handle_t, const httpd_uri_t*)
+{
+    ++gRegisteredRouteCount;
+    return ESP_OK;
+}
+
+extern "C" esp_err_t httpd_unregister_uri_handler(httpd_handle_t, const char*, httpd_method_t) { return ESP_OK; }
+extern "C" esp_err_t httpd_resp_set_hdr(httpd_req_t*, const char*, const char*) { return ESP_OK; }
+extern "C" esp_err_t httpd_resp_set_status(httpd_req_t*, const char*) { return ESP_OK; }
+extern "C" esp_err_t httpd_resp_set_type(httpd_req_t*, const char*) { return ESP_OK; }
+extern "C" esp_err_t httpd_resp_send(httpd_req_t*, const char*, std::size_t) { return ESP_OK; }
+extern "C" esp_err_t httpd_resp_send_err(httpd_req_t*, httpd_err_code_t, const char*) { return ESP_OK; }
+extern "C" const char* esp_err_to_name(esp_err_t) { return "test error"; }
+
 int main()
 {
     using namespace VIEWER_ASSET_CONTRACT;
@@ -29,27 +47,33 @@ int main()
     Expect(kViewerRouteCount + kD2bRouteCount == kSystemLiveRouteCount, "SystemLive route arithmetic");
 
     Expect(kIndexBytes == 573U, "index capacity");
-    Expect(kManifestBytes == 1363U, "manifest capacity");
-    Expect(kCssGzipBytes == 756U, "CSS gzip payload bytes");
-    Expect(kJsGzipBytes == 22566U, "JS gzip payload bytes");
+    Expect(kManifestBytes == 1364U, "manifest capacity");
+    Expect(kCssGzipBytes == 2385U, "CSS gzip payload bytes");
+    Expect(kJsGzipBytes == 25809U, "JS gzip payload bytes");
     Expect(kIndexBytes + kManifestBytes + kCssGzipBytes + kJsGzipBytes == kStoredPayloadBytes, "stored payload arithmetic");
-    Expect(kStoredPayloadBytes == 25258U, "stored payload bytes");
+    Expect(kStoredPayloadBytes == 30131U, "stored payload bytes");
+    Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_index_html) == kIndexBytes, "index physical slot");
+    Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_asset_manifest) == kManifestBytes, "manifest physical slot");
+    Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_css_gzip) == kCssGzipBytes, "CSS physical slot");
+    Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_js_gzip) == kJsGzipBytes, "JS physical slot");
+    Expect(sizeof(((WebPagePool_t*)nullptr)->viewer_bundle_id) == kBundleIdCapacity, "bundle ID physical slot");
     Expect(std::strlen(kViewerBundleId) == kBundleIdCharacters, "bundle ID length");
     Expect(kBundleIdCapacity == 65U, "bundle ID storage capacity");
 
-    Expect(Equal(kIndexSha256, "53924d7af7617fdbec7b3d240835082702b72ea1971b8b4051d89bb7c05089d3"), "index SHA-256");
+    Expect(kViewerBundleId[kBundleIdCharacters] == '\0', "bundle ID NUL terminator");
+    Expect(Equal(kIndexSha256, "88c39f443ef49d477d558f86dfd4b02345ed49e5a0d1123ce92538b7dafc54b7"), "index SHA-256");
     Expect(Equal(kManifestSha256, kViewerBundleId), "manifest SHA-256 and bundle ID");
-    Expect(Equal(kCssGzipSha256, "d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf"), "CSS SHA-256");
-    Expect(Equal(kJsGzipSha256, "3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a"), "JS SHA-256");
-    Expect(!Equal(kViewerBundleId, "cbcbd7eab111b49c0c6119b22a7f50ae55981933fd799abfd98d92d0dc5d96e5"),
-           "released beta.1 bundle is not the current source candidate");
+    Expect(Equal(kCssGzipSha256, "250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb"), "CSS SHA-256");
+    Expect(Equal(kJsGzipSha256, "46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4"), "JS SHA-256");
+    Expect(Equal(kViewerBundleId, "4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af"),
+           "final qualified PR12 bundle ID");
 
     const char* const expectedRoutes[kViewerRouteCount] = {
         "/",
         "/viewer/",
         "/viewer/asset-manifest.json",
-        "/viewer/assets/app.d1fabca3dc9b936d599661b133e4901e875a0bc7166ab5502d960d7ca1b76bdf.css",
-        "/viewer/assets/app.3ebf458c7362b06db53fedc156b887f66e30303fc2af23287c5234d430a9bd3a.js",
+        "/viewer/assets/app.250905db503bf774bcab87f29e44ceddd63c949e798cc72c55864b933a8cfafb.css",
+        "/viewer/assets/app.46bafb3d23345cd8dc48533c4c59c595ef6b0ae5cf051158dae509a20f56cbe4.js",
         "/viewer/device.json",
     };
     const RouteContract* routes = ViewerRoutes();
@@ -73,10 +97,8 @@ int main()
     Expect(Equal(routes[3].contentEncoding, kGzipEncoding), "CSS gzip Content-Encoding");
     Expect(Equal(routes[4].contentEncoding, kGzipEncoding), "JS gzip Content-Encoding");
 
-    Expect(DisplayProfileForWaveformModeCode(1U) == DisplayProfile::Voltage,
-           "mode_volt_only maps to Voltage");
-    Expect(DisplayProfileForWaveformModeCode(2U) == DisplayProfile::Current,
-           "mode_current_only maps to Current");
+    Expect(DisplayProfileForWaveformModeCode(1U) == DisplayProfile::Voltage, "mode_volt_only maps to Voltage");
+    Expect(DisplayProfileForWaveformModeCode(2U) == DisplayProfile::Current, "mode_current_only maps to Current");
     Expect(DisplayProfileForWaveformModeCode(0U) == DisplayProfile::Both, "mode_both maps to Both");
     Expect(DisplayProfileForWaveformModeCode(3U) == DisplayProfile::Invalid,
            "unknown waveform mode does not fall back to Both");
@@ -92,10 +114,8 @@ int main()
         Expect(deviceJsonBytes == std::strlen(deviceJson), "device JSON explicit byte length");
         Expect(std::strstr(deviceJson, "\"schema_version\":1") != nullptr, "device schema version retained");
         Expect(std::strstr(deviceJson, kViewerBundleId) != nullptr, "device bundle ID retained");
-        Expect(std::strstr(deviceJson, "\"d2b_protocol\":\"d2b-stream/0.1\"") != nullptr,
-               "device D2B protocol retained");
-        Expect(std::strstr(deviceJson, "\"d2b_stream\":\"live-vi\"") != nullptr,
-               "device D2B stream retained");
+        Expect(std::strstr(deviceJson, "\"d2b_protocol\":\"d2b-stream/0.1\"") != nullptr, "device D2B protocol retained");
+        Expect(std::strstr(deviceJson, "\"d2b_stream\":\"live-vi\"") != nullptr, "device D2B stream retained");
         const std::string displayField = std::string("\"display_name\":\"") + displayNames[index] + "\"";
         Expect(std::strstr(deviceJson, displayField.c_str()) != nullptr, "device exact display_name");
         Expect(std::strstr(deviceJson, "mac") == nullptr, "device JSON has no MAC field");
@@ -104,10 +124,7 @@ int main()
     }
     char invalidJson[kDeviceJsonCapacity] = {};
     std::size_t invalidJsonBytes = 0U;
-    Expect(!BuildDeviceJson(DisplayProfile::Invalid,
-                            invalidJson,
-                            sizeof(invalidJson),
-                            &invalidJsonBytes),
+    Expect(!BuildDeviceJson(DisplayProfile::Invalid, invalidJson, sizeof(invalidJson), &invalidJsonBytes),
            "invalid display profile fails closed");
 
     DisplayProfileSession session;
@@ -125,9 +142,50 @@ int main()
     bundleId[kBundleIdCharacters] = 'x';
     Expect(!IsExpectedBundleId(bundleId, sizeof(bundleId)), "unterminated bundle ID rejected");
     bundleId[kBundleIdCharacters] = 0U;
-    bundleId[0] = (bundleId[0] == static_cast<std::uint8_t>('0')) ? static_cast<std::uint8_t>('1') : static_cast<std::uint8_t>('0');
+    bundleId[0] =
+        (bundleId[0] == static_cast<std::uint8_t>('0')) ? static_cast<std::uint8_t>('1') : static_cast<std::uint8_t>('0');
     Expect(!IsExpectedBundleId(bundleId, sizeof(bundleId)), "mismatched bundle ID rejected");
 
-    std::cout << "PASS: frozen Viewer product contract\n";
+    const std::uint8_t shaTestVector[] = {'a', 'b', 'c'};
+    const char shaTestVectorDigest[] = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    Expect(MatchesSha256(shaTestVector, sizeof(shaTestVector), sizeof(shaTestVector), shaTestVectorDigest),
+           "known SHA-256 vector accepted");
+    Expect(!MatchesSha256(nullptr, sizeof(shaTestVector), sizeof(shaTestVector), shaTestVectorDigest),
+           "missing representation rejected");
+    Expect(!MatchesSha256(shaTestVector, sizeof(shaTestVector) - 1U, sizeof(shaTestVector), shaTestVectorDigest),
+           "one-byte-short representation rejected");
+    std::uint8_t mutatedShaTestVector[sizeof(shaTestVector)] = {'a', 'b', 'c'};
+    mutatedShaTestVector[1] ^= 0x01U;
+    Expect(
+        !MatchesSha256(mutatedShaTestVector, sizeof(mutatedShaTestVector), sizeof(mutatedShaTestVector), shaTestVectorDigest),
+        "one-byte-mutated representation rejected");
+    const char incorrectDigest[] = "aa7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    Expect(!MatchesSha256(shaTestVector, sizeof(shaTestVector), sizeof(shaTestVector), incorrectDigest),
+           "incorrect SHA-256 rejected");
+
+    WebPagePool_t mismatchedAssetPool = {};
+    const char staleBundleId[] = "fbe7f2a9033e8f957d0460ec8ff929298e2073de3e292037846237cab6422701";
+    static_assert(sizeof(staleBundleId) == kBundleIdCapacity, "stale bundle ID storage size");
+    std::memcpy(mismatchedAssetPool.viewer_bundle_id, staleBundleId, sizeof(staleBundleId));
+    Expect(!IsExpectedBundleId(mismatchedAssetPool.viewer_bundle_id, sizeof(mismatchedAssetPool.viewer_bundle_id)),
+           "stale fbe7 bundle ID rejected");
+    gRegisteredRouteCount = 0U;
+    Expect(!VIEWER_HTTP_ROUTES::Register(reinterpret_cast<httpd_handle_t>(1), &mismatchedAssetPool, DisplayProfile::Voltage),
+           "mismatched AssetPool registration fails closed");
+    Expect(gRegisteredRouteCount == 0U, "mismatched AssetPool registers no Viewer routes");
+
+    const char earlierBundleId[] = "6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca";
+    static_assert(sizeof(earlierBundleId) == kBundleIdCapacity, "earlier bundle ID storage size");
+    std::memcpy(mismatchedAssetPool.viewer_bundle_id, earlierBundleId, sizeof(earlierBundleId));
+    Expect(!IsExpectedBundleId(mismatchedAssetPool.viewer_bundle_id, sizeof(mismatchedAssetPool.viewer_bundle_id)),
+           "stale 6fe499 bundle ID rejected");
+
+    std::memcpy(mismatchedAssetPool.viewer_bundle_id, kViewerBundleId, kBundleIdCapacity);
+    gRegisteredRouteCount = 0U;
+    Expect(!VIEWER_HTTP_ROUTES::Register(reinterpret_cast<httpd_handle_t>(1), &mismatchedAssetPool, DisplayProfile::Voltage),
+           "correct bundle ID with incorrect representation hashes fails closed");
+    Expect(gRegisteredRouteCount == 0U, "incorrect representation hashes register no Viewer routes");
+
+    std::cout << "PASS: final qualified Viewer product contract\n";
     return 0;
 }
