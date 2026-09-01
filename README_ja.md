@@ -8,6 +8,10 @@
 
 > **最新のプレリリース:** [`v2.0.0-beta.1`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0-beta.1)（2026-08-21）。実機確認済みの beta であり、安定版 `v2.0.0` ではありません。
 
+> **M5Stack Global Innovation Contest 2026 Special Mentions - Educational Impact Award 受賞**
+>
+> VAMeter-Edu は [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results) で教育的な取り組みを評価されました。コンテストではブラウザで電圧・電流をリアルタイム観察するデモを実現し、その後は device-hosted Viewer、接続時の安全性、再現可能な検証、教室で扱いやすい操作フローなどを整え、実際の授業で使える品質を目指して改良を続けています。
+
 ---
 
 ## 特徴
@@ -139,9 +143,21 @@ parttool.py --port <ポート名> write_partition --partition-name=assetpool --i
 
 ## Roadmap
 
-- [Student の単一 Start / Stop と above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
+- [同期 FAT 書き込みによる recorder の sampling stall 改善](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3)
+- [逆方向電流の表示と Training mode の保護動作](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15)
 - [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
 - [アナログ計器の答え合わせ用表示補正](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
+- [内部電源式 V-I logger の検討（hardware redesign 待ちで一時停止中）](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11)
+
+---
+
+## コントリビューション
+
+不具合報告、ドキュメントの改善、目的を絞った pull request を歓迎します。
+
+Issue や PR を作成する前に [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md) をご確認ください。ファームウェア、ブラウザ Viewer、汎用 D2B プロトコルのどこが担当する問題か分からない場合は、問題に気付いた場所と状況を記載してください。メンテナーが適切なリポジトリへの案内や相互リンクを行えます。
+
+English: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 

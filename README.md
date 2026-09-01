@@ -5,6 +5,10 @@ Educational firmware for [M5Stack VAMeter](https://docs.m5stack.com/en/products/
 
 > **Latest prerelease:** [`v2.0.0-beta.1`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0-beta.1) (2026-08-21). This is a physically tested beta, not the stable `v2.0.0` release.
 
+> **M5Stack Global Innovation Contest 2026 — Special Mentions: Educational Impact Award**
+>
+> VAMeter-Edu was recognized for its educational impact in the [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results). The contest build demonstrated real-time voltage/current observation in a browser; development since then has focused on making that demonstration reliable for real classrooms, including direct device-hosted viewing, safer connection behavior, reproducible validation, and classroom-oriented workflows.
+
 ## Features
 
 ### Educational Enhancements
@@ -91,9 +95,19 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Roadmap
 
-- [Student single Start / Stop control and above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
+- [Reduce recorder sampling stalls during synchronous FAT writes](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3)
+- [Add reverse-current indication and Training-mode protection](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15)
 - [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
 - [Analog-meter answer-check display correction](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
+- [Internally powered V-I logger research (paused pending hardware redesign)](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11)
+
+## Contributing
+
+Bug reports, documentation improvements, and focused pull requests are welcome.
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) before opening an Issue or PR. If you are unsure whether a problem belongs to the firmware, the browser Viewer, or the generic D2B protocol, describe where you encountered it and maintainers can help route or cross-link it.
+
+日本語: [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)
 
 ## Project Structure
 
