@@ -1,25 +1,37 @@
 # Device-hosted Viewer contract
 
 This describes only current, implemented behavior of the VAMeter-Edu device-hosted
-browser Viewer, released as part of `v2.0.0-beta.1`. See
-[`v2.0.0-beta.1` release notes](../releases/v2.0.0-beta.1.md) for the release record, and
+browser Viewer, released in stable
+[`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)
+on 2026-09-02. See
 [`../architecture/systemlive-lifecycle-and-ownership.md`](../architecture/systemlive-lifecycle-and-ownership.md)
 for the underlying route/session architecture.
 
-The source after `v2.0.0-beta.1` contains the Viewer Public Status Standard R1 candidate.
-Its exact physically tested Firmware source is
-`8ac66922735b9634f7a440dbf0ae1dff0784789f`, its exact Viewer source is
-`84136a22ed6ea00f428f8c1c430dc76ec615caf4`, and its bundle ID is
+The stable release authority is:
+
+| Release identity | Value |
+|---|---|
+| Firmware release commit | `ee4da1b5e5e238fbc66a9d9a49f4d051c1ca986b` |
+| Viewer release source | `e1ebdb1cde8585a37447a66f4c8183654f4c3cda` |
+| Viewer release tree | `8f8426e9af1649f68e66e4f8f432d1b91452e38d` |
+| Viewer bundle | `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af` |
+
+Before the stable release, the Viewer Public Status Standard R1 work had an
+earlier targeted physical-validation stage. Its exact tested Firmware source was
+`8ac66922735b9634f7a440dbf0ae1dff0784789f`, its exact Viewer source was
+`84136a22ed6ea00f428f8c1c430dc76ec615caf4`, and its bundle ID was
 `6fe4991f3dcea5793b4b19736e4ab9c3ca39869c59e789776abae5a5d84733ca`.
-The candidate application and AssetPool were written and independently read back with
+That candidate application and AssetPool were written and independently read back with
 exact identity, then targeted device-hosted integration was manually passed on Windows
 Edge and iPad Safari, including start/stop behavior, reconnect cleanup, and rollback.
-This result is **PASS WITH EVIDENCE GAPS**, not full browser qualification: oracle-backed
+That historical result was **PASS WITH EVIDENCE GAPS**, not full browser qualification:
+oracle-backed
 browser capture, screenshots/DevTools evidence, long soak, gap/backpressure, and other
 full-qualification cases were not performed. The session ended after restoring the
-known-good `v2.0.0-beta.1` application + AssetPool pair, so the PR #14 candidate is not
-currently deployed. The historical beta.1 pair remains the deployed product authority
-until full qualification and a release decision are completed. See the
+then-known-good `v2.0.0-beta.1` application + AssetPool pair, so that PR #14 candidate
+was not deployed at the end of that validation. This is historical chronology, not the
+current product authority; the stable release authority above now identifies the
+device-served product. See the
 [targeted physical validation record](../archive/validation/d2b/2026-08-22-public-status-r1-viewer-targeted-physical-validation.md).
 
 ## What it is
@@ -120,8 +132,9 @@ stream rather than by polling or reloading the page.
 
 ## 10 / 30 / 60 second display windows
 
-The released Viewer supports 10, 30, and 60 second display windows (recorded in the
-`v2.0.0-beta.1` [CHANGELOG](../../CHANGELOG.md) entry). Window selection is a
+The stable [`v2.0.0` release](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)
+supports 10, 30, and 60 second display windows. Their original beta.1 introduction is
+also preserved in the historical [CHANGELOG](../../CHANGELOG.md) entry. Window selection is a
 Viewer-side (browser) presentation concern over the same live D2B stream; it does not
 change what the device measures or streams.
 

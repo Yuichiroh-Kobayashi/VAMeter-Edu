@@ -25,12 +25,12 @@ Prefer classroom clarity, safe failure, data preservation, and explainable measu
 
 ## Current development scope
 
-- Stable baseline branch: `main`. Current release: `v2.0.0-beta.1` (2026-08-21); see `docs/releases/v2.0.0-beta.1.md`.
+- Stable baseline branch: `main`. Current release: stable [`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0) (2026-09-02). The earlier `v2.0.0-beta.1` release remains historical lineage, not current release authority.
 - `dev/vi-logger` is a historical branch that hosted PR #1 plus product/design documentation; its recorder/CSV behavior reached `main` through the later `v2.0.0-beta.1` release lineage, not a formal merge of that branch. Current work does not need to start from it.
 - High-priority known issue: GitHub Issue #3, recorder sampling stalls during synchronous FAT writes.
 - GitHub Issue #2 (persistent calibration storage / `cal_store` reintegration) is closed as not planned. Measurement-pipeline calibration changes are not currently planned work; do not treat Issue #2 as active or upcoming.
 - Do not begin Issue #3 implementation unless the task explicitly requests it.
-- The device-hosted direct-browser Viewer (`O1-RX + O3` architecture) is implemented and released as part of `v2.0.0-beta.1`, with physical validation on Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari. See `docs/product/device-hosted-viewer-contract.md`. Multi-client policy beyond the existing one-active-owner D2B safety contract (Issue #8) and the analog-meter answer-check display correction (Issue #9) remain open.
+- The device-hosted direct-browser Viewer (`O1-RX + O3` architecture) is implemented and released in stable `v2.0.0`, with physical validation on Windows Edge 151 and an iPad 7th generation running iPadOS 18.7.9 Safari. See `docs/product/device-hosted-viewer-contract.md`. Multi-client policy beyond the existing one-active-owner D2B safety contract (Issue #8) and the analog-meter answer-check display correction (Issue #9) remain open.
 - An internal-excitation V-I logger (internal power source for classroom V-I experiments) is a real, still-requested future direction, but is paused pending a hardware redesign. It is tracked in [VAMeter-Edu Issue #11](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11); historical design drafts are preserved under `docs/archive/design/`. Do not begin implementation without an explicit task request.
 
 Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.

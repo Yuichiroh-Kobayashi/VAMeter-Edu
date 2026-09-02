@@ -46,12 +46,14 @@ Do not hard-code current branch SHAs into general AI instructions. Verify curren
 
 ## Device-hosted direct-browser Viewer
 
-The device-hosted browser Viewer is implemented and released as part of `v2.0.0-beta.1`
-(2026-08-21), with physical validation on Windows Edge 151 and an iPad 7th generation
+The device-hosted browser Viewer is implemented and released in stable
+[`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)
+(2026-09-02), with physical validation on Windows Edge 151 and an iPad 7th generation
 running iPadOS 18.7.9 Safari. See the
 [device-hosted Viewer contract](../product/device-hosted-viewer-contract.md) for the
-current product behavior and the
-[`v2.0.0-beta.1` release record](../releases/v2.0.0-beta.1.md) for the release itself. The
+current product behavior. The earlier
+[`v2.0.0-beta.1` release record](../releases/v2.0.0-beta.1.md) remains historical
+prerelease evidence. The
 architecture is `O1-RX + O3`: bounded pre-parser Origin admission for the D2B WebSocket
 combined with a device-hosted same-origin production Viewer and a separately bounded
 external-development profile.
@@ -62,8 +64,8 @@ The durable boundaries are:
   [measurement-and-presentation semantics](../standards/measurement-and-presentation-semantics.md).
 - Origin is an admission-control gate, not authentication. P1 and P2 remain mandatory under the authoritative [Origin admission policy](../architecture/origin-admission-policy.md).
 - SystemConfig, SystemLive, and Download remain separated as defined by the [direct-browser service profiles](../architecture/direct-browser-service-profiles.md).
-- Static and runtime resource qualification is tracked in the [resource budget](../architecture/resource-budget.md), which now records the actual `v2.0.0-beta.1` application/AssetPool sizes.
-- Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior from before the Viewer was implemented; they are superseded by the current source and the `v2.0.0-beta.1` release evidence above, not current product implementation authority.
+- Static and runtime resource qualification is tracked in the [resource budget](../architecture/resource-budget.md), which records the accepted stable `v2.0.0` current baseline while preserving the measured `v2.0.0-beta.1` figures as a version-specific historical baseline.
+- Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior from before the Viewer was implemented; they are superseded by the current source and stable `v2.0.0` release evidence above, not current product implementation authority.
 
 Multi-client D2B stream policy beyond the existing one-active-owner safety contract is
 under investigation in [VAMeter-Edu Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8).

@@ -5,7 +5,8 @@ and served at runtime, implemented in `app/libs/viewer_asset_contract/` and
 `app/assets/assets.cpp`. See
 [`../product/device-hosted-viewer-contract.md`](../product/device-hosted-viewer-contract.md)
 for the served Viewer's product-level behavior and
-[`resource-budget.md`](resource-budget.md) for the current size/headroom facts.
+[`resource-budget.md`](resource-budget.md) for the recorded size/headroom claim
+boundaries.
 
 ## Fixed byte-exact contract
 
@@ -75,20 +76,26 @@ regeneration and flashing requirements in
 [`../ai/build-and-validation.md`](../ai/build-and-validation.md) apply, and any such change
 requires physical-device validation before being treated as deployed.
 
-## Current source intake candidate after `v2.0.0-beta.1`
+## Stable `v2.0.0` Viewer intake
 
-The current source contract identifies final Viewer PR #12 bundle
+Stable [VAMeter-Edu `v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0),
+published on 2026-09-02 from Firmware commit
+`ee4da1b5e5e238fbc66a9d9a49f4d051c1ca986b`, embeds final Viewer PR #12 bundle
 `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`. Its product-byte
 authority is Viewer source commit `e1ebdb1cde8585a37447a66f4c8183654f4c3cda`, tree
 `8f8426e9af1649f68e66e4f8f432d1b91452e38d`; a later merge commit is not substituted for
 that authority. The exact bundle was byte-identical across two runs under Viewer Build
-Environment V1 and has separate Viewer-side browser qualification.
+Environment V1 and has separate Viewer-side browser qualification. Later Viewer source
+changes do not alter this published bundle; they require another reviewed Firmware
+Viewer/AssetPool intake and a later VAMeter-Edu release to become device-served.
 
-This Firmware intake inherits only that exact Viewer-side qualification. It does not
-establish that these bytes have been written to or served by an actual VAMeter. The
+Before release publication, this Firmware intake inherited only that exact Viewer-side
+qualification and did not by itself establish that the bytes had been written to or
+served by an actual VAMeter. That limitation is retained as pre-release chronology; the
+stable release above is now the current product authority. The
 previous PR #20 `fbe7f2...` intake remains superseded historical chronology, and the
 earlier `6fe499...`, `4789...`, and released beta.1 identities retain only their own
-recorded evidence. None is evidence for device-hosted delivery of `4422530b...`.
+recorded evidence; none substitutes for the stable release record.
 Firmware and its newly generated AssetPool must be treated as a matched deployment;
 mixed old/new firmware and AssetPool layouts are not supported. This source intake also
 does not replace the historical physical qualification of the released `v2.0.0-beta.1`
