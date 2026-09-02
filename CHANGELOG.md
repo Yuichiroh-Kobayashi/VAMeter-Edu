@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-02
+
+### Added
+
+- Stable device-hosted same-origin Viewer for direct browser voltage/current observation
+- Student / Professional display modes and Voltage / Current / Both profiles
+- 10 / 30 / 60 second device-time display windows that preserve gaps and do not convert invalid samples to zero
+- System-aware Light / Dark theme with a page-lifetime manual override
+
+### Changed
+
+- Developed the browser-based contest demonstration into the stable classroom-oriented v2.0.0 workflow
+- Finalized fail-closed Viewer and AssetPool identity admission
+- Established stable offline device-hosted operation without internet or cloud services
+
+### Validated
+
+- Current host regression suite passed 26/26 tests for the release source
+- Clean release builds completed with ESP-IDF v5.1.6
+- Physical VAMeter/browser validation completed on Windows Edge and iPad Safari
+- The post-tag build was proven semantically equivalent to the qualified candidate except for release and build metadata
+
+### Known limitations
+
+- Issue #3 remains open; gap-free CSV and uniform sampling are not guaranteed
+- Static IRAM usage is `16383 / 16384` bytes; resource headroom is extremely limited and remains technical debt
+- Issue #8 remains future work for the multi-client product policy
+- Browser and streaming validation is not an electrical calibration certificate
+
 ## v2.0.0-beta.1 — 2026-08-21
 
 ### Added
