@@ -1,8 +1,9 @@
 # Direct-browser resource budget
 
 This document is the authoritative resource claim boundary for the direct-browser
-architecture (`O1-RX + O3`, serving the device-hosted Viewer and D2B stream shipped in
-`v2.0.0-beta.1`). It is not by itself a release-qualification sign-off; see
+architecture (`O1-RX + O3`, serving the device-hosted Viewer and D2B stream included in
+stable `v2.0.0`, after their introduction in `v2.0.0-beta.1`). It is not by itself a
+release-qualification sign-off; see
 [`../ai/build-and-validation.md`](../ai/build-and-validation.md) for the full validation
 hierarchy.
 
@@ -38,9 +39,11 @@ The 64-byte and 191-byte values are compile-time-enforced ceilings on this scann
 state, not observed `sizeof`, heap, stack, or linked-image deltas for the whole system. No
 zero-cost inference is permitted.
 
-## Current resource facts (`v2.0.0-beta.1`)
+## Recorded `v2.0.0-beta.1` resource facts
 
-These are the released `v2.0.0-beta.1` application and AssetPool figures:
+These are the released `v2.0.0-beta.1` application and AssetPool figures, retained as a
+version-specific historical qualification baseline. They are not the binary identity or
+an inferred size report for stable `v2.0.0`:
 
 | Measurement | Bytes |
 |---|---:|
@@ -49,15 +52,16 @@ These are the released `v2.0.0-beta.1` application and AssetPool figures:
 | AssetPool image | 1,651,116 |
 | AssetPool free | 446,036 |
 
-Engineering implication: application partition headroom (324,800 bytes) and AssetPool
-headroom (446,036 bytes) are the current room available for firmware or Viewer-bundle
-growth before a partition-layout change is needed. This is materially tighter than either
+Engineering implication for that beta.1 pair: application partition headroom (324,800
+bytes) and AssetPool headroom (446,036 bytes) were the measured room available before a
+partition-layout change. This is materially tighter than either
 figure in isolation suggests once combined with the dedicated static IRAM headroom above
 (1 byte): any feature addition that increases dedicated static IRAM usage cannot lean on
 flash/AssetPool headroom to compensate, since the two are independent constraints that
 must each be re-measured for that specific change. These figures supersede the earlier
 pre-implementation P2 Student+Professional candidate estimate (measured before the Viewer
-was integrated); they are the actual shipped-binary sizes, not a design ceiling.
+was integrated); they are the actual beta.1 shipped-binary sizes, not a design ceiling or
+a substitute for stable-release measurement.
 
 ## Qualification still required
 

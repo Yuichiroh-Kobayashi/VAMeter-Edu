@@ -95,8 +95,9 @@ Application と AssetPool のバイナリは、対応するリリースの組み
 | Firmware tree | `f80a0caaa213a965033f6773ea2d3f41af436807` |
 | Viewer source commit | `e1ebdb1cde8585a37447a66f4c8183654f4c3cda` |
 | Viewer source tree | `8f8426e9af1649f68e66e4f8f432d1b91452e38d` |
-| D2B reference commit | `b30ad676922af73448952d5a9cac312467a944f9` |
-| D2B reference tree | `22d644546a8ae76559bb7f1ec01fa737c7160886` |
+| D2B repository reference commit | `b30ad676922af73448952d5a9cac312467a944f9` |
+| D2B repository commit tree | `22d644546a8ae76559bb7f1ec01fa737c7160886` |
+| Viewer copied `reference/browser/src` subtree | `6e5b4844548c1355dea7e5cbbcb1200c9d2335fd` |
 | Viewer bundle | `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af` |
 | app SHA-256 | `4a54b7addb69c89497de585a200de5c3976b21c2a0a2e50ee4fb0d6d0e51198a` |
 | AssetPool SHA-256 | `3a587a04127a5eab4df0d0714e37e214029bcedbbeb6a616e8426c6e9aa1c1fc` |

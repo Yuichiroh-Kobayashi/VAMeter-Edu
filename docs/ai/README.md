@@ -20,7 +20,7 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - accepted PR #1 behavior;
   - Issue #3 (open) and Issue #2 (closed, not planned);
   - paused internal-excitation V-I logger future direction (Issue #11);
-  - device-hosted direct-browser product direction, now implemented and released as `v2.0.0-beta.1`.
+  - device-hosted direct-browser product direction, now included in stable `v2.0.0`.
 - `recorder-and-measurement-contracts.md`
   - UI, CSV, timing, storage, lifecycle, Files/download invariants;
   - known sampling limitation.
