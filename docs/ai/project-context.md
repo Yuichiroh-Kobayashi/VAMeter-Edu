@@ -64,7 +64,7 @@ The durable boundaries are:
   [measurement-and-presentation semantics](../standards/measurement-and-presentation-semantics.md).
 - Origin is an admission-control gate, not authentication. P1 and P2 remain mandatory under the authoritative [Origin admission policy](../architecture/origin-admission-policy.md).
 - SystemConfig, SystemLive, and Download remain separated as defined by the [direct-browser service profiles](../architecture/direct-browser-service-profiles.md).
-- Static and runtime resource qualification is tracked in the [resource budget](../architecture/resource-budget.md), which preserves the measured `v2.0.0-beta.1` application/AssetPool figures as a version-specific historical baseline rather than current stable-binary identity.
+- Static and runtime resource qualification is tracked in the [resource budget](../architecture/resource-budget.md), which records the accepted stable `v2.0.0` current baseline while preserving the measured `v2.0.0-beta.1` figures as a version-specific historical baseline.
 - Historical G1 measurement-spike artifacts are evidence about feasibility, size, and diagnostic behavior from before the Viewer was implemented; they are superseded by the current source and stable `v2.0.0` release evidence above, not current product implementation authority.
 
 Multi-client D2B stream policy beyond the existing one-active-owner safety contract is

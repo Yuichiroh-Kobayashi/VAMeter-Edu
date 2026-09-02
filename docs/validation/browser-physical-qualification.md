@@ -45,8 +45,10 @@ successful build is not evidence that its binary is on-device.
 1. Record the exact application image size and the application partition's capacity and
    free bytes. Any partition overflow is stop. Record the difference against the exact
    approved/released baseline (see
-   [`../architecture/resource-budget.md`](../architecture/resource-budget.md#recorded-v200-beta1-resource-facts)
-   for the recorded `v2.0.0-beta.1` baseline figures); a resource-sensitive increase is
+   [`../architecture/resource-budget.md`](../architecture/resource-budget.md#current-stable-v200-resource-facts)
+   for the stable `v2.0.0` current release baseline). Use the exact approved baseline for
+   the candidate; stable `v2.0.0` is the default for work derived from the current stable
+   product unless a newer reviewed baseline exists. A resource-sensitive increase is
    review-required under
    [`../architecture/resource-budget.md`](../architecture/resource-budget.md). Do not
    invent a percentage threshold beyond the measured baseline. Static IRAM, the full
