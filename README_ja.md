@@ -10,7 +10,7 @@
 
 > **M5Stack Global Innovation Contest 2026 Special Mentions - Educational Impact Award 受賞**
 >
-> VAMeter-Edu は [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results) で教育的な取り組みを評価されました。コンテストではブラウザで電圧・電流をリアルタイム観察するデモを実現し、その後は device-hosted Viewer、接続時の安全性、再現可能な検証、教室で扱いやすい操作フローなどを整え、実際の授業で使える品質を目指して改良を続けています。
+> VAMeter-Edu は [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results) で教育的な取り組みを評価されました。コンテストではブラウザで電圧・電流をリアルタイム観察するデモを実現し、その後は device-hosted Viewer、接続動作の安定性、再現可能な検証、教室で扱いやすい操作フローなどを整え、実際の授業で使える品質を目指して改良を続けています。
 
 ---
 

@@ -43,7 +43,7 @@ Keep pull requests focused and reviewable. Explain what changed and why, link an
 - checks that were not performed;
 - known limitations or follow-up work.
 
-Avoid mixing firmware behavior, protocol changes, UI redesign, dependency updates, and unrelated cleanup in one pull request. Preserve existing behavior unless the proposed change explicitly updates the relevant product contract.
+Avoid mixing firmware behavior, protocol changes, UI redesign, dependency updates, and unrelated cleanup in one pull request. Preserve existing behavior unless the proposed change explicitly updates the relevant documented behavior or interface.
 
 ## Testing and physical validation
 

@@ -5,9 +5,9 @@ Educational firmware for [M5Stack VAMeter](https://docs.m5stack.com/en/products/
 
 > **Latest prerelease:** [`v2.0.0-beta.1`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0-beta.1) (2026-08-21). This is a physically tested beta, not the stable `v2.0.0` release.
 
-> **M5Stack Global Innovation Contest 2026 — Special Mentions: Educational Impact Award**
+> **M5Stack Global Innovation Contest 2026 — Special Mentions - Educational Impact Award**
 >
-> VAMeter-Edu was recognized for its educational impact in the [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results). The contest build demonstrated real-time voltage/current observation in a browser; development since then has focused on making that demonstration reliable for real classrooms, including direct device-hosted viewing, safer connection behavior, reproducible validation, and classroom-oriented workflows.
+> VAMeter-Edu was recognized for its educational impact in the [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results). The contest build demonstrated real-time voltage/current observation in a browser; development since then has focused on making that demonstration reliable for real classrooms, including direct device-hosted viewing, more predictable connection behavior, reproducible validation, and classroom-oriented workflows.
 
 ## Features
 
