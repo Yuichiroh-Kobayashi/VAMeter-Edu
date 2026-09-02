@@ -6,7 +6,11 @@
 
 > **English version**: [README.md](README.md)
 
-> **最新のプレリリース:** [`v2.0.0-beta.1`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0-beta.1)（2026-08-21）。実機確認済みの beta であり、安定版 `v2.0.0` ではありません。
+> **最新の安定版:** [`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0)（2026-09-02）
+
+> **M5Stack Global Innovation Contest 2026 Special Mentions - Educational Impact Award 受賞**
+>
+> VAMeter-Edu は [M5Stack Global Innovation Contest 2026](https://m5stack.com/global-innovation-contest-2026/results) で教育的な取り組みを評価されました。コンテストではブラウザで電圧・電流をリアルタイム観察するデモを実現しました。その後、device-hosted Viewer、接続動作の安定性、再現可能な検証、教室で扱いやすい操作フローを整え、コンテスト用デモから実際の教室運用を想定した安定版へ発展しました。
 
 ---
 
@@ -19,7 +23,7 @@
 - **固定表示モード**：誤操作によるページ切り替えを防止
 - **日本語UI**：教室での運用を想定した日本語表示
 
-### Device-hosted Viewer（`v2.0.0-beta.1`）
+### Device-hosted Viewer（`v2.0.0`）
 
 VAMeter 本体が Wi-Fi アクセスポイントと same-origin Web Viewer を提供します。生徒や教員は本体へ直接接続し、インターネット接続やクラウドアカウントなしで Viewer を開けます。
 
@@ -27,6 +31,7 @@ VAMeter 本体が Wi-Fi アクセスポイントと same-origin Web Viewer を�
 - **Voltage / Current / Both** の測定プロファイル
 - **10 / 30 / 60 秒**の表示時間幅
 - device timestamp を使用し、欠落を補間せず invalid sample を 0 にしない波形表示
+- OS／ブラウザ設定に追従する **Light / Dark** theme と、ページを閉じるまで有効な手動切り替え
 - **Windows の Microsoft Edge 151** による実機ブラウザ検証
 - **iPad 第7世代 / iPadOS 18.7.9 / Safari** による実機 smoke 検証
 
@@ -75,9 +80,38 @@ Hackster.io プロジェクトページから以下の情報を参照できま�
 
 ## ファームウェア
 
-### v2.0.0-beta.1（2026-08-21）
+### v2.0.0（2026-09-02）
 
-この beta では、device-hosted same-origin Viewer、Student / Professional、Voltage / Current / Both、10 / 30 / 60 秒の表示時間幅、5秒の教育用 CSV workflow を追加・整理しました。
+[`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0) は、上記の device-hosted Viewer と5秒の教育用 CSV workflow を教室向けにまとめた安定版です。
+
+Application と AssetPool のバイナリは、対応するリリースの組み合わせです。**異なる VAMeter-Edu バージョンのバイナリを混在させないでください。** 安定版 Release から各ファイルをダウンロードし、書き込み前に公開された `SHA256SUMS` で確認してください。
+
+| Release identity | 値 |
+|---|---|
+| Release URL | [`v2.0.0`](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/releases/tag/v2.0.0) |
+| Firmware tag | `v2.0.0` |
+| Annotated tag object | `f862754cadd3ddf485b0ed5b9312507c7df15853` |
+| Firmware commit | `ee4da1b5e5e238fbc66a9d9a49f4d051c1ca986b` |
+| Firmware tree | `f80a0caaa213a965033f6773ea2d3f41af436807` |
+| Viewer source commit | `e1ebdb1cde8585a37447a66f4c8183654f4c3cda` |
+| Viewer source tree | `8f8426e9af1649f68e66e4f8f432d1b91452e38d` |
+| D2B reference commit | `b30ad676922af73448952d5a9cac312467a944f9` |
+| D2B reference tree | `22d644546a8ae76559bb7f1ec01fa737c7160886` |
+| Viewer bundle | `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af` |
+| app SHA-256 | `4a54b7addb69c89497de585a200de5c3976b21c2a0a2e50ee4fb0d6d0e51198a` |
+| AssetPool SHA-256 | `3a587a04127a5eab4df0d0714e37e214029bcedbbeb6a616e8426c6e9aa1c1fc` |
+| `SHA256SUMS` SHA-256 | `40558a943ef194dd7931cc5fe8fe8a9517928dcf09c9443af5d05bbf4abf84e0` |
+
+現在の制約：
+
+- [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) は OPEN で、gap-free CSV も均一 sampling も保証しません。
+- static IRAM 使用量は `16383 / 16384` bytes です。リソース余裕は極めて小さく、技術的負債として残っています。
+- 複数クライアントの製品方針は [Issue #8](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8) で今後検討します。
+- ブラウザ／ストリーミングの検証は、電気測定の校正証明ではありません。
+
+### v2.0.0-beta.1（2026-08-21、過去のプレリリース）
+
+この過去の beta では、device-hosted same-origin Viewer、Student / Professional、Voltage / Current / Both、10 / 30 / 60 秒の表示時間幅、5秒の教育用 CSV workflow を追加・整理しました。
 
 公開した application と AssetPool は対応する release binary の組み合わせです。**異なる version の binary を混在させないでください。** 書き込み前にダウンロードしたファイルを確認してください。
 
@@ -90,7 +124,7 @@ Hackster.io プロジェクトページから以下の情報を参照できま�
 | app SHA-256 | `9b872ea5cc483b361bba9550e1878b9036d205ee830fd84a0e321d3f3a732423` |
 | AssetPool SHA-256 | `1df4b81fba8b3f16baf1331f015cdb1fdc7214d66a215657ef752673b43c1c41` |
 
-現在の制約：
+当時の注意事項：
 
 - [Issue #3](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3) は OPEN で、gap-free CSV も均一 sampling も保証しません。
 - static IRAM 使用量は `16383 / 16384` bytes です。resource headroom は極めて小さく、firmware feature を追加する前に review が必要です。
@@ -139,9 +173,21 @@ parttool.py --port <ポート名> write_partition --partition-name=assetpool --i
 
 ## Roadmap
 
-- [Student の単一 Start / Stop と above-the-fold UX](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/1)
+- [同期 FAT 書き込みによる recorder の sampling stall 改善](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/3)
+- [逆方向電流の表示と Training mode の保護動作](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/15)
 - [Multi-client product policy](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/8)
 - [アナログ計器の答え合わせ用表示補正](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/9)
+- [内部電源式 V-I logger の検討（hardware redesign 待ちで一時停止中）](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/11)
+
+---
+
+## コントリビューション
+
+不具合報告、ドキュメントの改善、目的を絞った pull request を歓迎します。
+
+Issue や PR を作成する前に [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md) をご確認ください。ファームウェア、ブラウザ Viewer、汎用 D2B プロトコルのどこが担当する問題か分からない場合は、問題に気付いた場所と状況を記載してください。メンテナーが適切なリポジトリへの案内や相互リンクを行えます。
+
+English: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
