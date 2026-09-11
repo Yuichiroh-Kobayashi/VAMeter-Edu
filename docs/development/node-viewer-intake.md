@@ -58,7 +58,7 @@ builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存す�
 
 ## Post-v2 provisional candidates — fixed-slot gate
 
-2026-09-11のViewer corrective sourceをViewer Build Environment V1で生成した比較。
+2026-09-11のLIVE browser-native interaction修正後のViewer sourceをViewer Build Environment V1で生成した比較。
 [Viewer Draft PR #22](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/22)
 と [stacked Draft PR #23](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/23)
 はいずれも **PROVISIONAL DEVELOPMENT BUILD**。final Firmware intake identityではない。
@@ -66,12 +66,12 @@ builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存す�
 index/manifest/CSS gzip/JS gzipの全bytes一致、各run内two-run determinismもPASS。
 Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#22/#23候補値は流用しない。
 
-- Viewer #22: source `9a655f48f14e8464b45ee3a8115456f02410f815` / tree `113f1c892090313031baef21d01dabf0c25f84b5`。
-  bundle `41db65e34da5914c826a1ff52286c3e16ec53a4c91f8eea2db735468e130eef2`、stored payload **33761 bytes**。
-- Viewer #23: source `d6d9db57c03ab7fd9a0dc6aeb10d2a9a7bc7ab0d` / tree `394ace320f1b18b65cf91232532f60374223b0cd`。
-  bundle `edd42776db0bb2dd33f67d09a0bb9187e7f3f356f2aa917fa9f1478f7339b417`、stored payload **34885 bytes**。
+- Viewer #22: source `3ad8fa0c7b9ffc519c5a656e0f5ccb269f1fe7f8` / tree `6e862ae5f04f2ea14cd5d20c83cfb50339612db0`。
+  bundle `2cfe9c1d336b1c1d17230a8ef0f24edf00cd72f0c76e6c1e96ad913c051e321a`、stored payload **33873 bytes**。
+- Viewer #23: source `ada0dba4f1e963db87181403ecf4c253172341c4` / tree `ec35e09d1c2941c460d0283318d9e754a9a057f6`。
+  bundle `1ba60810d07774030aa06f8a2a8b2d9b6326590cf30c45a6f55c81ce9e382948`、stored payload **34999 bytes**。
 
-比較slot authorityはVAMeter source `d38ca2de676539e5a387c2d4ed7f7869a60e6b6f` の
+比較slot authorityはVAMeter source `20587054769b4327c037854dee7a75e899e84d0a` の
 [`WebPagePool_t`](../../app/assets/web/types.h)、
 [expected length/SHA contract](../../app/libs/viewer_asset_contract/viewer_asset_contract.h)、
 [exact copyとstatic_assert](../../app/assets/assets.cpp)をread-onlyで再確認した。
@@ -80,8 +80,8 @@ Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#
 | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
 | index | 573 | 573 | +0 | SIZE_FITS | 573 | +0 | SIZE_FITS |
 | manifest | 1364 | 1364 | +0 | SIZE_FITS | 1364 | +0 | SIZE_FITS |
-| CSS gzip | 2385 | 2678 | +293 | FIXED_SLOT_OVERFLOW | 2678 | +293 | FIXED_SLOT_OVERFLOW |
-| JS gzip | 25809 | 29146 | +3337 | FIXED_SLOT_OVERFLOW | 30270 | +4461 | FIXED_SLOT_OVERFLOW |
+| CSS gzip | 2385 | 2715 | +330 | FIXED_SLOT_OVERFLOW | 2715 | +330 | FIXED_SLOT_OVERFLOW |
+| JS gzip | 25809 | 29221 | +3412 | FIXED_SLOT_OVERFLOW | 30347 | +4538 | FIXED_SLOT_OVERFLOW |
 | bundle ID (NUL含む) | 65 | 65 | +0 | SIZE_FITS | 65 | +0 | SIZE_FITS |
 
 `SIZE_FITS`は長さだけの判定で、identity一致や受入れPASSではない。
