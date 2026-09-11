@@ -55,3 +55,69 @@ builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存す�
 取込み元manifest、候補ごとの判定と理由を保存する。実機、AP、serial、機器列挙は未実施。
 今回の文書整備は無reset、binary readback、実機配信を証明しない。
 後続では最終成果物をレビューし、必要な実機承認と新規入力manifestを準備する。
+
+## Post-v2 provisional candidates — fixed-slot gate
+
+2026-09-11のViewer corrective sourceをViewer Build Environment V1で生成した比較。
+[Viewer Draft PR #22](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/22)
+と [stacked Draft PR #23](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/23)
+はいずれも **PROVISIONAL DEVELOPMENT BUILD**。final Firmware intake identityではない。
+各clean committed standalone checkoutから同じqualified V1 imageで独立2生成し、
+index/manifest/CSS gzip/JS gzipの全bytes一致、各run内two-run determinismもPASS。
+Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#22/#23候補値は流用しない。
+
+- Viewer #22: source `9a655f48f14e8464b45ee3a8115456f02410f815` / tree `113f1c892090313031baef21d01dabf0c25f84b5`。
+  bundle `41db65e34da5914c826a1ff52286c3e16ec53a4c91f8eea2db735468e130eef2`、stored payload **33761 bytes**。
+- Viewer #23: source `d6d9db57c03ab7fd9a0dc6aeb10d2a9a7bc7ab0d` / tree `394ace320f1b18b65cf91232532f60374223b0cd`。
+  bundle `edd42776db0bb2dd33f67d09a0bb9187e7f3f356f2aa917fa9f1478f7339b417`、stored payload **34885 bytes**。
+
+比較slot authorityはVAMeter source `d38ca2de676539e5a387c2d4ed7f7869a60e6b6f` の
+[`WebPagePool_t`](../../app/assets/web/types.h)、
+[expected length/SHA contract](../../app/libs/viewer_asset_contract/viewer_asset_contract.h)、
+[exact copyとstatic_assert](../../app/assets/assets.cpp)をread-onlyで再確認した。
+
+| Asset | Current slot | #22 candidate | Delta | Result | #23 candidate | Delta | Result |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
+| index | 573 | 573 | +0 | SIZE_FITS | 573 | +0 | SIZE_FITS |
+| manifest | 1364 | 1364 | +0 | SIZE_FITS | 1364 | +0 | SIZE_FITS |
+| CSS gzip | 2385 | 2678 | +293 | FIXED_SLOT_OVERFLOW | 2678 | +293 | FIXED_SLOT_OVERFLOW |
+| JS gzip | 25809 | 29146 | +3337 | FIXED_SLOT_OVERFLOW | 30270 | +4461 | FIXED_SLOT_OVERFLOW |
+| bundle ID (NUL含む) | 65 | 65 | +0 | SIZE_FITS | 65 | +0 | SIZE_FITS |
+
+`SIZE_FITS`は長さだけの判定で、identity一致や受入れPASSではない。
+両候補のintake分類は **FIRMWARE_INTAKE_BLOCKED**。理由を分離する。
+
+- **FIXED_SLOT_OVERFLOW**: CSS/JS gzipが現行の各fixed arrayを超過する。
+  Viewer機能削減、truncate、padding、旧manifest流用で収めない。
+- **IDENTITY_UPDATE_REQUIRED**: index/manifestが同じ長さでもSHA・bundleは現行期待値と異なる。
+  新候補を取り込むには期待length/SHA、content-hashed routes、bundleと必要なlayoutの
+  対応更新が別レビューで必要。現行runtime integrity checkは回避しない。
+
+[partition map](../../platforms/vameter/partitions.csv)のAssetPool領域は2 MiB。
+[stable resource記録](../architecture/resource-budget.md)のAssetPool空き441,180 bytesは
+partition全体の値であり、上のper-member fixed slotの空きではない。
+数KBの増分がpartitionに収まり得ても現行配列に収まらなければintakeはBLOCKED。
+新AssetPool全体のサイズ・alignment・offsetは今回生成/検証していない。
+
+## Future layout compatibility and rollback requirement
+
+Before physical deployment of an AssetPool layout change, Firmware and AssetPool
+MUST have an explicit fail-closed layout/version/size compatibility guard.
+
+これは将来のlayout remediationに必須の要件であり、今回の実装済み機能ではない。
+候補はmagic/version、layout version、exact structure size、または同等のfail-closed
+mechanism。方式の決定と実装は次の設計レビューに残す。Viewer asset SHA照合だけで
+AssetPool全体の異なる構造offset/sizeに対する互換性が保証されたとは扱わない。
+
+将来のFirmwareとAssetPoolはcompatible pairとして生成・照合・配布する。
+rollbackも **old Firmware + old AssetPool** の対応pairへ戻す。片側だけのrollbackを
+既定手順にしない。[既存AssetPool統合仕様](../architecture/viewer-assetpool-integration.md)
+のmatched deployment境界と、別途実機承認を維持する。
+
+Dedicated static IRAM remaining **1 byte** は別のtechnical debtである。
+AssetPool flash layout/fixed-slot超過と混同せず、flash空きをIRAM余裕とみなさない。
+今回のViewer開発候補だけでstable v2.0.0 release撤回とは判定しない。
+
+この修正は文書のみ。Firmware source、WebPagePool_t、期待値、route、partition、
+AssetPool layout/bytesは変更していない。Firmware/Desktop/AssetPool build、
+実機・USB/serial・AP・flash/reset/readback/OTAはNOT RUN。
