@@ -58,7 +58,7 @@ builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存す�
 
 ## Post-v2 provisional candidates — fixed-slot gate
 
-2026-09-11のLIVE browser-native interaction修正後のViewer sourceをViewer Build Environment V1で生成した比較。
+2026-09-13のclassroom UI整理・10秒窓tick・CSV列順更新後のViewer sourceをViewer Build Environment V1で生成した比較。
 [Viewer Draft PR #22](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/22)
 と [stacked Draft PR #23](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/23)
 はいずれも **PROVISIONAL DEVELOPMENT BUILD**。final Firmware intake identityではない。
@@ -66,10 +66,10 @@ builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存す�
 index/manifest/CSS gzip/JS gzipの全bytes一致、各run内two-run determinismもPASS。
 Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#22/#23候補値は流用しない。
 
-- Viewer #22: source `3ad8fa0c7b9ffc519c5a656e0f5ccb269f1fe7f8` / tree `6e862ae5f04f2ea14cd5d20c83cfb50339612db0`。
-  bundle `2cfe9c1d336b1c1d17230a8ef0f24edf00cd72f0c76e6c1e96ad913c051e321a`、stored payload **33873 bytes**。
-- Viewer #23: source `ada0dba4f1e963db87181403ecf4c253172341c4` / tree `ec35e09d1c2941c460d0283318d9e754a9a057f6`。
-  bundle `1ba60810d07774030aa06f8a2a8b2d9b6326590cf30c45a6f55c81ce9e382948`、stored payload **34999 bytes**。
+- Viewer #22: source `f3f59e735f5f1b71012b8c3fbc4dcb93da612d59` / tree `450e687aa627716dee92b197d6c1eceed44fa847`。
+  bundle `e3b49a78ef1a3e7219f470e18d2123fd381d4463bcde653d011224f8b3dddef8`、stored payload **33717 bytes**。
+- Viewer #23: source `8b0d9f7108b990a40bfb93dea402e49c84df169c` / tree `5a3c21bef9ddff3a0844930ac28fe71776a85c15`。
+  bundle `0c4d0f38237776274a143a5f3b193adbf3105e88b214b40d4ff195065d420f38`、stored payload **34774 bytes**。
 
 比較slot authorityはVAMeter source `20587054769b4327c037854dee7a75e899e84d0a` の
 [`WebPagePool_t`](../../app/assets/web/types.h)、
@@ -80,8 +80,8 @@ Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#
 | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
 | index | 573 | 573 | +0 | SIZE_FITS | 573 | +0 | SIZE_FITS |
 | manifest | 1364 | 1364 | +0 | SIZE_FITS | 1364 | +0 | SIZE_FITS |
-| CSS gzip | 2385 | 2715 | +330 | FIXED_SLOT_OVERFLOW | 2715 | +330 | FIXED_SLOT_OVERFLOW |
-| JS gzip | 25809 | 29221 | +3412 | FIXED_SLOT_OVERFLOW | 30347 | +4538 | FIXED_SLOT_OVERFLOW |
+| CSS gzip | 2385 | 2669 | +284 | FIXED_SLOT_OVERFLOW | 2669 | +284 | FIXED_SLOT_OVERFLOW |
+| JS gzip | 25809 | 29111 | +3302 | FIXED_SLOT_OVERFLOW | 30168 | +4359 | FIXED_SLOT_OVERFLOW |
 | bundle ID (NUL含む) | 65 | 65 | +0 | SIZE_FITS | 65 | +0 | SIZE_FITS |
 
 `SIZE_FITS`は長さだけの判定で、identity一致や受入れPASSではない。
