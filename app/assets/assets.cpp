@@ -6,6 +6,7 @@
 #include "assets.h"
 #include "localization/types.h"
 #include "libs/viewer_asset_contract/viewer_asset_contract.h"
+#include "libs/asset_pool_layout/asset_pool_layout.h"
 #include <cstdint>
 #include <mooncake.h>
 #include <algorithm>
@@ -20,6 +21,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <cerrno>
+#include <memory>
 #endif
 
 AssetPool* AssetPool::_asset_pool = nullptr;
@@ -253,7 +256,28 @@ static bool _write_asset_pool_exact(const char* finalPath, const StaticAsset_t* 
         return false;
     }
 
+    using namespace ASSET_POOL_LAYOUT;
+    std::uint8_t trailer[kTrailerReserveBytes];
+    const Result encoded = EncodeTrailer(assetPool, sizeof(StaticAsset_t), trailer, sizeof(trailer));
+    if (encoded != Result::Ok)
+    {
+        outFile.close();
+        std::remove(temporaryPath.c_str());
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason={}", ResultName(encoded));
+        return false;
+    }
     outFile.write(reinterpret_cast<const char*>(assetPool), sizeof(StaticAsset_t));
+    const char zeros[kTrailerReserveBytes] = {};
+    std::size_t remaining = kTrailerOffset - sizeof(StaticAsset_t);
+    while (remaining != 0 && outFile)
+    {
+        const std::size_t count = std::min(remaining, sizeof(zeros));
+        outFile.write(zeros, count);
+        remaining -= count;
+    }
+    outFile.write(reinterpret_cast<const char*>(trailer), sizeof(trailer));
+    if (outFile.tellp() != static_cast<std::streamoff>(kAssetPoolPartitionBytes))
+        outFile.setstate(std::ios::failbit);
     outFile.flush();
     if (outFile.fail())
     {
@@ -351,7 +375,9 @@ static void _copy_web_pages(StaticAsset_t* assetPool)
 
 StaticAsset_t* AssetPool::CreateStaticAsset()
 {
-    auto asset_pool = new StaticAsset_t;
+    // Value-initialize: zero-initialization precedes the implicit default constructor,
+    // preserving Color/Text default member initializers and clearing padding.
+    auto asset_pool = new StaticAsset_t();
 
     _copy_fonts(asset_pool);
     _copy_images(asset_pool);
@@ -377,37 +403,67 @@ StaticAsset_t* AssetPool::CreateStaticAsset()
     return asset_pool;
 }
 
-StaticAsset_t* AssetPool::GetStaticAssetFromBin()
+StaticAsset_t* AssetPool::GetStaticAssetFromBin(bool* missing)
 {
-    auto asset_pool = new StaticAsset_t;
-    const std::string bin_path = "AssetPool-VAMeter.bin";
-    std::ifstream inFile(bin_path, std::ios::binary);
-    if (!inFile)
+    using namespace ASSET_POOL_LAYOUT;
+    if (missing != nullptr)
+        *missing = false;
+    const char* binPath = "AssetPool-VAMeter.bin";
+    struct stat info;
+#if defined(_WIN32)
+    const int status = stat(binPath, &info);
+#else
+    // Reject an existing symlink (including a dangling one) as a non-regular input.
+    const int status = lstat(binPath, &info);
+#endif
+    if (status != 0)
     {
-        spdlog::error("open {} failed", bin_path);
-        delete asset_pool;
-        return nullptr; // Important: return null on failure
+        const int error = errno;
+        if (missing != nullptr)
+            *missing = error == ENOENT;
+        spdlog::error("ASSETPOOL_CONTAINER_UNAVAILABLE errno={}", error);
+        return nullptr;
     }
-
-    /*/ Read from bin
-    std::string bin_path = "AssetPool-VAMeter.bin";
-
-    std::ifstream inFile(bin_path, std::ios::binary);
-    if (!inFile)
-        spdlog::error("open {} failed", bin_path);
-    */
-    inFile.read(reinterpret_cast<char*>(asset_pool), sizeof(StaticAsset_t));
+    if (!S_ISREG(info.st_mode) || info.st_size != static_cast<off_t>(kAssetPoolPartitionBytes))
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason=RegularFileOrSizeMismatch");
+        return nullptr;
+    }
+    std::ifstream inFile(binPath, std::ios::binary);
+    std::uint8_t trailer[kTrailerReserveBytes];
+    inFile.seekg(kTrailerOffset);
+    if (!inFile.read(reinterpret_cast<char*>(trailer), sizeof(trailer)))
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason=TrailerReadFailed");
+        return nullptr;
+    }
+    Result result = ValidateTrailer(trailer, sizeof(trailer));
+    if (result != Result::Ok)
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason={}", ResultName(result));
+        return nullptr;
+    }
+    std::unique_ptr<StaticAsset_t> assetPool(new StaticAsset_t());
+    inFile.seekg(0);
+    if (!inFile.read(reinterpret_cast<char*>(assetPool.get()), sizeof(StaticAsset_t)))
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason=StaticAssetReadFailed");
+        return nullptr;
+    }
     inFile.close();
-
-    // // Test
-    // for (int i = 0; i < 10; i++)
-    // {
-    //     spdlog::info(
-    //         "0x{:X} 0x{:X}", asset_pool->Font.montserrat_semibold_14[i], asset_pool->Font.montserrat_semibolditalic_72[i]);
-    // }
-
-    spdlog::info("load asset pool from: {}", bin_path);
-    return asset_pool;
+    if (inFile.fail())
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason=CloseFailed");
+        return nullptr;
+    }
+    result = ValidateStaticAsset(assetPool.get(), sizeof(StaticAsset_t), trailer, sizeof(trailer));
+    if (result != Result::Ok)
+    {
+        spdlog::error("ASSETPOOL_CONTAINER_REJECTED reason={}", ResultName(result));
+        return nullptr;
+    }
+    spdlog::info("load asset pool from: {}", binPath);
+    return assetPool.release();
 }
 #endif
 

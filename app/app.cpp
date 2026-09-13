@@ -12,7 +12,7 @@
 using namespace MOONCAKE;
 static Mooncake* _mooncake = nullptr;
 
-void APP::Setup(SetupCallback_t callback)
+bool APP::Setup(SetupCallback_t callback)
 {
     spdlog::info("app setup");
 
@@ -20,10 +20,11 @@ void APP::Setup(SetupCallback_t callback)
     /*                            Asset pool injection                            */
     /* -------------------------------------------------------------------------- */
     spdlog::info("asset pool injection");
-    if (callback.AssetPoolInjection != nullptr)
-        callback.AssetPoolInjection();
-    else
-        spdlog::warn("empty callback");
+    if (callback.AssetPoolInjection == nullptr || !callback.AssetPoolInjection())
+    {
+        spdlog::error("APP_SETUP_ASSETPOOL_FAILED");
+        return false;
+    }
 
     /* -------------------------------------------------------------------------- */
     /*                                HAL injection                               */
@@ -48,6 +49,7 @@ void APP::Setup(SetupCallback_t callback)
     app_run_startup_anim(_mooncake);
     app_install_launcher(_mooncake);
     app_install_apps(_mooncake);
+    return true;
 }
 
 void APP::Loop()

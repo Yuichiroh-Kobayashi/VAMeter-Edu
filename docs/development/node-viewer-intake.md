@@ -128,11 +128,11 @@ probeの `sizeof(StaticAsset_t)=1,655,972` はstable resource実測と完全一�
 - 2 MiB partition内にはlayout metadata用の固定tailを確保しても十分な容量がある。
 
 このため問題はpartition容量不足ではなく、raw C++ struct ABIのlayout compatibilityである。
-Viewer bundle ID + 4 asset SHA-256の現行runtime checkはmixed Viewer pairを結果としてfail-closedにするが、
-layout/version/sizeを明示するcontractではない。またboot時はViewer identity checkより前にAssetPoolの
-font/text byteを使用するため、truncated/corrupt poolをViewer hashだけで安全に扱えるとはしない。
+Stable実装のViewer bundle ID + 4 asset SHA-256 checkはmixed Viewer pairを結果としてfail-closedにするが、
+layout/version/sizeを明示するcontractではなかった。boot時はViewer identity checkより前にAssetPoolの
+font/text byteを使用するため、PR-AでInject前のlayout/container検証を追加した。
 
-## Accepted layout remediation design — not yet implemented
+## Accepted layout remediation design — PR-A実装、PR-B未実装
 
 設計レビュー結果は次のとおり。
 
@@ -242,11 +242,10 @@ Failure policyは二段に分ける。
 - 停止はtask watchdogを踏まない方式（yieldするidle、`app_main`からのreturn、または同等の非再起動経路）とし、WDT resetによる再起動反復を作らない。
 - logだけ出して未検証poolをinjectし続ける方式は採用しない。
 
-現在`AssetPoolInjection` callbackは失敗を`APP::Setup()`へ返せないため、PR-Aでは成功/失敗を
-明示的に伝播できるAPI（例: callback / setupのbool化、または同等のfail-stop経路）が必要。
-callbackだけ`return`して`APP::Setup()`を継続する実装は禁止する。現行`app/app.cpp`ではcallback後に
-`AssetPool::SetLocaleCode(locale_code_jp)`が`getStaticAsset()->Text`へ進むため、未injectのまま継続すると
-null pointer dereferenceになり得ることをこの禁止の根拠とする。
+PR-Aでは`AssetPoolInjection` callbackと`APP::Setup()`をbool化し、falseまたはcallback不在で
+HAL/locale/Mooncake初期化より前に停止する。device/desktopの全2 call siteを更新した。
+callbackだけ`return`して通常setupを継続する経路は作らない。PR-A前の実装ではcallback後に
+`AssetPool::SetLocaleCode(locale_code_jp)`が未injectの`Text`を参照し得たことが、この伝播変更の理由である。
 
 **Tier 2 — layoutは正当だがViewer identity不一致**
 
@@ -260,9 +259,11 @@ null pointer dereferenceになり得ることをこの禁止の根拠とする�
 
 ### PR-A — layout/version compatibility guard foundation
 
-Viewer payload、Viewer slot容量、Viewer identityを変更しない。
+Viewer payload、Viewer slot容量、Viewer identityを変更しない。実装済みdevelopment contractの
+[trailer byte layout・CRC・failure propagation](../architecture/viewer-assetpool-integration.md#pr-a-development-layoutcontainer-guard)
+と`tests/asset_pool_layout/`を参照する。
 
-想定scope:
+実装scope:
 
 - compatibility trailer encode/decode/validationのhost-testable library
 - partition size / layout / bounds / CRC guard
@@ -273,6 +274,9 @@ Viewer payload、Viewer slot容量、Viewer identityを変更しない。
 - host negative/mixed-layout tests
 - `sizeof(StaticAsset_t) + trailer reserve <= partition size`のcompile-time assertion
 
+PR-Aのtrailer format / StaticAsset / Viewer layout versionはすべて1。
+StaticAsset_t used `1,655,972`、trailer reserve `256`、layout growth reserve `440,924`、
+full container `2,097,152` bytes。定義を軽量headerへ移し、生成・loader・検証・testで同じcompile layoutを使う。
 PR-Aのlayout versionはstable slot shapeを表すversion 1。**PR-A単独をreleaseしない**。
 PR-A以降のFirmwareは必ずtrailer付きAssetPoolを再生成・再書き込みしたmatched pairとして扱う。
 旧AssetPoolのままPR-A Firmwareだけを書き込むとTier 1 fail-stopとなり通常起動しないため、Firmware単独flashを
@@ -309,20 +313,21 @@ CRCやlayout validationを設計しただけではresource PASSを主張しな�
 
 ## Claim boundary
 
-この文書更新で確定するのは受入れ入力と実装前design decisionだけである。
+PR-Aはlayout/container guardのdevelopment source実装であり、Final Viewerを取り込むPR-Bとは別である。
+Host/build evidenceはdevelopment candidateについて記録し、stable releaseの測定値と混同しない。
 
 ```text
 Viewer candidate: final / build-qualified
 Viewer source: d4c0702ca0fb72099260c67b9976ade85bb681d2
 Viewer tree: c4810727e8b3c17903d586137dae80aa1ef8b992
 Viewer bundle: 01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973
-Firmware intake: BLOCKED
-Layout remediation design: ACCEPTED / NOT IMPLEMENTED
-Firmware/AssetPool implementation: NOT STARTED
-New authoritative AssetPool binary: NOT GENERATED
-Actual VAMeter physical qualification: NOT RUN
+Final Viewer Firmware intake: BLOCKED / PR-B NOT IMPLEMENTED
+Layout remediation guard: PR-A IMPLEMENTED / DEVELOPMENT ONLY
+Firmware/AssetPool source: stable Viewer slots and identity, layout version 1
+New PR-A container: development generation only; no release/physical authority
+Actual VAMeter physical qualification and CRC boot timing: NOT RUN
 Stable v2.0.0: unchanged
 ```
 
-本PRは文書のみ。Firmware source、`WebPagePool_t`、Viewer contract constants/routes、partition、
-AssetPool binary、release/tag、device stateは変更しない。
+PR-AではViewer contract constants/routes、partition、release/tag、device stateを変更しない。
+独立したsource/resource review後も、physical gateはPR-Bと結合したmatched pairで別途実施する。
