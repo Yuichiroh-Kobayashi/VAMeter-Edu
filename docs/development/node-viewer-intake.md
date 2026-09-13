@@ -39,6 +39,7 @@ stable `v2.0.0` のViewer / Firmware / AssetPool authorityは本post-v2 intake�
 | Item | Stable `v2.0.0` |
 | --- | --- |
 | Firmware commit | `ee4da1b5e5e238fbc66a9d9a49f4d051c1ca986b` |
+| Firmware tree | `f80a0caaa213a965033f6773ea2d3f41af436807` |
 | Viewer source | `e1ebdb1cde8585a37447a66f4c8183654f4c3cda` |
 | Viewer tree | `8f8426e9af1649f68e66e4f8f432d1b91452e38d` |
 | Viewer bundle | `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af` |
@@ -222,7 +223,7 @@ identity authorityとして維持する。Viewer 4 assetのSHA-256も現行Firmw
 4. 固定tail位置からtrailer読出し
 5. magic / header size / trailer CRC
 6. layout version / Viewer layout version
-7. `static_asset_size` / `WebPage` offset
+7. `static_asset_size`がFirmware compile済み`sizeof(StaticAsset_t)`と厳密一致し、`WebPage` offsetもcompile済み`offsetof(StaticAsset_t, WebPage)`と厳密一致することを確認。不一致はTier 1とする。以降のCRC/read/bounds検証の長さ・上限はFirmware側compile定数を使い、trailer申告値をread lengthとして信用しない。
 8. Viewer member count / exact offset / exact capacity / bounds / non-overlap
 9. `static_asset_crc32`
 10. すべてPASSした場合だけ `AssetPool::InjectStaticAsset()`
@@ -238,11 +239,14 @@ Failure policyは二段に分ける。
 - serialに具体的なreason markerを残す。
 - AssetPool依存font/imageを使ったerror UIを出さない。
 - reboot loopにはしない。
+- 停止はtask watchdogを踏まない方式（yieldするidle、`app_main`からのreturn、または同等の非再起動経路）とし、WDT resetによる再起動反復を作らない。
 - logだけ出して未検証poolをinjectし続ける方式は採用しない。
 
 現在`AssetPoolInjection` callbackは失敗を`APP::Setup()`へ返せないため、PR-Aでは成功/失敗を
 明示的に伝播できるAPI（例: callback / setupのbool化、または同等のfail-stop経路）が必要。
-callbackだけ`return`して`APP::Setup()`を継続する実装は禁止する。
+callbackだけ`return`して`APP::Setup()`を継続する実装は禁止する。現行`app/app.cpp`ではcallback後に
+`AssetPool::SetLocaleCode(locale_code_jp)`が`getStaticAsset()->Text`へ進むため、未injectのまま継続すると
+null pointer dereferenceになり得ることをこの禁止の根拠とする。
 
 **Tier 2 — layoutは正当だがViewer identity不一致**
 
@@ -270,7 +274,9 @@ Viewer payload、Viewer slot容量、Viewer identityを変更しない。
 - `sizeof(StaticAsset_t) + trailer reserve <= partition size`のcompile-time assertion
 
 PR-Aのlayout versionはstable slot shapeを表すversion 1。**PR-A単独をreleaseしない**。
-PR-AとPR-Bの両方をreview済みにしてから短い間隔で順にmergeし、Firmwareだけを単独flashする
+PR-A以降のFirmwareは必ずtrailer付きAssetPoolを再生成・再書き込みしたmatched pairとして扱う。
+旧AssetPoolのままPR-A Firmwareだけを書き込むとTier 1 fail-stopとなり通常起動しないため、Firmware単独flashを
+supported development procedureにしない。PR-AとPR-Bの両方をreview済みにしてから短い間隔で順にmergeし、
 unsupported development stateを長期間作らない。
 
 ### PR-B — Final Viewer exact intake
