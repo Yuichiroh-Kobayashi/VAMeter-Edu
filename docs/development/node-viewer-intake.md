@@ -3,121 +3,320 @@
 ## 目的
 
 Related to #23。VAMeterのFirmware buildへNode依存を追加せず、別repoで生成するViewerの
-受入れ条件を明確にする。2026-09-11にsource `4a674f0f3499cb02980964ee24d30ba1dc024d45`
-のCMake、app、platforms、tests、開発手順をread-onlyで確認した。
-Firmware/DesktopはC++とPythonの経路で、調べたbuild/test呼出しにNode/npm依存はなかった。
-ViewerのJavaScriptがassetであることと、Firmware buildにNodeが必要なことは別である。
-既存Windows/WSL観測guideの全面改訂は本変更に含めない。
+受入れ条件を明確にする。Firmware/DesktopはC++とPythonの経路で、VAMeter側build/testへ
+Node/npm依存を追加しない。ViewerのJavaScriptがassetであることと、Firmware buildにNodeが
+必要なことは別である。
 
-## 準備
+Viewerの生成・再現性・browser validationはViewer repository側のauthorityで管理し、
+VAMeter-Eduでは最終Viewer assetのexact identity、AssetPool格納契約、FirmwareとAssetPoolの
+matched deployment、physical qualificationを別のgateとして扱う。
+
+## Node適用範囲
 
 [Viewer #16](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/16)
-の比較結果と [AssetPool統合仕様](../architecture/viewer-assetpool-integration.md) を読む。
-共通候補Node 24.21.0 / npm 11.19.0はViewer HOST試験に採用可能だが、既存builderとの
-互換性エラーで製品生成はHOLD。VAMeterにruntime設定やnpm packageは追加しない。
+の比較結果と [AssetPool統合仕様](../architecture/viewer-assetpool-integration.md) を基準とする。
 
-## 操作
+- Node 24.21.0 / npm 11.19.0: Viewer HOST試験で使用可能。
+- Node 24 product builder: 既存builderとの互換性差により **HOLD**。
+- qualified Viewer Build Environment V1: product生成authorityとして継続使用。
+- VAMeter-Edu Firmware/DesktopへNode runtimeやnpm packageは追加しない。
 
-1. Viewerの最終clean source commit/tree、D2B入力、builder/toolchainを入力manifestで特定する。
-2. 同じ環境の独立2生成からindex、manifest、圧縮CSS/JSの長さ/SHAとbundle IDを受け取る。
-3. `app/libs/viewer_asset_contract/` の期待値と `app/assets/web/types.h` のslotを照合する。
-4. 採用する場合は期待SHA、route、bundleと必要なlayout変更を別のレビュー可能な差分にする。
-   Firmwareと新規AssetPoolを対応づけて生成する。実機への書込みは変更レビュー後の別途承認で行う。
+## Viewer受入れ手順
 
-## 確認結果
+1. Viewerの最終clean source commit/tree、D2B入力、builder/toolchainを入力authorityとして固定する。
+2. qualified build environmentで独立生成し、index、manifest、圧縮CSS/JSのlength/SHA-256とbundle IDを確定する。
+3. `app/libs/viewer_asset_contract/` の期待値と `app/assets/web/types.h` の格納slotを照合する。
+4. size、identity、route、layoutのいずれかが現行contractと異なる場合はFirmware intakeを停止し、別のreview可能な差分で更新する。
+5. FirmwareとAssetPoolはcompatible pairとして生成し、実機書込み・readback・rollbackは別途承認されたphysical gateで行う。
 
-| 格納対象 | 現行固定slot / bytes | 比較基準生成 / bytes |
-|---|---:|---:|
-| index | 573 | 573 |
-| manifest | 1364 | 1364 |
-| CSS gzip | 2385 | 2385 |
-| JS gzip | 25809 | 25809 |
-| 合計payload | 30131 | 30131 |
-| bundle ID（NUL含む） | 65 | 65 |
+truncate、padding、旧manifest流用、未レビューの再圧縮、integrity check回避、Viewer機能削減による
+legacy slotへの押し込みは行わない。
 
-Viewer比較source `81226e7b39410ac673c1b46a9b76eab6084a4f19` の基準生成bundleは
-`be563812df74534c09d15bd67c5015519da3eca551e9e8812f6096a3343a58cb`。
-現行Firmwareの期待bundleは
-`4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af`。
-index/CSS/JSのSHAは一致したが、manifest/bundleは一致しない。slotに収まるだけでは受入れ不可。
-今回asset、固定値、Firmware、AssetPool、配布物は更新していない。
+## Stable `v2.0.0` authority
 
-## 失敗時の行動
+stable `v2.0.0` のViewer / Firmware / AssetPool authorityは本post-v2 intakeで変更しない。
 
-builder失敗、source不一致、長さ/SHA不一致をHOLDとして保存する。丸め、padding、
-旧manifest流用やruntime整合性チェックの回避は行わない。
-`_copy_viewer_assets()` は正確な長さを要求し、HTTP route登録時にも4assetのSHAとbundleを検証する。
-[既存のWindows/WSL観測](wsl-windows-serial-observation.md) で採録するclient runtimeは、
-今回のHOST用Node採用とは分ける。Windows版Nodeを使う場合はWindows-native保存先で確認する。
+| Item | Stable `v2.0.0` |
+| --- | --- |
+| Firmware commit | `ee4da1b5e5e238fbc66a9d9a49f4d051c1ca986b` |
+| Viewer source | `e1ebdb1cde8585a37447a66f4c8183654f4c3cda` |
+| Viewer tree | `8f8426e9af1649f68e66e4f8f432d1b91452e38d` |
+| Viewer bundle | `4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af` |
+| AssetPool image | `1,655,972` bytes |
+| AssetPool SHA-256 | `3a587a04127a5eab4df0d0714e37e214029bcedbbeb6a616e8426c6e9aa1c1fc` |
+| AssetPool partition free | `441,180` bytes |
+| Dedicated static IRAM | `16,383 / 16,384` bytes |
 
-## 終了と保存
+stable releaseのbyte、過去qualification、release判定は再分類しない。
 
-取込み元manifest、候補ごとの判定と理由を保存する。実機、AP、serial、機器列挙は未実施。
-今回の文書整備は無reset、binary readback、実機配信を証明しない。
-後続では最終成果物をレビューし、必要な実機承認と新規入力manifestを準備する。
+## Final post-v2 Viewer intake candidate
 
-## Post-v2 provisional candidates — fixed-slot gate
+Viewer #18 / #19 / #22 / #23 をmergeしたactual Viewer `main`から、qualified Viewer Build Environment V1
+`sha256:755023019864d9919e890003da7117bfc2803c88c80c2ab001d40cb1f0249b19` を使って
+独立したstandalone checkout A/Bから生成したfinal candidateを受入れ入力とする。
 
-2026-09-13のclassroom UI整理・10秒窓tick・CSV列順更新後のViewer sourceをViewer Build Environment V1で生成した比較。
-[Viewer Draft PR #22](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/22)
-と [stacked Draft PR #23](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/pull/23)
-はいずれも **PROVISIONAL DEVELOPMENT BUILD**。final Firmware intake identityではない。
-各clean committed standalone checkoutから同じqualified V1 imageで独立2生成し、
-index/manifest/CSS gzip/JS gzipの全bytes一致、各run内two-run determinismもPASS。
-Node 24 builderはHOLDのまま。以下は今回の新生成値であり、旧#22/#23候補値は流用しない。
+```text
+Viewer source commit:
+d4c0702ca0fb72099260c67b9976ade85bb681d2
 
-- Viewer #22: source `f3f59e735f5f1b71012b8c3fbc4dcb93da612d59` / tree `450e687aa627716dee92b197d6c1eceed44fa847`。
-  bundle `e3b49a78ef1a3e7219f470e18d2123fd381d4463bcde653d011224f8b3dddef8`、stored payload **33717 bytes**。
-- Viewer #23: source `8b0d9f7108b990a40bfb93dea402e49c84df169c` / tree `5a3c21bef9ddff3a0844930ac28fe71776a85c15`。
-  bundle `0c4d0f38237776274a143a5f3b193adbf3105e88b214b40d4ff195065d420f38`、stored payload **34774 bytes**。
+Viewer source tree:
+c4810727e8b3c17903d586137dae80aa1ef8b992
 
-比較slot authorityはVAMeter source `20587054769b4327c037854dee7a75e899e84d0a` の
-[`WebPagePool_t`](../../app/assets/web/types.h)、
-[expected length/SHA contract](../../app/libs/viewer_asset_contract/viewer_asset_contract.h)、
-[exact copyとstatic_assert](../../app/assets/assets.cpp)をread-onlyで再確認した。
+Viewer bundle:
+01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973
 
-| Asset | Current slot | #22 candidate | Delta | Result | #23 candidate | Delta | Result |
-| --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
-| index | 573 | 573 | +0 | SIZE_FITS | 573 | +0 | SIZE_FITS |
-| manifest | 1364 | 1364 | +0 | SIZE_FITS | 1364 | +0 | SIZE_FITS |
-| CSS gzip | 2385 | 2669 | +284 | FIXED_SLOT_OVERFLOW | 2669 | +284 | FIXED_SLOT_OVERFLOW |
-| JS gzip | 25809 | 29111 | +3302 | FIXED_SLOT_OVERFLOW | 30168 | +4359 | FIXED_SLOT_OVERFLOW |
-| bundle ID (NUL含む) | 65 | 65 | +0 | SIZE_FITS | 65 | +0 | SIZE_FITS |
+stored payload:
+34774 bytes
+```
 
-`SIZE_FITS`は長さだけの判定で、identity一致や受入れPASSではない。
-両候補のintake分類は **FIRMWARE_INTAKE_BLOCKED**。理由を分離する。
+Independent Build A/Bは4 representationすべてbyte-identicalで、各run内部two-run determinismと
+外側A/B比較がPASS。Node 18 HOSTはproduct 120 named + 4 gates、CSV 16、root 30、live 13 PASS。
+Node 24は `NODE24_HOST_PASS / NODE24_BUILDER_HOLD`。actual VAMeter physicalはこのViewer build gateでは
+NOT RUN。
 
-- **FIXED_SLOT_OVERFLOW**: CSS/JS gzipが現行の各fixed arrayを超過する。
-  Viewer機能削減、truncate、padding、旧manifest流用で収めない。
-- **IDENTITY_UPDATE_REQUIRED**: index/manifestが同じ長さでもSHA・bundleは現行期待値と異なる。
-  新候補を取り込むには期待length/SHA、content-hashed routes、bundleと必要なlayoutの
-  対応更新が別レビューで必要。現行runtime integrity checkは回避しない。
+| Asset | Bytes | SHA-256 | Final served route |
+| --- | ---: | --- | --- |
+| index | 573 | `2275800d59506344ed693c914fbebe09b701351cdc1c568ef61ce752c1f74781` | `/viewer/` |
+| manifest | 1364 | `01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973` | `/viewer/asset-manifest.json` |
+| CSS gzip | 2669 | `ad1eafe9be7c08ae40198db88c0e892822a0497731644138bfc2e93515f8f015` | `/viewer/assets/app.ad1eafe9be7c08ae40198db88c0e892822a0497731644138bfc2e93515f8f015.css` |
+| JS gzip | 30168 | `2c7925c88541d26de3871fcc7362f7f9002164886a6e4666779a5e330fd69253` | `/viewer/assets/app.2c7925c88541d26de3871fcc7362f7f9002164886a6e4666779a5e330fd69253.js` |
+| bundle ID + NUL | 65 | bundle ID above | `/viewer/device.json`で公開 |
 
-[partition map](../../platforms/vameter/partitions.csv)のAssetPool領域は2 MiB。
-[stable resource記録](../architecture/resource-budget.md)のAssetPool空き441,180 bytesは
-partition全体の値であり、上のper-member fixed slotの空きではない。
-数KBの増分がpartitionに収まり得ても現行配列に収まらなければintakeはBLOCKED。
-新AssetPool全体のサイズ・alignment・offsetは今回生成/検証していない。
+Final manifestは `viewer_source_commit=d4c0702...`、D2B copied-reference authority
+`b30ad676922af73448952d5a9cac312467a944f9` を記録する。
 
-## Future layout compatibility and rollback requirement
+## Fixed-slot gate
 
-Before physical deployment of an AssetPool layout change, Firmware and AssetPool
-MUST have an explicit fail-closed layout/version/size compatibility guard.
+現行stable slotとfinal candidateを照合する。
 
-これは将来のlayout remediationに必須の要件であり、今回の実装済み機能ではない。
-候補はmagic/version、layout version、exact structure size、または同等のfail-closed
-mechanism。方式の決定と実装は次の設計レビューに残す。Viewer asset SHA照合だけで
-AssetPool全体の異なる構造offset/sizeに対する互換性が保証されたとは扱わない。
+| Asset | Current slot | Final candidate | Delta | Result |
+| --- | ---: | ---: | ---: | --- |
+| index | 573 | 573 | 0 | SIZE_FITS |
+| manifest | 1364 | 1364 | 0 | SIZE_FITS |
+| CSS gzip | 2385 | 2669 | +284 | **FIXED_SLOT_OVERFLOW** |
+| JS gzip | 25809 | 30168 | +4359 | **FIXED_SLOT_OVERFLOW** |
+| bundle ID + NUL | 65 | 65 | 0 | SIZE_FITS |
+| stored payload | 30131 | 34774 | +4643 | — |
 
-将来のFirmwareとAssetPoolはcompatible pairとして生成・照合・配布する。
-rollbackも **old Firmware + old AssetPool** の対応pairへ戻す。片側だけのrollbackを
-既定手順にしない。[既存AssetPool統合仕様](../architecture/viewer-assetpool-integration.md)
-のmatched deployment境界と、別途実機承認を維持する。
+`SIZE_FITS`は長さだけの判定で、identity一致やFirmware intake PASSを意味しない。
+Final candidateの分類は次のとおり。
 
-Dedicated static IRAM remaining **1 byte** は別のtechnical debtである。
-AssetPool flash layout/fixed-slot超過と混同せず、flash空きをIRAM余裕とみなさない。
-今回のViewer開発候補だけでstable v2.0.0 release撤回とは判定しない。
+```text
+FINAL_VIEWER_V1_INTAKE_CANDIDATE_READY
+FIXED_SLOT_OVERFLOW
+IDENTITY_UPDATE_REQUIRED
+FIRMWARE_INTAKE_BLOCKED
+```
 
-この修正は文書のみ。Firmware source、WebPagePool_t、期待値、route、partition、
-AssetPool layout/bytesは変更していない。Firmware/Desktop/AssetPool build、
-実機・USB/serial・AP・flash/reset/readback/OTAはNOT RUN。
+AssetPool partitionは2 MiBで、stable実測では全体に441,180 bytes残っている。しかしこの余りは
+`StaticAsset_t`末尾より後ろにあり、CSS/JSのper-member fixed array容量ではない。したがって
+partition全体に数KBの余裕があることはfixed-slot overflowの解消を意味しない。
+
+## Layout remediation analysis
+
+read-only source分析とcompiler `sizeof` / `offsetof` probeにより、現行raw layoutは次の事実で確定した。
+probeの `sizeof(StaticAsset_t)=1,655,972` はstable resource実測と完全一致した。
+
+- `sizeof(WebPagePool_t) = 115,498`
+- `sizeof(StaticAsset_t) = 1,655,972`
+- `WebPagePool_t` は `StaticAsset_t` の最終member。
+- `viewer_bundle_id`後には現行structのtrailing padding 3 bytesだけが存在する。
+- Final candidateにexact slot resizeした場合、font/image/color/text/syscfg/favicon/index/manifest/CSSの開始offsetは不変。
+- `viewer_js_gzip`だけが +284 bytes、`viewer_bundle_id`だけが +4,643 bytes移動する。
+- exact slot resize後の `sizeof(StaticAsset_t) = 1,660,612`。
+- 2 MiB partition内にはlayout metadata用の固定tailを確保しても十分な容量がある。
+
+このため問題はpartition容量不足ではなく、raw C++ struct ABIのlayout compatibilityである。
+Viewer bundle ID + 4 asset SHA-256の現行runtime checkはmixed Viewer pairを結果としてfail-closedにするが、
+layout/version/sizeを明示するcontractではない。またboot時はViewer identity checkより前にAssetPoolの
+font/text byteを使用するため、truncated/corrupt poolをViewer hashだけで安全に扱えるとはしない。
+
+## Accepted layout remediation design — not yet implemented
+
+設計レビュー結果は次のとおり。
+
+```text
+LAYOUT_REMEDIATION_DESIGN_READY
+LAYOUT_REMEDIATION_DESIGN_ACCEPTED_WITH_REFINEMENTS
+```
+
+採用方針は **exact-sized fixed slots + assetpool partition末尾の固定位置 compatibility trailer**。
+余裕付きfixed slot（A2）やdescriptor containerへの全面移行は今回採用しない。
+
+### Exact Viewer slots
+
+Final Viewer asset長にslotを正確に一致させ、現行の `slot capacity == expected payload length` 不変条件を維持する。
+
+```text
+index      573
+manifest  1364
+CSS       2669
+JS       30168
+bundle ID   65
+```
+
+余裕付きslotには将来raw ABIを据え置ける利点があるが、今回は`MatchesSha256()`と既存host testの
+byte-exact invariantを維持して実装riskを最小化することを優先する。
+
+### Partition-tail compatibility trailer
+
+layoutを知らない段階でも安全に読めるよう、compatibility metadataは`StaticAsset_t`直後ではなく
+**assetpool partition末尾の固定offset**に置く。`StaticAsset_t`自身の後ろへ相対配置すると、その位置を
+知るために検証対象のlayoutを先に信用する循環になるため採用しない。partition先頭へheaderを置く方式も
+old Firmwareが既存font byteとして解釈するため採用しない。
+
+新container designは概念的に次の構造とする。
+
+```text
+assetpool partition: 2,097,152 bytes
+  [0 .. sizeof(StaticAsset_t)-1]                  StaticAsset_t
+  [sizeof(StaticAsset_t) .. partition-257]        zero-filled layout growth reserve
+  [partition-256 .. partition-1]                  compatibility trailer reserve
+```
+
+Option Aのfinal slot resize後は:
+
+```text
+StaticAsset_t:                    1,660,612 bytes
+compatibility trailer reserve:          256 bytes
+layout growth reserve:              436,284 bytes
+partition container/image:        2,097,152 bytes
+```
+
+このfull-partition container採用後は、従来の`partition size - image file size`を単純に
+「AssetPool free」と呼ばない。`StaticAsset_t used`、`trailer reserve`、`layout growth reserve`を
+分けてresource reportに記録する。stable `v2.0.0`の1,655,972 / 441,180 bytesは歴史値として変更しない。
+
+### Trailer contract
+
+trailerは少なくとも次を明示する。
+
+- magic
+- trailer/header format version
+- header size
+- `StaticAsset_t` layout version
+- Viewer sub-layout version
+- `static_asset_size`
+- `offsetof(StaticAsset_t, WebPage)`
+- Viewer member count
+- Viewer 5 memberのoffset + capacity
+- `static_asset_crc32`
+- trailer/header CRC32
+- reserved bytesはzero固定
+
+Viewer bundle IDはtrailerへ重複保存せず、現行`WebPage.viewer_bundle_id`とFirmware compile constantを
+identity authorityとして維持する。Viewer 4 assetのSHA-256も現行Firmware compile constantsを
+権威とし、trailer metadataをViewer integrity authorityへ昇格させない。
+
+`static_asset_crc32`はsecurity/authenticityではなく、Inject前のflash corruption / partial pool検出用。
+実装後にboot時間、flash/IRAM/DRAM/stack差分を実測し、採否を最終確認する。
+
+### Validation order and failure tiers
+
+新FirmwareはAssetPoolを`StaticAsset_t*`としてinjectする前に、partitionとtrailerのshapeを検証する。
+少なくとも以下の順序を守る。
+
+1. assetpool partition存在確認
+2. partition size確認
+3. partition mmap
+4. 固定tail位置からtrailer読出し
+5. magic / header size / trailer CRC
+6. layout version / Viewer layout version
+7. `static_asset_size` / `WebPage` offset
+8. Viewer member count / exact offset / exact capacity / bounds / non-overlap
+9. `static_asset_crc32`
+10. すべてPASSした場合だけ `AssetPool::InjectStaticAsset()`
+11. SystemLive start時に現行bundle ID + 4 asset SHA-256を検証
+12. Viewer routes登録
+
+Failure policyは二段に分ける。
+
+**Tier 1 — layout/container incompatibility**
+
+- AssetPoolをinjectしない。
+- 通常`APP::Setup()`へ進まない。
+- serialに具体的なreason markerを残す。
+- AssetPool依存font/imageを使ったerror UIを出さない。
+- reboot loopにはしない。
+- logだけ出して未検証poolをinjectし続ける方式は採用しない。
+
+現在`AssetPoolInjection` callbackは失敗を`APP::Setup()`へ返せないため、PR-Aでは成功/失敗を
+明示的に伝播できるAPI（例: callback / setupのbool化、または同等のfail-stop経路）が必要。
+callbackだけ`return`して`APP::Setup()`を継続する実装は禁止する。
+
+**Tier 2 — layoutは正当だがViewer identity不一致**
+
+- 現行`VIEWER_ASSETPOOL_IDENTITY_MISMATCH`挙動を維持する。
+- device本体UI/measurement/recorderを壊さず、Viewer/SystemLive routeだけfail-closedにする。
+- reboot、format、record削除は行わない。
+
+## Implementation sequencing
+
+実装は2 PRに分け、physical gateは結合後に1回行う。
+
+### PR-A — layout/version compatibility guard foundation
+
+Viewer payload、Viewer slot容量、Viewer identityを変更しない。
+
+想定scope:
+
+- compatibility trailer encode/decode/validationのhost-testable library
+- partition size / layout / bounds / CRC guard
+- AssetPool full-partition deterministic generation
+- struct paddingの決定化
+- Inject前failure propagation / Tier 1 fail-stop
+- desktop loaderの短いbin / trailer検証のfail-closed化
+- host negative/mixed-layout tests
+- `sizeof(StaticAsset_t) + trailer reserve <= partition size`のcompile-time assertion
+
+PR-Aのlayout versionはstable slot shapeを表すversion 1。**PR-A単独をreleaseしない**。
+PR-AとPR-Bの両方をreview済みにしてから短い間隔で順にmergeし、Firmwareだけを単独flashする
+unsupported development stateを長期間作らない。
+
+### PR-B — Final Viewer exact intake
+
+PR-A merge後にFinal Viewer identityとexact slot resizeを取り込む。
+
+想定scope:
+
+- CSS slot `2385 -> 2669`
+- JS slot `25809 -> 30168`
+- `kStoredPayloadBytes = 34774`
+- bundle `01e39e5c...`
+- index / manifest / CSS / JS SHA-256更新
+- Final manifestに記録されたcontent-hashed CSS/JS route更新
+- layout version `1 -> 2`
+- Viewer contract host tests更新
+- architecture / resource / validation docs更新
+
+PR-A / PR-B結合後にmatched new Firmware + new AssetPoolをbuildし、独立AssetPool生成、ESP-IDF map、
+readback、actual AP/Viewer、Start/Stop、UI/CSV targeted smoke、old Firmware + old AssetPoolへのmatched rollbackを
+1つのphysical gateとして実施する。
+
+## Resource boundary
+
+Dedicated static IRAM remaining **1 byte** は独立したtechnical debtであり、AssetPool partition headroomと
+相殺できない。PR-A / PR-Bでは`IRAM_ATTR`を追加せず、ESP-IDF mapでdedicated static IRAM、full IRAM、
+DRAM `.data/.bss`、flash `.text/.rodata`、application image、stack/heap影響を実測する。
+
+CRCやlayout validationを設計しただけではresource PASSを主張しない。実装後のmap差分がgateである。
+
+## Claim boundary
+
+この文書更新で確定するのは受入れ入力と実装前design decisionだけである。
+
+```text
+Viewer candidate: final / build-qualified
+Viewer source: d4c0702ca0fb72099260c67b9976ade85bb681d2
+Viewer tree: c4810727e8b3c17903d586137dae80aa1ef8b992
+Viewer bundle: 01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973
+Firmware intake: BLOCKED
+Layout remediation design: ACCEPTED / NOT IMPLEMENTED
+Firmware/AssetPool implementation: NOT STARTED
+New authoritative AssetPool binary: NOT GENERATED
+Actual VAMeter physical qualification: NOT RUN
+Stable v2.0.0: unchanged
+```
+
+本PRは文書のみ。Firmware source、`WebPagePool_t`、Viewer contract constants/routes、partition、
+AssetPool binary、release/tag、device stateは変更しない。
