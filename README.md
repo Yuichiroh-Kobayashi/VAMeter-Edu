@@ -229,3 +229,5 @@ If you run desktop build first, you can find `AssetPool-VAMeter.bin` at `../../b
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+開発時の [Node適用範囲とViewer受入れ](docs/development/node-viewer-intake.md) を参照してください。
