@@ -5,26 +5,9 @@
  */
 #pragma once
 #include <cstdint>
-#include "fonts/types.h"
-#include "images/types.h"
-#include "theme/types.h"
-#include "localization/types.h"
-#include "web/types.h"
+#include "static_asset_types.h"
 #include "../hal/types.h"
 #include "../hal/hal.h"
-
-/**
- * @brief A struct to define static binary asset
- *
- */
-struct StaticAsset_t
-{
-    FontPool_t Font;
-    ImagePool_t Image;
-    ColorPool_t Color;
-    TextPool_t Text;
-    WebPagePool_t WebPage;
-};
 
 /**
  * @brief A Class to handle static asset
@@ -109,7 +92,8 @@ public:
 #ifndef ESP_PLATFORM
     /* -------------------------- Generate static asset ------------------------- */
     static StaticAsset_t* CreateStaticAsset();
-    static StaticAsset_t* GetStaticAssetFromBin();
+    // missing is true only when no on-disk pool exists; invalid pools must not trigger regeneration.
+    static StaticAsset_t* GetStaticAssetFromBin(bool* missing = nullptr);
     // Utility to generate AssetPool-VAMeter.bin during desktop execution
     // path specifies the output destination such as "AssetPool-VAMeter.bin"
     static bool DumpStaticAsset(const char* path, const StaticAsset_t* asset);

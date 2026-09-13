@@ -13,11 +13,12 @@ namespace APP
 {
     struct SetupCallback_t
     {
-        std::function<void()> AssetPoolInjection = nullptr;
+        std::function<bool()> AssetPoolInjection = nullptr;
         std::function<void()> HalInjection = nullptr;
     };
 
-    void Setup(SetupCallback_t callback);
+    // False stops before HAL, locale/font access, or application startup.
+    bool Setup(SetupCallback_t callback);
     void Loop();
     void Destroy();
 } // namespace APP
