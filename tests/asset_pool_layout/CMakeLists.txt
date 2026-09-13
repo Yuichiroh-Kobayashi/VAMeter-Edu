@@ -17,6 +17,7 @@ if(PLATFORM_BUILD_DESKTOP)
     add_test(NAME asset_pool_container_test
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/container_test.py
             --driver $<TARGET_FILE:asset_pool_host_driver>
+            --viewer-driver $<TARGET_FILE:viewer_asset_contract_test>
             --source-root ${PROJECT_SOURCE_DIR}
     )
 endif()
