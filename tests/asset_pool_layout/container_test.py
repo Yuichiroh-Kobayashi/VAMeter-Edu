@@ -1,7 +1,7 @@
 """Exercise real AssetPool generation/loading with independent whole-image CRC checks.
 
 Inputs are deterministic synthetic Viewer representations unless --viewer-inputs supplies
-four exact stable files (index, manifest, CSS gzip, JS gzip). Outputs stay under the
+four exact final Viewer files (index, manifest, CSS gzip, JS gzip). Outputs stay under the
 source build directory for inspection; they are development artifacts, never releases.
 """
 import argparse
@@ -18,14 +18,14 @@ import zlib
 PARTITION = 2097152
 TRAILER = PARTITION - 256
 NAMES = ("INDEX", "MANIFEST", "CSS_GZIP", "JS_GZIP")
-SIZES = (573, 1364, 2385, 25809)
+SIZES = (573, 1364, 2669, 30168)
 
 
 def validate(data, layout):
     assert len(data) == PARTITION
     t = data[TRAILER:]
     assert t[:8] == b"VAMEAPL1"
-    assert struct.unpack_from("<4H", t, 8) == (1, 76, 1, 1)
+    assert struct.unpack_from("<4H", t, 8) == (1, 76, 2, 2)
     assert struct.unpack_from("<3I", t, 16) == (layout["static_asset_size"], layout["webpage_offset"], 5)
     assert [list(struct.unpack_from("<2I", t, 28 + 8*i)) for i in range(5)] == layout["members"]
     assert not any(data[layout["static_asset_size"]:TRAILER])
@@ -37,6 +37,7 @@ def validate(data, layout):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--driver", type=Path, required=True)
+    parser.add_argument("--viewer-driver", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--viewer-inputs", type=Path, nargs=4)
     args = parser.parse_args()
@@ -45,8 +46,11 @@ def main():
     dirs = [Path(tempfile.mkdtemp(prefix="asset-pool-" + label + "-", dir=build)) for label in ("A", "B", "cases")]
     driver = str(args.driver.resolve())
     layout = json.loads(subprocess.check_output([driver, "describe"], text=True))
-    assert layout["static_asset_size"] == 1655972
-    assert [m[1] for m in layout["members"]] == list(SIZES) + [65]
+    assert layout["static_asset_size"] == 1660612
+    assert layout["webpage_offset"] == 1540471
+    assert layout["members"] == [[1625773, 573], [1626346, 1364], [1627710, 2669],
+                                  [1630379, 30168], [1660547, 65]]
+    assert TRAILER - layout["static_asset_size"] == 436284
     env = os.environ.copy()
     inputs = []
     for i, (name, size) in enumerate(zip(NAMES, SIZES)):
@@ -64,6 +68,14 @@ def main():
         assert result.returncode == expected, result.stdout
         return result.stdout
 
+    def identity(path, expected):
+        result = subprocess.run([str(args.viewer_driver.resolve()), "--container", str(path)],
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        path.with_suffix(".identity.log").write_text(result.stdout)
+        assert result.returncode == expected, result.stdout
+        assert "LAYOUT_RESULT=Ok" in result.stdout, result.stdout
+        assert ("VIEWER_IDENTITY=PASS" if expected == 0 else "VIEWER_IDENTITY=FAIL") in result.stdout
+
     images = []
     for directory, perturb in zip(dirs[:2], ("85", "170")):
         assert not (directory / "AssetPool-VAMeter.bin").exists()
@@ -74,12 +86,35 @@ def main():
         for contents, (offset, size) in zip(inputs, layout["members"]):
             assert data[offset:offset+size] == contents
         assert "HOST_CONTAINER_LOADED" in run("load", directory)
+        identity(directory / "AssetPool-VAMeter.bin", 0 if args.viewer_inputs else 2)
         images.append(data)
         print(f"PASS generation {directory} bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}")
     assert images[0] == images[1]
     subprocess.run(["cmp", str(dirs[0] / "AssetPool-VAMeter.bin"), str(dirs[1] / "AssetPool-VAMeter.bin")], check=True)
     print("PASS independent_generation_A_B_byte_identical_with_distinct_allocator_poison")
     good = images[0]
+    # Resealing CRCs preserves Tier 1 validity; exact Viewer identity still fails.
+    # With real intake files, each mutation starts from an identity-valid container.
+    for index, (offset, size) in enumerate(layout["members"]):
+        bad = bytearray(good)
+        bad[offset + size // 2] ^= 1
+        struct.pack_into("<I", bad, TRAILER+68, zlib.crc32(bad[:layout["static_asset_size"]]))
+        struct.pack_into("<I", bad, TRAILER+72, zlib.crc32(bad[TRAILER:TRAILER+72]))
+        validate(bad, layout)
+        path = dirs[2] / ("tier2-mutated-member-" + str(index) + ".bin")
+        path.write_bytes(bad)
+        identity(path, 2)
+        print("PASS resealed_viewer_mutation_tier1_pass_tier2_fail_member_" + str(index))
+    bad = bytearray(good)
+    offset, size = layout["members"][4]
+    bad[offset:offset+size] = b"4422530b6e1ba9549dd4bef2e3bb2c183d8fced49ed2d8d695d2a04a4aa7c2af\0"
+    struct.pack_into("<I", bad, TRAILER+68, zlib.crc32(bad[:layout["static_asset_size"]]))
+    struct.pack_into("<I", bad, TRAILER+72, zlib.crc32(bad[TRAILER:TRAILER+72]))
+    validate(bad, layout)
+    path = dirs[2] / "tier2-stable-bundle.bin"
+    path.write_bytes(bad)
+    identity(path, 2)
+    print("PASS stable_bundle_tier1_pass_tier2_fail")
     cases = {"legacy_short": good[:layout["static_asset_size"]], "short": good[:75], "oversize": good + b"\0"}
     for label, offset in (("bad_magic", TRAILER), ("bad_trailer_crc", TRAILER+72), ("bad_static_crc", 0), ("reserved", PARTITION-1)):
         bad = bytearray(good)
@@ -89,6 +124,11 @@ def main():
     struct.pack_into("<I", bad, TRAILER+16, 0xFFFFFFFF)
     struct.pack_into("<I", bad, TRAILER+72, zlib.crc32(bad[TRAILER:TRAILER+72]))
     cases["declared_size_ffffffff"] = bad
+    for field, label in ((12, "layout_v1"), (14, "viewer_layout_v1")):
+        bad = bytearray(good)
+        struct.pack_into("<H", bad, TRAILER+field, 1)
+        struct.pack_into("<I", bad, TRAILER+72, zlib.crc32(bad[TRAILER:TRAILER+72]))
+        cases[label] = bad
     for label, data in cases.items():
         directory = dirs[2] / label
         directory.mkdir()

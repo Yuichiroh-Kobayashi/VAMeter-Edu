@@ -5,6 +5,7 @@ enable_testing()
 
 add_executable(viewer_asset_contract_test
     viewer_asset_contract_test.cpp
+    ../../app/libs/asset_pool_layout/asset_pool_layout.cpp
     ../../app/libs/viewer_asset_contract/viewer_asset_contract.cpp
     ../../platforms/vameter/main/hal_vameter/components/viewer_http_routes.cpp
 )

@@ -11,8 +11,8 @@ namespace ASSET_POOL_LAYOUT
     static const std::size_t kTrailerOffset = kAssetPoolPartitionBytes - kTrailerReserveBytes;
     static const std::size_t kTrailerUsedBytes = 76U;
     static const std::uint16_t kTrailerFormatVersion = 1U;
-    static const std::uint16_t kStaticAssetLayoutVersion = 1U;
-    static const std::uint16_t kViewerLayoutVersion = 1U;
+    static const std::uint16_t kStaticAssetLayoutVersion = 2U;
+    static const std::uint16_t kViewerLayoutVersion = 2U;
     static const std::size_t kStaticAssetBytes = sizeof(StaticAsset_t);
     static const std::size_t kWebPageOffset = offsetof(StaticAsset_t, WebPage);
     static const std::size_t kViewerMemberCount = 5U;

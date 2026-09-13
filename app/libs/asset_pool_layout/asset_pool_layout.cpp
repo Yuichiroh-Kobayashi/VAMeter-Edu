@@ -10,8 +10,8 @@ namespace ASSET_POOL_LAYOUT
     static_assert(std::is_trivially_copyable<StaticAsset_t>::value, "StaticAsset_t must support byte loading");
     static_assert(kStaticAssetBytes + kTrailerReserveBytes <= kAssetPoolPartitionBytes, "AssetPool exceeds partition");
     static_assert(kTrailerUsedBytes <= kTrailerReserveBytes, "Trailer exceeds reserve");
-    static_assert(kStaticAssetBytes == 1655972U, "Review and version any layout-1 size change");
-    static_assert(sizeof(WebPagePool_t) == 115498U, "Review and version any Viewer layout-1 size change");
+    static_assert(kStaticAssetBytes == 1660612U, "Review and version any layout-2 size change");
+    static_assert(sizeof(WebPagePool_t) == 120141U, "Review and version any Viewer layout-2 size change");
 
 #define CHECK_MEMBER(index, expected)                                                                                          \
     static_assert(kViewerMembers[index].capacity == expected, "Viewer slot must match compile contract");                      \
@@ -127,6 +127,9 @@ namespace ASSET_POOL_LAYOUT
                 return Result::MemberOffsetMismatch;
             if (capacity != kViewerMembers[i].capacity)
                 return Result::MemberCapacityMismatch;
+            // Exact compile-authority equality above is intentionally stronger: malformed
+            // external ranges/order normally reject there. These remaining checks defend
+            // internal table consistency; they are not a substitute for exact equality.
             if (capacity == 0 || !FitsRange(offset, capacity, kStaticAssetBytes))
                 return Result::MemberRangeInvalid;
             if (offset <= previousOffset || offset < previousEnd)

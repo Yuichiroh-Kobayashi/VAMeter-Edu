@@ -11,8 +11,8 @@ boundaries.
 ## Fixed byte-exact contract
 
 `VIEWER_ASSET_CONTRACT` (`viewer_asset_contract.h`) fixes an exact expected byte length for
-each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1364), `kCssGzipBytes` (2385),
-`kJsGzipBytes` (25809), for a total `kStoredPayloadBytes` of 30131 bytes, plus a
+each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1364), `kCssGzipBytes` (2669),
+`kJsGzipBytes` (30168), for a total `kStoredPayloadBytes` of 34774 bytes, plus a
 64-character bundle ID (`kBundleIdCharacters`) stored with its NUL terminator in a
 65-byte field (`kBundleIdCapacity`).
 
@@ -39,9 +39,9 @@ compiled-in byte-exact contract fails AssetPool generation outright.
 The fixed `kViewerBundleId` bytes (not read from a file) are copied directly into
 `WebPage.viewer_bundle_id`.
 
-The raw `WebPagePool_t` storage capacities are 573 bytes for index, 1364 for manifest, 2385
-for CSS gzip, 25809 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
-require each expected payload length to fit its fixed slot. The PR-A development generator value-initializes the complete object before applying
+The raw `WebPagePool_t` storage capacities are 573 bytes for index, 1364 for manifest, 2669
+for CSS gzip, 30168 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
+require each expected payload length to equal its fixed slot. The development generator value-initializes the complete object before applying
 its default member initializers, then explicitly clears these Viewer slots before exact copies.
 
 ## Runtime integrity check
@@ -76,12 +76,14 @@ regeneration and flashing requirements in
 [`../ai/build-and-validation.md`](../ai/build-and-validation.md) apply, and any such change
 requires physical-device validation before being treated as deployed.
 
-## PR-A development layout/container guard
+## Development layout/container guard
 
-PR-A implements the guard foundation from [the accepted intake design](../development/node-viewer-intake.md).
-It keeps the exact stable `StaticAsset_t` layout, Viewer slots, bundle ID, hashes, and routes.
-This is development behavior, **not a release or physical qualification**. PR-B performs the
-later Final Viewer intake and layout version change.
+Merged [PR #25](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/25) introduced the guard
+foundation with layout version 1. The Final Viewer intake updates the exact CSS/JS slots,
+bundle, four hashes, and hashed routes, and raises both layout versions to 2 while retaining
+the trailer format. **IMPLEMENTED IN SOURCE / NOT PHYSICALLY QUALIFIED**; external review is
+pending. The exact source/tree/bundle and four representation hashes are recorded in
+[the Final Viewer intake authority](../development/node-viewer-intake.md#final-post-v2-viewer-intake-candidate).
 
 The unchanged `StaticAsset_t` declaration is shared through `app/assets/static_asset_types.h`.
 `app/libs/asset_pool_layout/` uses that declaration for C++11 `sizeof`/`offsetof` authority.
@@ -91,8 +93,8 @@ It allocates no heap for validation, adds no `IRAM_ATTR`, and uses no CRC lookup
 
 | Region | Offset | Bytes | Content |
 | --- | ---: | ---: | --- |
-| StaticAsset_t used | 0 | 1,655,972 | Current struct object representation |
-| Layout growth reserve | 1,655,972 | 440,924 | All zero |
+| StaticAsset_t used | 0 | 1,660,612 | Current struct object representation |
+| Layout growth reserve | 1,660,612 | 436,284 | All zero |
 | Trailer reserve | 2,096,896 | 256 | Header below, followed by zero reserved bytes |
 | Full container | 0 | 2,097,152 | Exact partition-sized file |
 
@@ -102,31 +104,32 @@ remain unchanged historical facts. The new full container uses the separate term
 All integers in the following trailer are unsigned, explicitly encoded little-endian.
 The on-flash trailer is never serialized by casting a C++ struct.
 
-| Relative offset | Bytes | Field / PR-A value |
+| Relative offset | Bytes | Field / Final intake value |
 | --- | ---: | --- |
 | 0 | 8 | ASCII `VAMEAPL1` |
 | 8 | 2 | Trailer format version `1` |
 | 10 | 2 | Header size `76` |
-| 12 | 2 | StaticAsset layout version `1` |
-| 14 | 2 | Viewer sub-layout version `1` |
-| 16 | 4 | `sizeof(StaticAsset_t)` = `1655972` |
+| 12 | 2 | StaticAsset layout version `2` |
+| 14 | 2 | Viewer sub-layout version `2` |
+| 16 | 4 | `sizeof(StaticAsset_t)` = `1660612` |
 | 20 | 4 | `offsetof(StaticAsset_t, WebPage)` = `1540471` |
 | 24 | 4 | Viewer member count `5` |
 | 28 / 32 | 4 / 4 | Index offset / capacity: `1625773 / 573` |
 | 36 / 40 | 4 / 4 | Manifest offset / capacity: `1626346 / 1364` |
-| 44 / 48 | 4 / 4 | CSS gzip offset / capacity: `1627710 / 2385` |
-| 52 / 56 | 4 / 4 | JS gzip offset / capacity: `1630095 / 25809` |
-| 60 / 64 | 4 / 4 | Bundle ID offset / capacity: `1655904 / 65` |
+| 44 / 48 | 4 / 4 | CSS gzip offset / capacity: `1627710 / 2669` |
+| 52 / 56 | 4 / 4 | JS gzip offset / capacity: `1630379 / 30168` |
+| 60 / 64 | 4 / 4 | Bundle ID offset / capacity: `1660547 / 65` |
 | 68 | 4 | Static asset CRC32 |
 | 72 | 4 | Trailer CRC32 |
 | 76 | 180 | Reserved, all zero |
 
 Member offsets in production are calculated from the two `offsetof` expressions, not
-these historical numbers. Compile-time assertions cover standard layout, trivial byte
-copying, the version-1 sizes, slot equality, bounds, and partition fit. Runtime validation
+duplicated literal offsets. Compile-time assertions cover standard layout, trivial byte
+copying, the version-2 sizes (`StaticAsset_t` 1,660,612; `WebPagePool_t` 120,141), slot equality, bounds, and partition fit. Runtime validation
 still checks every declaration for exact agreement, safe ranges, increasing non-overlap,
-and zero reserved bytes. A malformed range can be rejected earlier by exact offset or
-capacity comparison.
+and zero reserved bytes. Exact compile-authority equality intentionally rejects malformed external ranges/order
+before the defensive internal range/order checks. Negative test names record that early
+offset/capacity rejection (PR #25 review M-1).
 
 Both CRCs use table-less CRC-32/IEEE 802.3: reflected polynomial `0xEDB88320`, initial
 value `0xFFFFFFFF`, final xor `0xFFFFFFFF`. The static asset CRC covers exactly the
@@ -171,30 +174,35 @@ HAL, locale, Mooncake, or ordinary UI initialization. Device logs
 return. The configured automatic task watchdog initialization is disabled; HAL registers
 the watchdog only after successful AssetPool injection. This stop path uses no AssetPool
 error UI, busy loop, reboot, format, record deletion, or automatic AssetPool rewrite.
-Physical boot timing and watchdog behavior remain **NOT RUN** in PR-A.
+Physical boot timing and watchdog behavior remain **NOT RUN** for this intake.
 
 A container with correct layout/CRC but incorrect Viewer identity still reaches the
 existing Tier 2 `VIEWER_ASSETPOOL_IDENTITY_MISMATCH` check. Viewer/SystemLive routes fail
-closed while core UI, measurement, and recorder remain available. PR-A does not move
-Viewer identity validation into Tier 1 or change `viewer_http_routes.cpp`.
+closed while core UI, measurement, and recorder remain available. The Final intake preserves this separation and does not change `viewer_http_routes.cpp`.
 
 ### Matched-pair deployment and validation boundary
 
 | Firmware / AssetPool pair | Source/host expectation |
 | --- | --- |
-| New PR-A / new PR-A with stable Viewer | Layout gate passes; unchanged stable Viewer identity checks apply |
-| New PR-A / old stable pool | Tier 1 fail-stop; desktop rejects the short file, device rejects the legacy tail |
-| Old stable / new PR-A | Struct and Viewer bytes remain compatible; old Firmware ignores the tail |
+| Final intake / Final layout 2 | Layout and exact Final Viewer identity pass |
+| Final intake / PR #25 layout 1 | Tier 1 layout-version rejection before asset CRC/injection |
+| PR #25 / Final layout 2 | Tier 1 layout-version rejection before asset CRC/injection |
+| Old stable / Final layout 2 | Source analysis only: non-Viewer prefix offsets remain unchanged; old Firmware ignores the trailer and is expected to reject the Viewer through its old JS/bundle offsets and identity checks |
 
-The third row is source/host compatibility evidence, not physical proof. **PR-A Firmware
-requires a regenerated trailer-bearing PR-A AssetPool. Firmware-only flash while retaining
-the old stable AssetPool is unsupported and intentionally reaches Tier 1 fail-stop.**
-PR-A is not released alone: PR-A review/merge -> PR-B review/merge -> one combined physical
-gate. No physical write/readback/reset/qualification is part of this implementation task.
+These are source/host observations, not physical proof. Both versions must be deployed as
+a compatible Firmware + AssetPool pair. Firmware-only flash with an old pool is unsupported.
+The later physical gate requires separate explicit authorization and must retain the
+old stable Firmware + old stable AssetPool as its matched rollback authority.
+Stable release bytes and their qualification are unchanged.
 
 `tests/asset_pool_layout/` covers CRC vectors, negative metadata, mixed layout, guard-page
 read bounds, real `APP::Setup()` failure propagation, independent full-container generation,
-regular/size/CRC loader rejection, and atomic write/rename failure. The pure library test
+regular/size/CRC loader rejection, and atomic write/rename failure. The test-only Viewer
+`--container` seam exercises the real identity and route-registration code after Tier 1
+with HTTP shims. Same-length mutations with recomputed CRCs pass layout validation and
+fail Viewer identity with zero routes registered. Exact Final Viewer inputs are verified
+before independent generation, then extracted from both complete containers and compared
+by length, SHA-256, and bytes, including the bundle ID with its NUL terminator. The pure library test
 uses C++11 with warnings as errors; real desktop integration tests inherit the existing
 LovyanGFX C++17 compile feature. All root host tests and the ESP-IDF v5.1.6 build/resource
 comparison remain required. Static measurements do not establish the approximately

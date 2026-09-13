@@ -63,8 +63,19 @@ int main()
         bad(8, 2, value, Result::FormatVersionMismatch, "format_" + std::to_string(value));
     for (const auto value : {75U, 77U, 0U, 0xFFFFU})
         bad(10, 2, value, Result::HeaderSizeMismatch, "header_" + std::to_string(value));
-    bad(12, 2, 2, Result::StaticLayoutMismatch, "static_layout_v2");
-    bad(14, 2, 2, Result::ViewerLayoutMismatch, "viewer_layout_v2");
+    Check(kStaticAssetLayoutVersion == 2U && kViewerLayoutVersion == 2U && kStaticAssetBytes == 1660612U &&
+              sizeof(WebPagePool_t) == 120141U,
+          "exact_layout_v2_authority");
+    for (const auto value : {0U, 1U, 3U, 0xFFFFU})
+    {
+        bad(12, 2, value, Result::StaticLayoutMismatch, "static_layout_" + std::to_string(value));
+        bad(14, 2, value, Result::ViewerLayoutMismatch, "viewer_layout_" + std::to_string(value));
+    }
+    // A v1 member table is still rejected if its version fields are forged as v2.
+    bad(48, 4, 2385U, Result::MemberCapacityMismatch, "v1_css_rejected_by_exact_capacity");
+    bad(52, 4, 1630095U, Result::MemberOffsetMismatch, "v1_js_rejected_by_exact_offset");
+    bad(56, 4, 25809U, Result::MemberCapacityMismatch, "v1_js_rejected_by_exact_capacity");
+    bad(60, 4, 1655904U, Result::MemberOffsetMismatch, "v1_bundle_rejected_by_exact_offset");
     for (const auto value : {0U, static_cast<unsigned>(kStaticAssetBytes + 1U), 0xFFFFFFFFU})
         bad(16, 4, value, Result::StaticAssetSizeMismatch, "declared_size_" + std::to_string(value));
     bad(20, 4, kWebPageOffset + 1, Result::WebPageOffsetMismatch, "webpage_offset");
@@ -79,12 +90,12 @@ int main()
             Result::MemberCapacityMismatch,
             "member_capacity_" + std::to_string(i));
     }
-    bad(28, 4, kStaticAssetBytes + 1, Result::MemberOffsetMismatch, "out_of_range_offset");
-    bad(28, 4, 0xFFFFFFF0U, Result::MemberOffsetMismatch, "addition_overflow_offset");
-    bad(32, 4, 0xFFFFFFFFU, Result::MemberCapacityMismatch, "addition_overflow_capacity");
-    bad(36, 4, kViewerMembers[0].offset + 1, Result::MemberOffsetMismatch, "overlap");
-    bad(36, 4, kViewerMembers[0].offset, Result::MemberOffsetMismatch, "non_increasing_order");
-    bad(36, 4, kViewerMembers[0].offset - 1, Result::MemberOffsetMismatch, "reverse_order");
+    bad(28, 4, kStaticAssetBytes + 1, Result::MemberOffsetMismatch, "out_of_range_rejected_by_exact_offset");
+    bad(28, 4, 0xFFFFFFF0U, Result::MemberOffsetMismatch, "addition_overflow_rejected_by_exact_offset");
+    bad(32, 4, 0xFFFFFFFFU, Result::MemberCapacityMismatch, "addition_overflow_rejected_by_exact_capacity");
+    bad(36, 4, kViewerMembers[0].offset + 1, Result::MemberOffsetMismatch, "overlap_rejected_by_exact_offset");
+    bad(36, 4, kViewerMembers[0].offset, Result::MemberOffsetMismatch, "non_increasing_rejected_by_exact_offset");
+    bad(36, 4, kViewerMembers[0].offset - 1, Result::MemberOffsetMismatch, "reverse_order_rejected_by_exact_offset");
     for (std::size_t i = kTrailerUsedBytes; i < kTrailerReserveBytes; ++i)
     {
         auto t = good;
