@@ -11,10 +11,17 @@ boundaries.
 ## Fixed byte-exact contract
 
 `VIEWER_ASSET_CONTRACT` (`viewer_asset_contract.h`) fixes an exact expected byte length for
-each Viewer asset: `kIndexBytes` (573), `kManifestBytes` (1364), `kCssGzipBytes` (2669),
-`kJsGzipBytes` (30168), for a total `kStoredPayloadBytes` of 34774 bytes, plus a
-64-character bundle ID (`kBundleIdCharacters`) stored with its NUL terminator in a
-65-byte field (`kBundleIdCapacity`).
+each Viewer asset — `kIndexBytes`, `kManifestBytes`, `kCssGzipBytes`, `kJsGzipBytes`, their
+total `kStoredPayloadBytes` — plus a `kBundleIdCharacters`-character bundle ID stored with its
+NUL terminator in a `kBundleIdCapacity`-byte field.
+
+Those constants are the authority. This document does not restate their current values;
+read them from
+[`viewer_asset_contract.h`](../../app/libs/viewer_asset_contract/viewer_asset_contract.h),
+and the bundle ID, four SHA-256 values and content-hashed routes from
+[`viewer_asset_contract.cpp`](../../app/libs/viewer_asset_contract/viewer_asset_contract.cpp).
+The accepted Viewer source/tree/bundle provenance is recorded in
+[the Final Viewer intake authority](../development/node-viewer-intake.md#final-post-v2-viewer-intake-candidate).
 
 ## AssetPool generation: byte-exact, fail-closed copy
 
@@ -39,9 +46,12 @@ compiled-in byte-exact contract fails AssetPool generation outright.
 The fixed `kViewerBundleId` bytes (not read from a file) are copied directly into
 `WebPage.viewer_bundle_id`.
 
-The raw `WebPagePool_t` storage capacities are 573 bytes for index, 1364 for manifest, 2669
-for CSS gzip, 30168 for JavaScript gzip, and 65 for the bundle ID. Compile-time assertions
-require each expected payload length to equal its fixed slot. The development generator value-initializes the complete object before applying
+The raw `WebPagePool_t` storage capacities are declared in
+[`app/assets/web/types.h`](../../app/assets/web/types.h). Compile-time assertions require each
+expected payload length to equal its fixed slot: the `CHECK_MEMBER` assertions in
+[`asset_pool_layout.cpp`](../../app/libs/asset_pool_layout/asset_pool_layout.cpp) compare each
+`sizeof(WebPagePool_t::viewer_*)` against its `VIEWER_ASSET_CONTRACT` constant for exact
+equality, so the slot sizes and the contract constants cannot drift apart silently. The development generator value-initializes the complete object before applying
 its default member initializers, then explicitly clears these Viewer slots before exact copies.
 
 ## Runtime integrity check
@@ -79,11 +89,18 @@ requires physical-device validation before being treated as deployed.
 ## Development layout/container guard
 
 Merged [PR #25](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/25) introduced the guard
-foundation with layout version 1. The Final Viewer intake updates the exact CSS/JS slots,
-bundle, four hashes, and hashed routes, and raises both layout versions to 2 while retaining
-the trailer format. **IMPLEMENTED IN SOURCE / NOT PHYSICALLY QUALIFIED**; external review is
-pending. The exact source/tree/bundle and four representation hashes are recorded in
-[the Final Viewer intake authority](../development/node-viewer-intake.md#final-post-v2-viewer-intake-candidate).
+foundation with layout version 1. Merged
+[PR #26](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/26) then took in the Final
+Viewer intake: it updated the exact CSS/JS slots, bundle, four hashes and hashed routes, and
+raised both layout versions to 2 while retaining the trailer format. Both are part of the
+current `main` source.
+
+**Source merge is not physical or release qualification.** The layout-2 container has not been
+written to, read back from, or served by an actual VAMeter under this intake; boot CRC timing,
+watchdog ordering and the Tier 1 stop path remain **NOT RUN** on hardware. The accepted Viewer
+source/tree/bundle provenance is recorded in
+[the Final Viewer intake authority](../development/node-viewer-intake.md#final-post-v2-viewer-intake-candidate);
+the per-asset lengths, hashes and routes live in the source constants named above.
 
 The unchanged `StaticAsset_t` declaration is shared through `app/assets/static_asset_types.h`.
 `app/libs/asset_pool_layout/` uses that declaration for C++11 `sizeof`/`offsetof` authority.
@@ -92,40 +109,57 @@ It allocates no heap for validation, adds no `IRAM_ATTR`, and uses no CRC lookup
 ### Full-partition byte format
 
 | Region | Offset | Bytes | Content |
-| --- | ---: | ---: | --- |
-| StaticAsset_t used | 0 | 1,660,612 | Current struct object representation |
-| Layout growth reserve | 1,660,612 | 436,284 | All zero |
-| Trailer reserve | 2,096,896 | 256 | Header below, followed by zero reserved bytes |
-| Full container | 0 | 2,097,152 | Exact partition-sized file |
+| --- | --- | --- | --- |
+| StaticAsset_t used | 0 | `kStaticAssetBytes` | Current struct object representation |
+| Layout growth reserve | `kStaticAssetBytes` | remainder | All zero |
+| Trailer reserve | container end − `kTrailerReserveBytes` | `kTrailerReserveBytes` | Header below, followed by zero reserved bytes |
+| Full container | 0 | `kAssetPoolPartitionBytes` | Exact partition-sized file |
+
+The region sizes are compile constants in
+[`asset_pool_layout.h`](../../app/libs/asset_pool_layout/asset_pool_layout.h), derived from
+`sizeof(StaticAsset_t)` and the partition size. This document defines the region *order and
+meaning*; it does not restate their current byte values, which change whenever the struct
+changes and must be read from the compile authority.
 
 The stable release's historical image size `1,655,972` and partition free `441,180`
-remain unchanged historical facts. The new full container uses the separate terms above.
+remain unchanged historical facts. The full container uses the separate terms above; do not
+relabel one as the other.
 
 All integers in the following trailer are unsigned, explicitly encoded little-endian.
 The on-flash trailer is never serialized by casting a C++ struct.
 
-| Relative offset | Bytes | Field / Final intake value |
+The field order, widths and encoding below are the trailer's wire format and are stable.
+The *values* written into them are taken from the compile authority at generation time, so
+they are named here rather than copied.
+
+| Relative offset | Bytes | Field |
 | --- | ---: | --- |
 | 0 | 8 | ASCII `VAMEAPL1` |
-| 8 | 2 | Trailer format version `1` |
-| 10 | 2 | Header size `76` |
-| 12 | 2 | StaticAsset layout version `2` |
-| 14 | 2 | Viewer sub-layout version `2` |
-| 16 | 4 | `sizeof(StaticAsset_t)` = `1660612` |
-| 20 | 4 | `offsetof(StaticAsset_t, WebPage)` = `1540471` |
-| 24 | 4 | Viewer member count `5` |
-| 28 / 32 | 4 / 4 | Index offset / capacity: `1625773 / 573` |
-| 36 / 40 | 4 / 4 | Manifest offset / capacity: `1626346 / 1364` |
-| 44 / 48 | 4 / 4 | CSS gzip offset / capacity: `1627710 / 2669` |
-| 52 / 56 | 4 / 4 | JS gzip offset / capacity: `1630379 / 30168` |
-| 60 / 64 | 4 / 4 | Bundle ID offset / capacity: `1660547 / 65` |
+| 8 | 2 | Trailer format version |
+| 10 | 2 | Header size |
+| 12 | 2 | StaticAsset layout version |
+| 14 | 2 | Viewer sub-layout version |
+| 16 | 4 | `sizeof(StaticAsset_t)` |
+| 20 | 4 | `offsetof(StaticAsset_t, WebPage)` |
+| 24 | 4 | Viewer member count |
+| 28 / 32 | 4 / 4 | Index offset / capacity |
+| 36 / 40 | 4 / 4 | Manifest offset / capacity |
+| 44 / 48 | 4 / 4 | CSS gzip offset / capacity |
+| 52 / 56 | 4 / 4 | JS gzip offset / capacity |
+| 60 / 64 | 4 / 4 | Bundle ID offset / capacity |
 | 68 | 4 | Static asset CRC32 |
 | 72 | 4 | Trailer CRC32 |
 | 76 | 180 | Reserved, all zero |
 
+Current layout is StaticAsset layout version 2 with Viewer sub-layout version 2; the magic,
+trailer format version, header size and the fixed trailer position are unchanged from
+layout 1.
+
 Member offsets in production are calculated from the two `offsetof` expressions, not
 duplicated literal offsets. Compile-time assertions cover standard layout, trivial byte
-copying, the version-2 sizes (`StaticAsset_t` 1,660,612; `WebPagePool_t` 120,141), slot equality, bounds, and partition fit. Runtime validation
+copying, the exact version-2 `StaticAsset_t` and `WebPagePool_t` sizes, slot equality, bounds,
+and partition fit; those assertions are the review gate that fires whenever the struct grows.
+Runtime validation
 still checks every declaration for exact agreement, safe ranges, increasing non-overlap,
 and zero reserved bytes. Exact compile-authority equality intentionally rejects malformed external ranges/order
 before the defensive internal range/order checks. Negative test names record that early
@@ -197,7 +231,10 @@ Stable release bytes and their qualification are unchanged.
 
 `tests/asset_pool_layout/` covers CRC vectors, negative metadata, mixed layout, guard-page
 read bounds, real `APP::Setup()` failure propagation, independent full-container generation,
-regular/size/CRC loader rejection, and atomic write/rename failure. The test-only Viewer
+regular/size/CRC loader rejection, and atomic write/rename failure. Its
+`container_test.py` holds an explicit expected member table as a deliberately **independent**
+oracle against the compile authority. Those literals are not documentation duplication and
+must not be removed or replaced by reads from the source under test. The test-only Viewer
 `--container` seam exercises the real identity and route-registration code after Tier 1
 with HTTP shims. Same-length mutations with recomputed CRCs pass layout validation and
 fail Viewer identity with zero routes registered. Exact Final Viewer inputs are verified
@@ -224,7 +261,8 @@ Viewer/AssetPool intake and a later VAMeter-Edu release to become device-served.
 Before release publication, this Firmware intake inherited only that exact Viewer-side
 qualification and did not by itself establish that the bytes had been written to or
 served by an actual VAMeter. That limitation is retained as pre-release chronology; the
-stable release above is now the current product authority. The
+stable release above is now the current product authority, and the merged post-v2 layout-2
+intake described earlier does not alter it. The
 previous PR #20 `fbe7f2...` intake remains superseded historical chronology, and the
 earlier `6fe499...`, `4789...`, and released beta.1 identities retain only their own
 recorded evidence; none substitutes for the stable release record.

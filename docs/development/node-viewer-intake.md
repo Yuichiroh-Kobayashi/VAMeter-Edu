@@ -2,24 +2,98 @@
 
 ## 目的
 
-Related to #23。VAMeterのFirmware buildへNode依存を追加せず、別repoで生成するViewerの
-受入れ条件を明確にする。Firmware/DesktopはC++とPythonの経路で、VAMeter側build/testへ
-Node/npm依存を追加しない。ViewerのJavaScriptがassetであることと、Firmware buildにNodeが
-必要なことは別である。
+Related to #23。VAMeter-Edu側のbuild/testへNode/npm依存を追加せず、別repositoryで生成される
+Viewerの受入れ条件を明確にする。ViewerのJavaScriptがassetであることと、
+VAMeter-Edu build にNodeが必要なことは別である。
 
 Viewerの生成・再現性・browser validationはViewer repository側のauthorityで管理し、
 VAMeter-Eduでは最終Viewer assetのexact identity、AssetPool格納契約、FirmwareとAssetPoolの
 matched deployment、physical qualificationを別のgateとして扱う。
 
+本書はtoolchain適用範囲と受入れ条件を述べる文書である。現行の可変な数値
+（byte長、member offset、struct size、hash、route）のauthorityはsourceにあり、
+本書はそれを写さずに参照する。凍結済みのstable release値のみ明示値として残す。
+
 ## Node適用範囲
 
-[Viewer #16](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/16)
-の比較結果と [AssetPool統合仕様](../architecture/viewer-assetpool-integration.md) を基準とする。
+3つの経路を混同しない。
 
-- Node 24.21.0 / npm 11.19.0: Viewer HOST試験で使用可能。
-- Node 24 product builder: 既存builderとの互換性差により **HOLD**。
-- qualified Viewer Build Environment V1: product生成authorityとして継続使用。
+```text
+VAMeter-Edu Firmware build (ESP-IDF v5.1.6):
+Node/npm dependency = NO
+
+VAMeter-Edu Desktop build / host tests:
+Node/npm dependency = NO
+
+Device-to-Browser-Viewer product generation:
+Node = YES, within the qualified Viewer build environment
+```
+
+- VAMeter-Eduにはrepository全体で `package.json` / `package-lock.json` が存在せず、
+  `CMakeLists.txt` / `*.cmake` / `idf_component.yml` / shell script / workflow の
+  いずれにも `node` / `npm` / `npx` の実行記述がない。host toolはC++とPythonだけである。
+- `tests/d2b_vi_integration/capture-live.js` は唯一のJavaScriptファイルだが、
+  browserのDevTools Consoleへ貼り付けて使う診断helperであり、Node runtimeでは実行しない。
+  詳細は [`tests/d2b_vi_integration/README.md`](../../tests/d2b_vi_integration/README.md)。
+- VAMeter-EduはViewerを内部でbuildしない。`app/assets/assets.cpp` の
+  `_copy_viewer_assets()` が `VAMETER_VIEWER_*_PATH` 環境変数の指す**生成済みファイル**を
+  exact byte長で読み込むだけで、bundlerを起動しない。
+- 一方、Viewerのproduct生成にはNodeが必要である。qualified Viewer Build Environment V1 の
+  image内で `/usr/bin/node`（Node 18.19.1）がwebpackを駆動する。
+  **「Firmware buildにNodeが不要」を「Viewer生成にNodeが不要」と言い換えないこと。**
 - VAMeter-Edu Firmware/DesktopへNode runtimeやnpm packageは追加しない。
+
+### Node候補versionのauthority
+
+Node/npm候補versionの定義元はViewer repositoryの
+[`tools/build-env/node-toolchain.json`](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/blob/main/tools/build-env/node-toolchain.json)
+である。VAMeter-Edu側へ版数を写して二重管理しない。
+同fileは候補を `qualified_uses: host-tests` と
+`unqualified_uses: product-builder / physical-client / windows-native` に分類する。
+
+### Node 24 の現在の分類
+
+```text
+NODE24_PRODUCT_BUILDER_STATUS = HOLD
+```
+
+qualified Viewer Build Environment V1 が現在のproduct生成authorityであり、
+その image digest は次のとおり。
+
+```text
+Qualified Viewer Build Environment V1
+image digest:
+sha256:755023019864d9919e890003da7117bfc2803c88c80c2ab001d40cb1f0249b19
+```
+
+HOLDの理由は、[Viewer #16](https://github.com/Yuichiroh-Kobayashi/Device-to-Browser-Viewer/issues/16)
+の比較で、公式Node 24候補runtimeと、build環境にdistro packageとして入っている
+webpack / `enhanced-resolve` の期待とが噛み合わず、builderが出力を生成できなかったことによる
+（`process.config.variables.node_relative_path` が公式runtimeでundefined）。
+これは**その組合せの非互換**であり、「Node 24が壊れている」でも「製品JSの不具合」でもない。
+
+したがってNode 24をproduct生成へ移すことは、版数の差し替えではなく
+**別途レビューされるbuild environmentの再qualification**を要する。
+本書の更新はその再qualificationを行わず、HOLDを解除しない。
+
+### Node 24 HOST証拠の帰属
+
+HOST試験の証拠とfinal Viewer sourceは、別のcommitに属する。混同しない。
+
+```text
+Node24 HOST comparison evidence:
+source = 81226e7b39410ac673c1b46a9b76eab6084a4f19
+
+Final Viewer source:
+d4c0702ca0fb72099260c67b9976ade85bb681d2
+```
+
+tracked な Node 24 HOST比較は final Viewer source より前のもので、source `81226e7b...`
+に対して実施された。final source `d4c0702...` を Node 24 HOST PASS として再分類する
+tracked evidence は現時点で確認できていない。本documentation updateはその再分類を行わない。
+final sourceに対する判定が必要な場合は、同一suiteを実際に再実行し、その結果を別途記録する。
+
+Node 18 HOSTの結果は下記「Final post-v2 Viewer intake candidate」に記載のとおり。
 
 ## Viewer受入れ手順
 
@@ -34,7 +108,8 @@ legacy slotへの押し込みは行わない。
 
 ## Stable `v2.0.0` authority
 
-stable `v2.0.0` のViewer / Firmware / AssetPool authorityは本post-v2 intakeで変更しない。
+stable `v2.0.0` のViewer / Firmware / AssetPool authorityはpost-v2 intakeで変更しない。
+以下は凍結済みの歴史値であり、本表は明示値のまま保持する。
 
 | Item | Stable `v2.0.0` |
 | --- | --- |
@@ -49,12 +124,15 @@ stable `v2.0.0` のViewer / Firmware / AssetPool authorityは本post-v2 intake�
 | Dedicated static IRAM | `16,383 / 16,384` bytes |
 
 stable releaseのbyte、過去qualification、release判定は再分類しない。
+post-v2の現行開発intakeがこの歴史的qualificationを遡って変えることはない。
 
 ## Final post-v2 Viewer intake candidate
 
-Viewer #18 / #19 / #22 / #23 をmergeしたactual Viewer `main`から、qualified Viewer Build Environment V1
-`sha256:755023019864d9919e890003da7117bfc2803c88c80c2ab001d40cb1f0249b19` を使って
-独立したstandalone checkout A/Bから生成したfinal candidateを受入れ入力とする。
+Viewer #18 / #19 / #22 / #23 をmergeしたactual Viewer `main`から、
+qualified Viewer Build Environment V1 を使って独立したstandalone checkout A/Bから
+生成したcandidateを受入れ入力とした。
+
+受入れたViewer identity（provenance anchor）:
 
 ```text
 Viewer source commit:
@@ -65,49 +143,56 @@ c4810727e8b3c17903d586137dae80aa1ef8b992
 
 Viewer bundle:
 01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973
-
-stored payload:
-34774 bytes
 ```
-
-Independent Build A/Bは4 representationすべてbyte-identicalで、各run内部two-run determinismと
-外側A/B比較がPASS。Node 18 HOSTはproduct 120 named + 4 gates、CSV 16、root 30、live 13 PASS。
-Node 24は `NODE24_HOST_PASS / NODE24_BUILDER_HOLD`。actual VAMeter physicalはこのViewer build gateでは
-NOT RUN。
-
-| Asset | Bytes | SHA-256 | Final served route |
-| --- | ---: | --- | --- |
-| index | 573 | `2275800d59506344ed693c914fbebe09b701351cdc1c568ef61ce752c1f74781` | `/viewer/` |
-| manifest | 1364 | `01e39e5c3230bc2c3a277659014031f6f955864e5a0886c15fa004114b89c973` | `/viewer/asset-manifest.json` |
-| CSS gzip | 2669 | `ad1eafe9be7c08ae40198db88c0e892822a0497731644138bfc2e93515f8f015` | `/viewer/assets/app.ad1eafe9be7c08ae40198db88c0e892822a0497731644138bfc2e93515f8f015.css` |
-| JS gzip | 30168 | `2c7925c88541d26de3871fcc7362f7f9002164886a6e4666779a5e330fd69253` | `/viewer/assets/app.2c7925c88541d26de3871fcc7362f7f9002164886a6e4666779a5e330fd69253.js` |
-| bundle ID + NUL | 65 | bundle ID above | `/viewer/device.json`で公開 |
 
 Final manifestは `viewer_source_commit=d4c0702...`、D2B copied-reference authority
 `b30ad676922af73448952d5a9cac312467a944f9` を記録する。
 
-## Final Viewer intake — development source
+各assetのexact byte長、4つのSHA-256、content-hashed route、bundle IDの
+**実効authorityはsource**にある。本書は値を写さない。
 
-**IMPLEMENTED IN SOURCE / NOT PHYSICALLY QUALIFIED**。
-本PRは merged [PR #25](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/25) の
-layout guardを前提に、上記exact Final Viewer assetの受入れを実装する。
-base commitは `95d59dd7be33ceb9031ca97ef3013253643d0c36`、treeは
-`a0d82b3bd6c78c02a4f7df37df79eeed1bf68ec4`。
+| 対象 | Source authority |
+| --- | --- |
+| byte長、bundle ID capacity、route数 | [`app/libs/viewer_asset_contract/viewer_asset_contract.h`](../../app/libs/viewer_asset_contract/viewer_asset_contract.h) |
+| bundle ID、4 SHA-256、CSS/JS route文字列 | [`app/libs/viewer_asset_contract/viewer_asset_contract.cpp`](../../app/libs/viewer_asset_contract/viewer_asset_contract.cpp) |
+| AssetPool格納slotの実寸 | [`app/assets/web/types.h`](../../app/assets/web/types.h) |
+| member offset / capacity / struct size | [`app/libs/asset_pool_layout/asset_pool_layout.h`](../../app/libs/asset_pool_layout/asset_pool_layout.h)（`offsetof` / `sizeof` 由来） |
+| slot == payload長 の強制 | [`app/libs/asset_pool_layout/asset_pool_layout.cpp`](../../app/libs/asset_pool_layout/asset_pool_layout.cpp) の `CHECK_MEMBER` static_assert |
 
-| Asset | Layout 1 / stable slot | Final intake layout 2 | Delta |
-| --- | ---: | ---: | ---: |
-| index | 573 | 573 | 0 |
-| manifest | 1364 | 1364 | 0 |
-| CSS gzip | 2385 | 2669 | +284 |
-| JS gzip | 25809 | 30168 | +4359 |
-| bundle ID + NUL | 65 | 65 | 0 |
-| stored payload | 30131 | 34774 | +4643 |
+`slot capacity == expected payload length` はcompile時に強制される。
+余裕付きslot、truncate、padding、再圧縮、旧manifest流用、integrity check回避は導入しない。
 
-以前の `FIXED_SLOT_OVERFLOW / IDENTITY_UPDATE_REQUIRED / FIRMWARE_INTAKE_BLOCKED` は
-layout 1に対する判定である。本PRはexact slot resizeとbundle / 4 SHA-256 / CSS・JS route更新により
-そのsource blockerを解消する。source実装はexternal review待ちであり、実機受入れやrelease成立を意味しない。
-`slot capacity == expected payload length` を維持し、余裕付きslot、truncate、padding、
-再圧縮、旧manifest流用、integrity check回避は導入しない。
+Independent Build A/Bは4 representationすべてbyte-identicalで、各run内部のtwo-run determinismと
+外側A/B比較がPASSした。Node 18 HOSTはproduct 120 named + 4 gates、CSV 16、root 30、live 13 PASS。
+Node 24の帰属は前掲「Node 24 HOST証拠の帰属」を参照する。
+actual VAMeter physicalはこのViewer build gateでは NOT RUN。
+
+VAMeter-Eduは受入れたintake identityを自repositoryのsourceとtestで保持する。
+Viewer repository側のprovenance記録方針はViewer側のauthorityであり、本書の範囲外である。
+不足する証拠をVAMeter-Edu側で補作しない。
+
+## Final Viewer intake — 現在の状態
+
+Final Viewer assetの受入れは
+[PR #26](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/26) としてmergeされ、
+[PR #25](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/pull/25) のlayout guardの上に
+現在の `main` sourceへ入っている。source実装とhost testは完了している。
+
+```text
+VAMeter source intake:        MERGED (PR #25 / PR #26)
+AssetPool layout:             V2 IMPLEMENTED
+Physical VAMeter qualification: NOT RUN
+Release qualification:        NOT ESTABLISHED
+```
+
+source mergeはphysical受入れでもrelease成立でもない。
+実機書込み・readback・rollbackは別途承認されたphysical gateで行う。
+
+歴史的経緯として、layout 1に対する以前の判定
+`FIXED_SLOT_OVERFLOW / IDENTITY_UPDATE_REQUIRED / FIRMWARE_INTAKE_BLOCKED` は、
+PR #26のexact slot resizeとbundle / 4 SHA-256 / CSS・JS route更新により解消済みである。
+layout 1からlayout 2への各assetのdelta、およびmerge前のbase commit/treeは、
+PR #25 / PR #26 の記録に残る。
 
 ## Layout version 2
 
@@ -115,23 +200,14 @@ layout 1に対する判定である。本PRはexact slot resizeとbundle / 4 SHA
 production offset/capacity authorityはcompile済み `sizeof` / `offsetof` であり、
 trailer申告値をread lengthとして信用しない。
 
-| Item | Development layout 2 |
-| --- | ---: |
-| `sizeof(WebPagePool_t)` | 120,141 |
-| `sizeof(StaticAsset_t)` / StaticAsset_t used | 1,660,612 |
-| StaticAsset layout version | 2 |
-| Viewer sub-layout version | 2 |
-| Trailer reserve | 256 |
-| Layout growth reserve | 436,284 |
-| Partition container bytes | 2,097,152 |
+struct size、WebPage base offset、Viewer member offset/capacity、trailer reserve、
+layout growth reserve、partition container bytes、trailer byte layout、CRC convention、
+failure propagationは
+[AssetPool統合仕様](../architecture/viewer-assetpool-integration.md#development-layoutcontainer-guard)
+とそこから参照されるsourceがauthorityである。本書は値を複製しない。
 
-trailerは引き続き `VAMEAPL1`、format version `1`、header size `76`、固定offset `2,096,896`。
-field位置、CRC convention、partition tableは変更しない。
-`WebPage` baseとfont/image/color/text/syscfg/favicon/index/manifest/CSSの開始offsetは不変。
-JSは `1,630,095 -> 1,630,379`、bundle IDは `1,655,904 -> 1,660,547` へ移動する。
-payloadは4,643 bytes増え、旧structの末尾padding 3 bytesがなくなるためstruct全体は4,640 bytes増える。
-詳しい[trailer byte layout・CRC・failure propagation](../architecture/viewer-assetpool-integration.md#development-layoutcontainer-guard)
-を参照する。
+layout 2では`WebPage` baseとfont/image/color/text/syscfg/favicon/index/manifest/CSSの
+開始offsetは不変で、JSとbundle IDの位置が後方へ移動する。
 
 full containerはpartition全体をencodeするため、file sizeから単純に「AssetPool free = 0」としない。
 StaticAsset_t used、trailer reserve、layout growth reserveを分けて記録する。
@@ -181,8 +257,11 @@ loader拒否、atomic write/rename failure、全体determinismを継続検証す
 PR #25 review M-1に対応し、overlap/out-of-range等のtest名は実際のearly exact mismatch理由を示す。
 range/order分岐は内部table整合性の防御であり、そこへ到達させるためにexact equalityを弱めない。
 
+`tests/asset_pool_layout/container_test.py` はcompile authorityに対する**意図的に独立した**
+検証oracleである。そこに書かれた期待値をsourceからの重複として削除しない。
+
 継承された `_copy_fonts / _copy_images / _copy_web_pages` の `_copy_file()` 戻り値未伝播は別follow-up。
-本PRでは変更せず、今回の実入力の長さ・hash・生成結果と非Viewer prefix一致を検証記録に残す。
+PR #26では変更しておらず、当時の実入力の長さ・hash・生成結果と非Viewer prefix一致を検証記録に残した。
 
 ## Mixed-pair compatibility and physical handoff
 
@@ -201,17 +280,25 @@ range/order分岐は内部table整合性の防御であり、そこへ到達さ�
 ## Resource and claim boundary
 
 Dedicated static IRAM remaining **1 byte** はAssetPool容量と独立した制約。
-本PRは `IRAM_ATTR` を追加せず、同一ESP-IDF v5.1.6環境のmerged PR #25 baseとcandidateで
-ELF/map、application/bootloader/partition、flash/DRAM、dedicated/full IRAM、shared D/IRAMを比較する。
+現行resource authorityは [`resource-budget.md`](../architecture/resource-budget.md) である。
+PR #26は `IRAM_ATTR` を追加していない。
 slot growthがAssetPoolに存在することからzero resource deltaを推論しない。
 
 ```text
-Viewer source candidate: FIXED / BUILD-QUALIFIED (exact authority above)
-VAMeter source intake: IMPLEMENTED / EXTERNAL REVIEW PENDING
-AssetPool layout: V2 IMPLEMENTED
-New development container: DETERMINISTIC GENERATION REQUIRED / NOT RELEASE AUTHORITY
-Host tests / ESP-IDF / static resources: candidate-specific evidence required
+Viewer source candidate:      FIXED / BUILD-QUALIFIED (exact identity above)
+VAMeter source intake:        MERGED (PR #25 / PR #26)
+AssetPool layout:             V2 IMPLEMENTED
+New development container:    DETERMINISTIC GENERATION REQUIRED / NOT RELEASE AUTHORITY
+Node 24 product builder:      HOLD
+Node 24 HOST on d4c0702:      NOT ESTABLISHED (tracked comparison belongs to 81226e7b)
 Runtime heap/stack / boot CRC timing / physical VAMeter: NOT RUN
-Release qualification: NOT ESTABLISHED
-Stable v2.0.0: UNCHANGED
+Release qualification:        NOT ESTABLISHED
+Stable v2.0.0:                UNCHANGED
 ```
+
+## 関連文書
+
+- [Issue #23 監査記録](issue-23-node-viewer-intake-audit.md) — Node touchpoint棚卸しと
+  cross-repository authorityの確認結果。
+- [AssetPool統合仕様](../architecture/viewer-assetpool-integration.md) — layout/container契約。
+- [build and validation](../ai/build-and-validation.md) — build/test/AssetPool/hardware境界。

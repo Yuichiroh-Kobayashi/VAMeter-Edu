@@ -56,6 +56,10 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - authoritative direct-browser static, AssetPool, and runtime resource facts.
 - [`../operations/d2b-runtime-diagnostics.md`](../operations/d2b-runtime-diagnostics.md)
   - current `D2B_DIAG` log field reference.
+- [`../development/node-viewer-intake.md`](../development/node-viewer-intake.md)
+  - Node/npm scope per build path, and the conditions for accepting an externally generated
+    Viewer bundle. Development/toolchain guidance only; it is not the physical-validation
+    or release authority.
 - [`../validation/browser-physical-qualification.md`](../validation/browser-physical-qualification.md)
   - current browser/Viewer physical-qualification procedure.
 
