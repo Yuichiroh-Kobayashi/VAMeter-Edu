@@ -38,6 +38,10 @@ The adapters are intentionally short. Common rules belong in `AGENTS.md`; detail
   - mutable-ref review rules and fetch-helper limitations.
 - [`physical-validation-and-rollback.md`](physical-validation-and-rollback.md)
   - authoritative physical candidate, device identity, flash, capture, rollback, and STOP rules.
+- [`../development/wsl-usbipd-esp32-transport.md`](../development/wsl-usbipd-esp32-transport.md)
+  - development/toolchain and physical-transport guidance for Windows/WSL USB/IP;
+    guest identity, attach, diagnostics, and command-outcome boundaries. Not release
+    authority or a dated evidence record.
 - [`../product/device-hosted-viewer-contract.md`](../product/device-hosted-viewer-contract.md)
   - current device-hosted Viewer product contract (Student/Professional, display profiles, fail-closed behavior).
 - [`../product/educational-recording-and-local-download.md`](../product/educational-recording-and-local-download.md)

@@ -10,6 +10,7 @@ VAMeter-Edu documentation is organized by role. Current implementation behavior 
 - [`architecture/`](architecture/) contains current direct-browser architecture, ownership/lifecycle, and resource contracts.
 - [`operations/`](operations/) contains current operational guidance, such as reading runtime diagnostics.
 - [`development/`](development/) records development-side toolchain scope, external-artifact intake conditions, and reproducibility evidence — for example which build paths depend on Node and how an externally generated Viewer bundle is accepted. It is distinct from product contract and from release/physical-qualification authority.
+  - [WSL / usbipd ESP32 transport](development/wsl-usbipd-esp32-transport.md): development/toolchain and physical-transport guidance; not release authority or a dated evidence record.
 - [`validation/`](validation/) contains the current physical-qualification procedure.
 - [`releases/`](releases/) contains per-release records that expand on [`../CHANGELOG.md`](../CHANGELOG.md).
 - [`ai/`](ai/README.md) contains durable guidance for AI tools and human reviewers.
