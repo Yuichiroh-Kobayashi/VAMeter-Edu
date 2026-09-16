@@ -29,6 +29,17 @@ Before flash, readback, erase, reset, or rollback:
 
 Do not use a one-off machine path as permanent authority. Record resolved paths in the evidence for that run.
 
+### Windows / WSL USB/IP transport
+
+USB/IP transport availability is a separate authority from firmware/device state.
+Windows-side `Attached` is insufficient: verify the exact guest-side by-id and its
+expected hardware identity immediately before mutation. Subsequent transport loss
+must not retroactively invalidate a successfully verified mutation; preserve its
+command result and verification evidence, STOP before further mutation, and use a
+separately authorized gate for exact post-write readback after transport recovery.
+Detailed attach, diagnostic, and retry guidance is in
+[`../development/wsl-usbipd-esp32-transport.md`](../development/wsl-usbipd-esp32-transport.md).
+
 ## Flash layout and rollback coverage
 
 Rollback coverage is based on the union of flash erase sectors actually touched by the authorized writes, not only nominal file lengths. Round each write range to the device erase-sector boundaries, merge overlaps, and prove that the rollback plan covers the resulting union.
