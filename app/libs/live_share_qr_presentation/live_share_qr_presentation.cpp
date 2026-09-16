@@ -46,7 +46,9 @@ namespace LIVE_SHARE_QR_PRESENTATION
 
         const int spanModules = moduleCount + 2 * kQuietZoneModules;
         const int moduleScale = kPlatePixels / spanModules;
-        if (moduleScale <= 0)
+        // A scale of one would hand the shared renderer a size equal to the matrix side,
+        // which its assertion rejects, so fail closed here instead.
+        if (moduleScale < kMinimumRenderableModuleScale)
             return geometry;
 
         const int qrPixels = moduleCount * moduleScale;
@@ -55,7 +57,7 @@ namespace LIVE_SHARE_QR_PRESENTATION
 
         // Fail closed instead of handing the renderer a rectangle that leaves the plate or
         // eats into the candidate quiet area on either side.
-        if (qrPixels <= 0 || qrPixels > kPlatePixels)
+        if (qrPixels <= moduleCount || qrPixels > kPlatePixels)
             return geometry;
         if (qrOffsetInPlate < quietPixelsMinimum)
             return geometry;

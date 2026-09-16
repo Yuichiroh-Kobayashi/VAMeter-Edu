@@ -135,8 +135,10 @@ namespace
 
     void RequirePlateInvariants(const P::PlateGeometry& geometry, const char* label)
     {
-        Require(geometry.moduleScale > 0, label);
+        Require(geometry.moduleScale >= P::kMinimumRenderableModuleScale, label);
         Require(geometry.qrPixels > 0 && geometry.qrPixels <= P::kPlatePixels, label);
+        // QRCODE::RenderQRCodeBitmap asserts size > matrix side, and it receives qrPixels.
+        Require(geometry.qrPixels > geometry.moduleCount, label);
         Require(geometry.qrPixels == geometry.moduleCount * geometry.moduleScale, label);
         Require(geometry.quietPixelsMinimum == P::kQuietZoneModules * geometry.moduleScale, label);
         Require(geometry.qrOffsetInPlate >= geometry.quietPixelsMinimum, label);
@@ -171,6 +173,8 @@ namespace
         // must not shrink them.
         Require(twentyFive.moduleScale >= 6, "G03 25-module scale is not reduced");
         Require(twentyNine.moduleScale >= 5, "G03 29-module scale is not reduced");
+        Require(twentyFive.moduleScale >= P::kMinimumRenderableModuleScale, "G03 25-module scale is renderable");
+        Require(twentyNine.moduleScale >= P::kMinimumRenderableModuleScale, "G03 29-module scale is renderable");
 
         std::cout << "G01-G03 plate=" << P::kPlatePixels << " quiet_modules=" << P::kQuietZoneModules
                   << " m25_scale=" << twentyFive.moduleScale << " m29_scale=" << twentyNine.moduleScale << " PASS\n";
@@ -178,6 +182,8 @@ namespace
 
     void TestSupportedGeometryRange()
     {
+        // Arbitrary integer module counts, exercising the helper rather than asserting
+        // which counts real payloads produce.
         int validCount = 0;
         int largestValid = 0;
         for (int moduleCount = P::kMinimumModuleCount; moduleCount <= P::kMaximumModuleCount; ++moduleCount)
@@ -186,46 +192,64 @@ namespace
             Require(geometry.moduleCount == moduleCount, "G04 geometry echoes the requested module count");
             if (!geometry.valid)
                 continue;
-            RequirePlateInvariants(geometry, "G04 plate invariants hold across the supported range");
+            RequirePlateInvariants(geometry, "G04 plate invariants hold wherever geometry is accepted");
             ++validCount;
             largestValid = moduleCount;
         }
-        Require(validCount > 1, "G04 more than the two representative counts are supported");
-        Require(P::EvaluatePlateGeometry(P::kMinimumModuleCount).valid, "G05 smallest QR matrix is supported");
+        Require(validCount > 1, "G04 more than the two representative counts are accepted");
+        Require(P::EvaluatePlateGeometry(P::kMinimumModuleCount).valid, "G05 smallest QR matrix is accepted");
         Require(P::EvaluatePlateGeometry(largestValid + 1).valid == false,
-                "G05 the first unsupported count above the range fails closed");
+                "G05 the first count past the scale floor fails closed");
 
-        std::cout << "G04-G05 supported_counts=" << validCount << " largest_valid=" << largestValid << " PASS\n";
+        // The boundary is set by the renderable module-scale floor, not by a module-count
+        // product contract. With the current plate and quiet area it lands at 83/84.
+        const P::PlateGeometry lastRenderable = P::EvaluatePlateGeometry(83);
+        Require(lastRenderable.valid, "G06 83 modules still reach the renderable scale floor");
+        Require(lastRenderable.moduleScale == P::kMinimumRenderableModuleScale, "G06 83 modules resolve to scale 2");
+        RequirePlateInvariants(lastRenderable, "G06 83-module plate invariants");
+
+        const P::PlateGeometry firstUnrenderable = P::EvaluatePlateGeometry(84);
+        Require(!firstUnrenderable.valid, "G07 84 modules would fall to scale 1 and must fail closed");
+        Require(firstUnrenderable.moduleScale == 0, "G07 rejected geometry carries no module scale");
+
+        std::cout << "G04-G07 accepted_counts=" << validCount << " largest_accepted=" << largestValid
+                  << " scale_floor=" << P::kMinimumRenderableModuleScale << " PASS\n";
     }
 
     void TestInvalidGeometryFailsClosed()
     {
-        const int rejected[] = {0, -1, -29, -1000, 1, 20, P::kMaximumModuleCount + 1, 1000};
+        const int rejected[] = {0, -1, -29, -1000, 1, 20, 84, 120, P::kMaximumModuleCount, P::kMaximumModuleCount + 1, 1000};
         const std::size_t rejectedCount = sizeof(rejected) / sizeof(rejected[0]);
         for (std::size_t index = 0; index < rejectedCount; ++index)
         {
             const P::PlateGeometry geometry = P::EvaluatePlateGeometry(rejected[index]);
-            Require(!geometry.valid, "G06 unsupported module count fails closed");
-            Require(geometry.moduleScale == 0 && geometry.qrPixels == 0, "G06 invalid geometry carries no draw size");
+            Require(!geometry.valid, "G08 unsupported module count fails closed");
+            Require(geometry.moduleScale == 0 && geometry.qrPixels == 0, "G08 invalid geometry carries no draw size");
             Require(geometry.qrOffsetInPlate == 0 && geometry.quietPixelsMinimum == 0,
-                    "G06 invalid geometry carries no offset");
+                    "G08 invalid geometry carries no offset");
+            Require(geometry.moduleCount == rejected[index], "G08 invalid geometry still echoes the request");
         }
 
-        // A matrix too large to leave any quiet area inside the plate must be rejected even
-        // though it is a legal QR module count.
-        const P::PlateGeometry oversized = P::EvaluatePlateGeometry(P::kMaximumModuleCount);
-        Require(!oversized.valid, "G07 a matrix with no usable module scale fails closed");
+        // No accepted geometry may violate the renderer precondition, whatever the count.
+        for (int moduleCount = -50; moduleCount <= 400; ++moduleCount)
+        {
+            const P::PlateGeometry geometry = P::EvaluatePlateGeometry(moduleCount);
+            if (!geometry.valid)
+                continue;
+            Require(geometry.qrPixels > geometry.moduleCount, "G09 accepted geometry satisfies the renderer assertion");
+            Require(geometry.moduleScale >= P::kMinimumRenderableModuleScale, "G09 accepted geometry clears the scale floor");
+        }
 
-        std::cout << "G06-G07 invalid geometry PASS\n";
+        std::cout << "G08-G09 invalid geometry PASS\n";
     }
 
     void TestPlateFitsCanvas()
     {
-        Require(P::kPlateX >= 0 && P::kPlateY >= 0, "G08 plate origin is on canvas");
-        Require(P::kPlateX + P::kPlatePixels <= P::kScreenPixels, "G08 plate fits the canvas width");
-        Require(P::kPlateY + P::kPlatePixels <= P::kScreenPixels, "G08 plate fits the canvas height");
-        Require(P::kQuietZoneModules > 0, "G08 a quiet area is configured");
-        std::cout << "G08 plate origin=(" << P::kPlateX << "," << P::kPlateY << ") size=" << P::kPlatePixels
+        Require(P::kPlateX >= 0 && P::kPlateY >= 0, "G10 plate origin is on canvas");
+        Require(P::kPlateX + P::kPlatePixels <= P::kScreenPixels, "G10 plate fits the canvas width");
+        Require(P::kPlateY + P::kPlatePixels <= P::kScreenPixels, "G10 plate fits the canvas height");
+        Require(P::kQuietZoneModules > 0, "G10 a quiet area is configured");
+        std::cout << "G10 plate origin=(" << P::kPlateX << "," << P::kPlateY << ") size=" << P::kPlatePixels
                   << " canvas=" << P::kScreenPixels << " PASS\n";
     }
 } // namespace

@@ -21,6 +21,12 @@ namespace LIVE_SHARE_QR_PRESENTATION
     static const int kMinimumModuleCount = 21;
     static const int kMaximumModuleCount = 177;
 
+    // Smallest module scale the shared renderer accepts. QRCODE::RenderQRCodeBitmap asserts
+    // that its `size` argument is strictly greater than the matrix side, and it is called
+    // with `moduleCount * moduleScale`, so a scale of one would trip that assertion. This is
+    // the renderer and small-screen contract, not a QR standard requirement.
+    static const int kMinimumRenderableModuleScale = 2;
+
     // Implementation candidate colors, not physically qualified display colors.
     // Red/orange/amber/yellow are deliberately unused: those families stay reserved for
     // warning and fault semantics.
@@ -63,6 +69,6 @@ namespace LIVE_SHARE_QR_PRESENTATION
 
     // Integer plate geometry for a QR matrix of `moduleCount` modules per side.
     // Returns an invalid geometry rather than coordinates the renderer would draw
-    // outside the plate.
+    // outside the plate or a scale the renderer would reject.
     PlateGeometry EvaluatePlateGeometry(int moduleCount);
 } // namespace LIVE_SHARE_QR_PRESENTATION
