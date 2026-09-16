@@ -3,12 +3,25 @@
 Status: AUDIT / DESIGN REVIEW ONLY
 Implementation authority: NO
 Node24 product builder adoption: NOT IMPLIED
-Physical qualification: NOT RUN
+Physical qualification: NOT RUN BY THIS AUDIT
 Base commit: 3348bc86d5d911e131315ad35d6cec022ab01a59
+
+> **Implementation-review note**
+>
+> 本監査session自体はbuild検証も実機検証も実行していない。本書中の `NOT RUN` は
+> **この監査sessionが実行しなかった作業**を指すものであり、「post-merge実機evidenceが
+> 存在しない」という主張ではない。
+>
+> merge後に別途、実機VAMeterへのcandidate書込みとdevice-hosted Viewer配信を含む
+> physical smoke evidenceが存在する。formal / release qualificationは専用のvalidation
+> evidenceが所有しており、本監査によって成立するものではない。
+>
+> この注記はimplementation branch側のreview中に追加した。design branch
+> `design/issue-23-node-viewer-intake` の原本は変更していない。
 
 本書は [Issue #23](https://github.com/Yuichiroh-Kobayashi/VAMeter-Edu/issues/23) に対する
 read-only監査の記録である。source、build設定、Node/npm環境、Issue状態、外部repositoryの
-いずれも変更していない。test/build/実機検証は実行していない。
+いずれも変更していない。test/build/実機検証は本監査sessionでは実行していない。
 
 監査対象tree: `b69b3235523e35bf6c6fadfda6e3cad1a70c383d`
 (`origin/design/issue-23-node-viewer-intake` と一致、drift検出なし)
@@ -168,7 +181,7 @@ Node 24は `NODE24_HOST_PASS / NODE24_BUILDER_HOLD`」と続けて書く。
 `viewer-assetpool-integration.md` の記述どおり、
 `_copy_viewer_assets()` は `stat` によるexact byte長一致を要求し、
 不一致時は `CreateStaticAsset()` が `nullptr` を返してpool生成を中止する。
-size-tolerantな経路は存在しない。**source上PASS**（コード確認済み。実機動作は未検証）。
+size-tolerantな経路は存在しない。**source上PASS**（コード確認済み。本監査は実機確認していない）。
 
 exact equalityは compile時にも担保されている:
 `app/libs/asset_pool_layout/asset_pool_layout.cpp:16-24` の `CHECK_MEMBER` が
@@ -319,7 +332,7 @@ avoiding a self-invalidating provenance commit」と述べる。
 | 3 | 実機clientを移行する場合、WebSocket終了/異常切断/child process終了/Windows-native保存・flushをHOSTで確認 | **Blocked / out of scope（条件不成立）** | 実機clientは移行対象外。`capture-live.js` はbrowser貼付けでNode非依存。`node-toolchain.json` も `physical-client` / `windows-native` を `unqualified_uses` に分類。条件節が発火しない |
 | 4 | ビルド用Nodeと実機client用Nodeの確認結果を混同しない | **Already satisfied** | 第4.5節 |
 | 5 | 既存リリースを再生成物で上書きしない | **Already satisfied** | 第4.2節。3文書が一致して禁止を明記 |
-| 6 | 新Viewer受入れ時、HOSTでのasset整合性・容量確認と未実施の実機確認を区別 | **Already satisfied** | `node-viewer-intake.md` の claim boundary block、`viewer-assetpool-integration.md` の Tier 1 "Physical boot timing and watchdog behavior remain **NOT RUN**" |
+| 6 | 新Viewer受入れ時、HOSTでのasset整合性・容量確認と未実施の実機確認を区別 | **Already satisfied** | `node-viewer-intake.md` の claim boundary block、および `viewer-assetpool-integration.md` のTier 1節が、host証拠と未実施の実機gateを明示的に分けている |
 | 7 | README/開発手順は設定ファイルを参照し、版数・hashを複数helperへ直書きしない | **Docs consolidation needed** | helperへの直書きは無い（`container_test.py` は意図的独立検証）。しかし doc 2件が byte長・offsetを非拘束に重複保持（第4.6節） |
 
 補助的に、Issue本文の作業項目4「Viewer source / build environment / bundle hashを
@@ -356,8 +369,11 @@ avoiding a self-invalidating provenance commit」と述べる。
    本sessionから読めない（GitHub API scope外）
 4. **Independent Build A/B の byte一致**。`node-viewer-intake.md` の記載を
    本監査は再現していない
-5. **AssetPool layout 2 の実機挙動**。Tier 1 stop path、boot CRC timing、
-   watchdog順序はsource記載どおり NOT RUN
+5. **AssetPool layout 2 の実機挙動**。本監査はこれを確認していない。Tier 1 stop path
+   （拒否経路）の実機発火、測定されたboot CRC timingの受入れ、watchdog順序の qualification
+   は、本監査時点のsource記載どおり NOT RUN であり、後続の実機smokeでも別gateのまま残る。
+   一方、通常のboot成功とViewer配信についてはmerge後に別途実機evidenceが存在する。
+   本監査はそのevidenceのauthorityではない
 6. **D2B authority commit `b30ad676...`** の存在確認。shallow cloneのため
    commit objectを取得できない。ただし D2B HEAD `5bf62bed` の
    `reference/browser/src` tree OID は pinned値 `6e5b4844...` と一致しており、
@@ -618,6 +634,11 @@ docs/development/node-viewer-intake.md
 - Viewer / D2B repositoryへのpush
 - Issue #23 の状態変更、PR作成、merge
 
+上のlistは**本監査sessionの作業範囲**を述べたものであり、projectとしてこれらが
+一度も行われていないという主張ではない。実際、merge後に別途、実機VAMeterへの
+candidate書込みとdevice-hosted Viewer配信を含むphysical smokeが行われている。
+本監査はその記録のauthorityではなく、内容を再現していない。
+
 外部repositoryは anonymous git read による shallow clone のみ行った
 （`/home/user/yuichiroh-kobayashi/device-to-browser-viewer`、
 `/home/user/yuichiroh-kobayashi/device-to-browser-data-streaming`）。
@@ -638,9 +659,11 @@ NODE24 builder:                   HOLD / NOT RETESTED (2026-09-11記録に依拠
 NODE24 HOST on d4c0702:           NO TRACKED EVIDENCE FOUND
 Final bundle 01e39e5c provenance: VAMeter側のみtracked / 生成側未確認
 Viewer PR #22/#23 本文:           NOT READABLE FROM THIS SESSION
-Host tests / desktop / ESP-IDF:   NOT RUN
-AssetPool generation:             NOT RUN
-Physical VAMeter:                 NOT RUN
+Host tests / desktop / ESP-IDF:   NOT RUN BY THIS AUDIT
+AssetPool generation:             NOT RUN BY THIS AUDIT
+Physical VAMeter:                 NOT RUN BY THIS AUDIT
+                                  (post-merge physical evidence exists separately;
+                                   this audit is not its authority)
 Release qualification:            NOT ESTABLISHED
 Stable v2.0.0:                    UNCHANGED
 Implementation:                   NOT STARTED

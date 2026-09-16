@@ -165,7 +165,8 @@ Final manifestは `viewer_source_commit=d4c0702...`、D2B copied-reference autho
 Independent Build A/Bは4 representationすべてbyte-identicalで、各run内部のtwo-run determinismと
 外側A/B比較がPASSした。Node 18 HOSTはproduct 120 named + 4 gates、CSV 16、root 30、live 13 PASS。
 Node 24の帰属は前掲「Node 24 HOST証拠の帰属」を参照する。
-actual VAMeter physicalはこのViewer build gateでは NOT RUN。
+このViewer build gate自体には実機VAMeterでの作業は含まれていない。これはbuild gateの
+範囲を述べた歴史的事実であり、VAMeter側の現在のphysical状況を述べたものではない。
 
 VAMeter-Eduは受入れたintake identityを自repositoryのsourceとtestで保持する。
 Viewer repository側のprovenance記録方針はViewer側のauthorityであり、本書の範囲外である。
@@ -179,14 +180,24 @@ Final Viewer assetの受入れは
 現在の `main` sourceへ入っている。source実装とhost testは完了している。
 
 ```text
-VAMeter source intake:        MERGED (PR #25 / PR #26)
-AssetPool layout:             V2 IMPLEMENTED
-Physical VAMeter qualification: NOT RUN
-Release qualification:        NOT ESTABLISHED
+VAMeter source intake:               MERGED (PR #25 / PR #26)
+AssetPool layout:                    V2 IMPLEMENTED
+Post-merge physical evidence:        PARTIAL / SEPARATE EVIDENCE EXISTS
+Formal browser/device qualification: NOT COMPLETE
+Release qualification:               NOT ESTABLISHED
 ```
 
-source mergeはphysical受入れでもrelease成立でもない。
-実機書込み・readback・rollbackは別途承認されたphysical gateで行う。
+source mergeはそれ自体がphysical受入れでもrelease成立でもない。
+
+merge後に別途、matched post-v2 Firmware / layout-2 AssetPool candidateの実機書込みと、
+実機VAMeterによるdevice-hosted Viewer配信が行われている。**本書はその実機記録のauthorityではなく、
+内容を複製しない。**実機evidenceは専用のvalidation記録が所有する。
+
+同時に、その実機smokeだけで全体qualificationが成立するわけではない。full AssetPool
+post-write readback、exact-prestate rollbackの確立、Tier 1 negative/rejection pathの実機試験、
+測定されたboot CRC timingの受入れ、runtime resource qualification、
+reconnect/soakを含む完全なbrowser/device qualification、release qualificationは、
+それぞれ独自のevidenceによってのみ成立する別gateである。
 
 歴史的経緯として、layout 1に対する以前の判定
 `FIXED_SLOT_OVERFLOW / IDENTITY_UPDATE_REQUIRED / FIRMWARE_INTAKE_BLOCKED` は、
@@ -229,7 +240,9 @@ PR #25が導入した検証順序を維持する。
 **Tier 1**: container/layout不一致ではinjectしない。bool callback / `APP::Setup()` が失敗を伝播し、
 HAL・locale・Mooncake初期化前に停止する。AssetPool依存error UI、reboot loop、format、record削除、
 未検証poolの継続利用はしない。deviceはreasonをlogして `app_main` からreturnする。
-ESP-IDF v5.1.6のmain task削除と現在のwatchdog初期化順序を利用するこの経路は、physicalでは未検証。
+ESP-IDF v5.1.6のmain task削除と現在のwatchdog初期化順序を利用するこの**拒否**経路は、
+実機で意図的に発火させる試験をまだ行っていない。通常のboot成功はこの経路を通らないため、
+実機bootが観測されたことはこの経路の検証にはならない。
 
 **Tier 2**: layout/CRCが正しくてもViewer identityが不一致なら、既存の
 `VIEWER_ASSETPOOL_IDENTITY_MISMATCH` でViewer/SystemLive routesだけをfail-closedにする。
@@ -291,10 +304,20 @@ AssetPool layout:             V2 IMPLEMENTED
 New development container:    DETERMINISTIC GENERATION REQUIRED / NOT RELEASE AUTHORITY
 Node 24 product builder:      HOLD
 Node 24 HOST on d4c0702:      NOT ESTABLISHED (tracked comparison belongs to 81226e7b)
-Runtime heap/stack / boot CRC timing / physical VAMeter: NOT RUN
-Release qualification:        NOT ESTABLISHED
-Stable v2.0.0:                UNCHANGED
+
+Post-merge physical VAMeter smoke:   PARTIAL / exists outside this document
+Full AssetPool post-write readback:  NOT ESTABLISHED HERE
+Exact-prestate rollback:             NOT ESTABLISHED HERE
+Tier 1 negative physical path:       NOT ESTABLISHED HERE
+Boot CRC timing qualification:       NOT ESTABLISHED HERE
+Runtime heap/stack qualification:    NOT ESTABLISHED HERE
+Formal browser/device qualification: NOT COMPLETE
+Release qualification:               NOT ESTABLISHED
+Stable v2.0.0:                       UNCHANGED
 ```
+
+`NOT ESTABLISHED HERE` は「この文書がそのevidenceを所有していない」という意味であり、
+実機作業が一切行われていないという意味ではない。
 
 ## 関連文書
 

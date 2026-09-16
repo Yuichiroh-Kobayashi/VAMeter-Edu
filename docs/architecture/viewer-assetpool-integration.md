@@ -95,10 +95,18 @@ Viewer intake: it updated the exact CSS/JS slots, bundle, four hashes and hashed
 raised both layout versions to 2 while retaining the trailer format. Both are part of the
 current `main` source.
 
-**Source merge is not physical or release qualification.** The layout-2 container has not been
-written to, read back from, or served by an actual VAMeter under this intake; boot CRC timing,
-watchdog ordering and the Tier 1 stop path remain **NOT RUN** on hardware. The accepted Viewer
-source/tree/bundle provenance is recorded in
+**Source merge is not physical or release qualification.** Separate post-merge physical work
+has written the matched post-v2 Firmware/AssetPool candidate and served the device-hosted
+Viewer on an actual VAMeter. This architecture document does not own or reproduce those
+physical evidence records.
+
+That physical smoke does not by itself establish full qualification. In particular, full
+AssetPool post-write readback, exact-prestate rollback establishment, the Tier 1
+negative/rejection path, measured boot-CRC timing acceptance, complete runtime resource
+qualification, complete browser/reconnect/soak coverage, and release qualification remain
+separate gates unless established by their own evidence.
+
+The accepted Viewer source/tree/bundle provenance is recorded in
 [the Final Viewer intake authority](../development/node-viewer-intake.md#final-post-v2-viewer-intake-candidate);
 the per-asset lengths, hashes and routes live in the source constants named above.
 
@@ -208,7 +216,12 @@ HAL, locale, Mooncake, or ordinary UI initialization. Device logs
 return. The configured automatic task watchdog initialization is disabled; HAL registers
 the watchdog only after successful AssetPool injection. This stop path uses no AssetPool
 error UI, busy loop, reboot, format, record deletion, or automatic AssetPool rewrite.
-Physical boot timing and watchdog behavior remain **NOT RUN** for this intake.
+
+The candidate's ordinary successful-boot path has been observed on an actual VAMeter in
+separate post-merge physical work. This **rejection** path is different: deliberately feeding
+a device a rejected container to observe the Tier 1 stop, and measuring boot-CRC timing and
+watchdog behaviour against an acceptance criterion, are their own physical tests and remain
+**NOT RUN**. A successful boot does not exercise them.
 
 A container with correct layout/CRC but incorrect Viewer identity still reaches the
 existing Tier 2 `VIEWER_ASSETPOOL_IDENTITY_MISMATCH` check. Viewer/SystemLive routes fail
