@@ -76,6 +76,7 @@ Read `docs/ai/project-context.md` for branch roles, scope, and known decisions.
 - `docs/standards/`: current, durable normative rules (measurement-and-presentation semantics).
 - `docs/architecture/`: current direct-browser architecture, ownership/lifecycle, and resource contracts.
 - `docs/operations/`: current operational guidance, such as runtime diagnostics.
+- `docs/development/`: development-side toolchain scope, external-artifact intake conditions, and reproducibility records. Not a product contract and not physical-qualification authority.
 - `docs/validation/`: current physical-qualification procedures.
 - `docs/releases/`: per-release records.
 - `docs/archive/`: dated handoffs, validation evidence, and historical/future design drafts; these are not normative contracts by themselves. Start with `docs/archive/README.md`.

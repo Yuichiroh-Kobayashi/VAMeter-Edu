@@ -9,6 +9,7 @@ VAMeter-Edu documentation is organized by role. Current implementation behavior 
 - [`standards/`](standards/) defines current, durable normative rules — currently measurement-and-presentation semantics.
 - [`architecture/`](architecture/) contains current direct-browser architecture, ownership/lifecycle, and resource contracts.
 - [`operations/`](operations/) contains current operational guidance, such as reading runtime diagnostics.
+- [`development/`](development/) records development-side toolchain scope, external-artifact intake conditions, and reproducibility evidence — for example which build paths depend on Node and how an externally generated Viewer bundle is accepted. It is distinct from product contract and from release/physical-qualification authority.
 - [`validation/`](validation/) contains the current physical-qualification procedure.
 - [`releases/`](releases/) contains per-release records that expand on [`../CHANGELOG.md`](../CHANGELOG.md).
 - [`ai/`](ai/README.md) contains durable guidance for AI tools and human reviewers.
