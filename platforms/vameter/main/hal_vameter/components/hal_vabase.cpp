@@ -6,13 +6,12 @@
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include <mooncake.h>
+#include "libs/relay_interlock/relay_interlock.h"
 #include "reverse_current_safety_device.h"
 #include <freertos/FreeRTOS.h>
 
 static bool _base_relay_state = false;
-static bool _relay_policy_initialized = false;
-static bool _reverse_current_fault_latched = false;
-static volatile bool _reverse_current_fault_echo = false;
+static RELAY_INTERLOCK::RelayInterlock _relay_interlock;
 static portMUX_TYPE _relay_policy_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static void _set_base_relay_raw(bool state)
@@ -31,15 +30,16 @@ void HAL_VAMeter::_vabase_init()
 
     portENTER_CRITICAL(&_relay_policy_mux);
     _set_base_relay_raw(false);
-    _relay_policy_initialized = true;
+    _relay_interlock.initialize();
     portEXIT_CRITICAL(&_relay_policy_mux);
 }
 
 void HAL_VAMeter::setBaseRelay(bool state)
 {
     portENTER_CRITICAL(&_relay_policy_mux);
-    if (!state || (_relay_policy_initialized && !_reverse_current_fault_latched))
-        _set_base_relay_raw(state);
+    const RELAY_INTERLOCK::Command command = _relay_interlock.requestNormal(state);
+    if (command.apply)
+        _set_base_relay_raw(command.state);
     portEXIT_CRITICAL(&_relay_policy_mux);
 }
 
@@ -56,24 +56,18 @@ namespace REVERSE_CURRENT_SAFETY_DEVICE
     bool IsRelayPolicyInitialized()
     {
         portENTER_CRITICAL(&_relay_policy_mux);
-        const bool initialized = _relay_policy_initialized;
+        const bool initialized = _relay_interlock.isInitialized();
         portEXIT_CRITICAL(&_relay_policy_mux);
         return initialized;
     }
 
     void CommitFaultAndOpenRelay()
     {
-        bool committed = false;
         portENTER_CRITICAL(&_relay_policy_mux);
-        if (_relay_policy_initialized && !_reverse_current_fault_latched)
-        {
-            _reverse_current_fault_latched = true;
-            _set_base_relay_raw(false);
-            committed = true;
-        }
+        const RELAY_INTERLOCK::Command command = _relay_interlock.commitFault();
+        if (command.apply)
+            _set_base_relay_raw(command.state);
         portEXIT_CRITICAL(&_relay_policy_mux);
-        if (committed)
-            _reverse_current_fault_echo = true;
     }
 } // namespace REVERSE_CURRENT_SAFETY_DEVICE
 

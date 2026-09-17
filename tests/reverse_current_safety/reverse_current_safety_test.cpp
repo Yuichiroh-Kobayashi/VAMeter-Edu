@@ -24,32 +24,36 @@ int main()
 
     Controller beforeInitialization(testConfiguration);
     Expect(!beforeInitialization.observe(false, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
-           "no action before relay policy initialization");
+           "no action or candidate advance before relay policy initialization");
+    Expect(!beforeInitialization.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
+           "first initialized observation remains a candidate");
 
-    Controller disarmed(testConfiguration);
-    Expect(!disarmed.observe(true, false, true, -2.0F, CurrentRange::High).requestRelayOff,
-           "no action while Training arming is false");
+    Controller trainingGate(testConfiguration);
+    Expect(!trainingGate.observe(true, false, true, -2.0F, CurrentRange::High).requestRelayOff,
+           "Training false does not advance the safety detector");
+    Expect(!trainingGate.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
+           "first armed observation is only a candidate");
+    Expect(trainingGate.observe(true, true, true, -2.0F, CurrentRange::High).requestRelayOff,
+           "Training test configuration reaches one-shot fault across range context");
+    Expect(!trainingGate.observe(true, true, true, -2.0F, CurrentRange::High).requestRelayOff,
+           "latched detector emits no automatic retry");
 
-    Controller controller(testConfiguration);
-    Expect(!controller.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
-           "CURRENT_BEHAVIOR / P1-BY-OMISSION: candidate does not request OFF");
-    const REVERSE_CURRENT_SAFETY::Action fault = controller.observe(true, true, true, -2.0F, CurrentRange::High);
-    Expect(fault.faultLatched && controller.isFaultLatched() && fault.requestRelayOff,
-           "range switching has no special production policy; latch commits before OFF request");
-    Expect(!controller.authorizeRelayOn(), "ON denied while latched");
-    Expect(controller.authorizeRelayOff() && controller.authorizeRelayOff(), "OFF remains allowed and idempotent");
-    Expect(!controller.observe(true, true, true, 0.0F, CurrentRange::Low).requestRelayOff, "zero neither clears nor retries");
-    Expect(!controller.observe(true, true, true, 2.0F, CurrentRange::Low).requestRelayOff,
-           "positive input neither clears nor retries");
-    Expect(!controller.observe(true, true, false, -2.0F, CurrentRange::Low).requestRelayOff,
-           "invalid input neither clears nor retries");
-    Expect(controller.isFaultLatched(), "fault remains latched");
-    Expect(!controller.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff, "no automatic retry or reclose");
+    Controller resetByQualifier(testConfiguration);
+    Expect(!resetByQualifier.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff, "qualifier starts candidate");
+    Expect(!resetByQualifier.observe(true, true, true, 0.0F, CurrentRange::Low).requestRelayOff,
+           "valid non-qualifier resets current detector behavior");
+    Expect(!resetByQualifier.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
+           "qualifying count restarts after valid non-qualifier");
 
-    Controller reconstructed(testConfiguration);
-    Expect(!reconstructed.isFaultLatched() && reconstructed.authorizeRelayOn(),
-           "object reconstruction is the only pure-model clear");
-    Expect(reconstructed.authorizeRelayOff(), "OFF remains allowed before a fault");
+    Controller invalidHold(testConfiguration);
+    Expect(!invalidHold.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
+           "qualifier starts invalid-policy regression candidate");
+    Expect(!invalidHold.observe(true, true, false, -2.0F, CurrentRange::Low).requestRelayOff,
+           "CURRENT_BEHAVIOR_HOLD / NOT_PRODUCTION_SAFETY_POLICY / OWNER_DECISION_PENDING");
+    Expect(!invalidHold.observe(true, true, true, std::numeric_limits<float>::quiet_NaN(), CurrentRange::Low).requestRelayOff,
+           "non-finite hold is not an approved production safety policy");
+    Expect(invalidHold.observe(true, true, true, -2.0F, CurrentRange::Low).requestRelayOff,
+           "current hold behavior resumes candidate counting");
 
     const REVERSE_CURRENT_DETECTOR::Configuration disabled = REVERSE_CURRENT_DETECTOR::ProductionDisabledConfiguration();
     REVERSE_CURRENT_DETECTOR::Detector productionDetector(disabled);
@@ -57,8 +61,7 @@ int main()
     Controller production(disabled);
     for (int i = 0; i != 8; ++i)
         Expect(!production.observe(true, false, true, -std::numeric_limits<float>::max(), CurrentRange::High).requestRelayOff,
-               "disabled detector and false arming cannot reach fault action");
-    Expect(!production.isFaultLatched(), "B0 production policy remains inert");
+               "disabled detector and false Training arming cannot reach fault action");
 
-    std::cout << "PASS: inert reverse-current safety controller\n";
+    std::cout << "PASS: Training-gated inert reverse-current safety adapter\n";
 }

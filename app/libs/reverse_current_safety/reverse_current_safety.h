@@ -14,7 +14,6 @@ namespace REVERSE_CURRENT_SAFETY
 
     struct Action
     {
-        bool faultLatched;
         bool requestRelayOff;
     };
 
@@ -27,12 +26,8 @@ namespace REVERSE_CURRENT_SAFETY
                        bool currentValid,
                        float processedSignedCurrentA,
                        CurrentRange range);
-        bool isFaultLatched() const;
-        bool authorizeRelayOn() const;
-        bool authorizeRelayOff() const;
 
     private:
         REVERSE_CURRENT_DETECTOR::Detector _detector;
-        bool _faultLatched;
     };
 } // namespace REVERSE_CURRENT_SAFETY
