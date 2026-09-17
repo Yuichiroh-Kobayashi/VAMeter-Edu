@@ -3,8 +3,8 @@
  */
 #pragma once
 
-#include "record_csv.h"
-#include "recorder_sample_buffer.h"
+#include "libs/record_csv/record_csv.h"
+#include "libs/recorder_sample_buffer/recorder_sample_buffer.h"
 
 #include <cstddef>
 

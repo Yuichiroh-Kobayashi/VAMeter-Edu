@@ -22,3 +22,21 @@ foreach(REQUIRED_WRITER_CALL "std::fputs(Header(), file)" "std::fprintf(file, kV
         message(FATAL_ERROR "legacy CSV writer path is missing: ${REQUIRED_WRITER_CALL}")
     endif()
 endforeach()
+
+file(READ "${SOURCE_ROOT}/app/libs/recorder_finalizer/recorder_finalizer.h" FINALIZER_HEADER)
+foreach(REQUIRED_APP_INCLUDE "libs/record_csv/record_csv.h" "libs/recorder_sample_buffer/recorder_sample_buffer.h")
+    string(FIND "${FINALIZER_HEADER}" "${REQUIRED_APP_INCLUDE}" FOUND_AT)
+    if(FOUND_AT EQUAL -1)
+        message(FATAL_ERROR "finalizer header is not closed from the app include root: ${REQUIRED_APP_INCLUDE}")
+    endif()
+endforeach()
+
+file(READ "${SOURCE_ROOT}/tests/recorder_finalizer/CMakeLists.txt" FINALIZER_TEST_CMAKE)
+string(FIND
+    "${FINALIZER_TEST_CMAKE}"
+    "target_include_directories(recorder_finalizer_test PRIVATE ../../app)"
+    APP_ROOT_INCLUDE_AT
+)
+if(APP_ROOT_INCLUDE_AT EQUAL -1)
+    message(FATAL_ERROR "host finalizer test must compile with only the app include root")
+endif()

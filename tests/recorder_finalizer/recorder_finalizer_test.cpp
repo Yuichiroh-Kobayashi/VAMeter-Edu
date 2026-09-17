@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  */
-#include "recorder_finalizer.h"
+#include "libs/recorder_finalizer/recorder_finalizer.h"
 
 #include <cstdio>
 #include <iostream>
