@@ -7,8 +7,7 @@ add_executable(reverse_current_safety_test
     ../../app/libs/reverse_current_safety/reverse_current_safety.cpp
 )
 target_include_directories(reverse_current_safety_test PRIVATE
-    ../../app/libs/reverse_current_detector
-    ../../app/libs/reverse_current_safety
+    ../../app
 )
 target_compile_features(reverse_current_safety_test PRIVATE cxx_std_11)
 target_compile_options(reverse_current_safety_test PRIVATE -Wall -Wextra -Werror)
