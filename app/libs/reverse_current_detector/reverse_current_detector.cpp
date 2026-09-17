@@ -1,9 +1,12 @@
 #include "reverse_current_detector.h"
 
 #include <cmath>
+#include <limits>
 
 namespace REVERSE_CURRENT_DETECTOR
 {
+    Configuration ProductionDisabledConfiguration() { return {std::numeric_limits<float>::quiet_NaN(), 0}; }
+
     Detector::Detector(const Configuration& configuration)
         : _configuration(configuration),
           _configurationValid(std::isfinite(configuration.negativeThresholdA) && configuration.negativeThresholdA < 0.0F &&

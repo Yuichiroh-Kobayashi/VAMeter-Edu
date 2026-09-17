@@ -11,6 +11,7 @@
 #include <smooth_ui_toolkit.h>
 #include "../utils/INA226/src/INA226.h"
 #include "d2b_vi_producer.h"
+#include "reverse_current_safety_device.h"
 #include "libs/d2b_vi/d2b_acquisition.h"
 #include "libs/d2b_vi/vi_acquisition_timestamp.h"
 #include <sdkconfig.h>
@@ -464,6 +465,9 @@ static void _power_monitor_daemon(void* param)
         xSemaphoreTake(_pm_data_handle_mutex, portMAX_DELAY);
 
         const BasicDataUpdateResult updateResult = _handle_basic_data_update();
+        REVERSE_CURRENT_SAFETY_DEVICE::Observe((updateResult.validMask & D2B::kCurrentValid) != 0,
+                                               _pm_data_daemon->shuntCurrent,
+                                               updateResult.currentRange == CurrentMeasurementRange::Low ? 0 : 1);
         _handle_avg_update();
         _handle_peak_and_min_update();
         _handle_capacity_and_energy_update();

@@ -17,6 +17,11 @@ namespace REVERSE_CURRENT_DETECTOR
         std::uint32_t requiredQualifyingCount;
     };
 
+    // Gate B0 deliberately has no production threshold.  This named factory
+    // keeps the production construction site from looking like threshold
+    // authority; the returned configuration is invalid and therefore inert.
+    Configuration ProductionDisabledConfiguration();
+
     struct Result
     {
         State state;
