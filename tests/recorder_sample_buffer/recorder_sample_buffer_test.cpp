@@ -27,7 +27,8 @@ namespace
         CHECK(alignof(RecordedSample) == 4);
         CHECK(kReviewedBufferBytes == kReviewedCapacity * sizeof(RecordedSample));
 
-        SampleBuffer buffer(2);
+        RecordedSample storage[2] = {};
+        SampleBuffer buffer(storage, 2);
         const RecordedSample first = {-1.25f, -0.0004275f, 73};
         const RecordedSample second = {9.5f, 7.25f, 12};
         const RecordedSample overflow = {99.0f, 99.0f, 99};
@@ -43,6 +44,10 @@ namespace
         CHECK(buffer.frozen());
         CHECK(buffer.append(overflow) == append_frozen);
         CHECK(buffer.size() == 2);
+
+        SampleBuffer unavailable(nullptr, 2);
+        CHECK(unavailable.capacity() == 2);
+        CHECK(unavailable.append(first) == append_full);
     }
 
     void TestCurrentCapacityProof()

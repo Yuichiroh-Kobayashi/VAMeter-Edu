@@ -32,23 +32,27 @@ namespace RECORDER_SAMPLE_BUFFER
         }
     } // namespace
 
-    SampleBuffer::SampleBuffer(std::size_t capacity) : capacity_(capacity), frozen_(false) { samples_.reserve(capacity_); }
+    SampleBuffer::SampleBuffer(RecordedSample* storage, std::size_t capacity)
+        : storage_(storage), size_(0), capacity_(capacity), frozen_(false)
+    {
+    }
 
     AppendResult SampleBuffer::append(const RecordedSample& sample)
     {
         if (frozen_)
             return append_frozen;
-        if (samples_.size() == capacity_)
+        if (storage_ == nullptr || size_ == capacity_)
             return append_full;
-        samples_.push_back(sample);
+        storage_[size_] = sample;
+        ++size_;
         return append_accepted;
     }
 
     void SampleBuffer::freeze() { frozen_ = true; }
     bool SampleBuffer::frozen() const { return frozen_; }
-    std::size_t SampleBuffer::size() const { return samples_.size(); }
+    std::size_t SampleBuffer::size() const { return size_; }
     std::size_t SampleBuffer::capacity() const { return capacity_; }
-    const RecordedSample* SampleBuffer::data() const { return samples_.empty() ? nullptr : &samples_[0]; }
+    const RecordedSample* SampleBuffer::data() const { return size_ == 0 ? nullptr : storage_; }
 
     CapacityResult CalculateCurrentProductCapacity(std::uint64_t recordMs, std::uint64_t sampleIntervalMs, std::uint64_t tickHz)
     {

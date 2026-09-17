@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 
 namespace RECORDER_SAMPLE_BUFFER
 {
@@ -32,7 +31,7 @@ namespace RECORDER_SAMPLE_BUFFER
     class SampleBuffer
     {
     public:
-        explicit SampleBuffer(std::size_t capacity = kReviewedCapacity);
+        SampleBuffer(RecordedSample* storage, std::size_t capacity);
 
         AppendResult append(const RecordedSample& sample);
         void freeze();
@@ -42,7 +41,8 @@ namespace RECORDER_SAMPLE_BUFFER
         const RecordedSample* data() const;
 
     private:
-        std::vector<RecordedSample> samples_;
+        RecordedSample* storage_;
+        std::size_t size_;
         std::size_t capacity_;
         bool frozen_;
     };

@@ -91,8 +91,9 @@ namespace
         return operations;
     }
 
-    RECORDER_FINALIZER::Result
-    Run(FakeFile& file, RECORD_CSV::OutputMode mode = RECORD_CSV::output_both, std::size_t rowsPerBatch = 2)
+    RECORDER_FINALIZER::Result Run(FakeFile& file,
+                                   RECORD_CSV::OutputMode mode = RECORD_CSV::output_both,
+                                   std::size_t batchBufferSize = RECORDER_FINALIZER::kMaximumBatchBytes)
     {
         using RECORDER_SAMPLE_BUFFER::RecordedSample;
         static const RecordedSample captured[] = {
@@ -102,7 +103,8 @@ namespace
         };
         const RECORDER_FINALIZER::SampleSequence none = {nullptr, 0};
         const RECORDER_FINALIZER::SampleSequence samples = {captured, 3};
-        return RECORDER_FINALIZER::Finalize(Operations(file), mode, none, samples, rowsPerBatch);
+        char batchBuffer[RECORDER_FINALIZER::kMaximumBatchBytes] = {0};
+        return RECORDER_FINALIZER::Finalize(Operations(file), mode, none, samples, batchBuffer, batchBufferSize);
     }
 
     std::string BytesFromPublicWriter(RECORD_CSV::OutputMode mode)
@@ -151,14 +153,16 @@ namespace
         for (std::size_t i = 0; i < 3; ++i)
         {
             FakeFile file;
-            const RECORDER_FINALIZER::Result result = Run(file, modes[i], 2);
+            const RECORDER_FINALIZER::Result result = Run(file, modes[i]);
             CHECK(result.state == RECORDER_FINALIZER::save_published);
             CHECK(result.failureStage == RECORDER_FINALIZER::failure_none);
             CHECK(result.cleanupSucceeded);
             CHECK(result.rowsWritten == 3);
             CHECK(file.bytes == BytesFromPublicWriter(modes[i]));
-            CHECK(file.writeCalls == 3); // Header, two-row batch, one-row batch.
+            CHECK(file.writeCalls == 2); // Header, then one byte-bounded sample batch.
             CHECK(file.watchdogCalls == file.writeCalls);
+            for (std::size_t writeIndex = 0; writeIndex < file.writeSizes.size(); ++writeIndex)
+                CHECK(file.writeSizes[writeIndex] <= RECORDER_FINALIZER::kMaximumBatchBytes);
             CHECK(file.closeCalls == 1);
             CHECK(file.publishCalls == 1);
             CHECK(file.cleanupCalls == 0);
@@ -182,11 +186,18 @@ namespace
         CHECK(header.writeCalls == 1 && header.closeCalls == 1 && header.publishCalls == 0 && header.cleanupCalls == 1);
 
         FakeFile row;
-        row.failWrite = 3; // Header succeeds; the second individually batched row fails.
-        result = Run(row, RECORD_CSV::output_both, 1);
+        row.failWrite = 3; // Header and the first individually batched row succeed.
+        result = Run(row, RECORD_CSV::output_both, 24);
         CHECK(result.failureStage == RECORDER_FINALIZER::failure_row_write);
         CHECK(result.rowsWritten == 1);
         CHECK(row.writeCalls == 3 && row.closeCalls == 1 && row.publishCalls == 0 && row.cleanupCalls == 1);
+
+        FakeFile rowTooLarge;
+        result = Run(rowTooLarge, RECORD_CSV::output_both, 4);
+        CHECK(result.failureStage == RECORDER_FINALIZER::failure_row_format);
+        CHECK(result.rowsWritten == 0);
+        CHECK(rowTooLarge.writeCalls == 1 && rowTooLarge.closeCalls == 1 && rowTooLarge.publishCalls == 0 &&
+              rowTooLarge.cleanupCalls == 1);
 
         FakeFile close;
         close.closeResult = false;
@@ -218,8 +229,9 @@ namespace
         const RECORDER_FINALIZER::SampleSequence before = {pretrigger, 2};
         const RECORDER_FINALIZER::SampleSequence after = {captured, 2};
         FakeFile file;
-        const RECORDER_FINALIZER::Result result =
-            RECORDER_FINALIZER::Finalize(Operations(file), RECORD_CSV::output_both, before, after, 3);
+        char batchBuffer[60] = {0};
+        const RECORDER_FINALIZER::Result result = RECORDER_FINALIZER::Finalize(
+            Operations(file), RECORD_CSV::output_both, before, after, batchBuffer, sizeof(batchBuffer));
         CHECK(result.state == RECORDER_FINALIZER::save_published);
         CHECK(result.rowsWritten == 4);
         CHECK(file.bytes == "voltage,current,elapsed_ms\n"
@@ -227,7 +239,7 @@ namespace
                             "0.2000,-0.2000000,0\n"
                             "1.0000,2.0000000,0\n"
                             "3.0000,4.0000000,40\n");
-        CHECK(file.writeCalls == 3); // Header, 3-row boundary, remaining row.
+        CHECK(file.writeCalls == 3); // Header plus two byte-bounded batches.
     }
 } // namespace
 

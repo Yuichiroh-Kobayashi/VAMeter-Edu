@@ -14,3 +14,9 @@ target_include_directories(recorder_finalizer_test PRIVATE
 target_compile_features(recorder_finalizer_test PRIVATE cxx_std_11)
 target_compile_options(recorder_finalizer_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME recorder_finalizer_test COMMAND recorder_finalizer_test)
+add_test(
+    NAME recorder_pure_seam_source_check
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/pure_seam_source_check.cmake
+)

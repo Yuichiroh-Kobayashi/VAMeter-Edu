@@ -4,7 +4,6 @@
 #include "recorder_finalizer.h"
 
 #include <cstring>
-#include <vector>
 
 namespace RECORDER_FINALIZER
 {
@@ -23,13 +22,13 @@ namespace RECORDER_FINALIZER
             return result;
         }
 
-        bool Flush(const FileOperations& operations, std::vector<char>& batch)
+        bool Flush(const FileOperations& operations, char* batch, std::size_t& batchSize)
         {
-            if (batch.empty())
+            if (batchSize == 0)
                 return true;
-            if (!operations.write(operations.context, &batch[0], batch.size()))
+            if (!operations.write(operations.context, batch, batchSize))
                 return false;
-            batch.clear();
+            batchSize = 0;
             if (operations.feedWatchdog != nullptr)
                 operations.feedWatchdog(operations.context);
             return true;
@@ -40,11 +39,13 @@ namespace RECORDER_FINALIZER
                     RECORD_CSV::OutputMode mode,
                     const SampleSequence& orderedPretrigger,
                     const SampleSequence& captured,
-                    std::size_t rowsPerBatch)
+                    char* batchBuffer,
+                    std::size_t batchBufferSize)
     {
         if (operations.open == nullptr || operations.write == nullptr || operations.close == nullptr ||
-            operations.publish == nullptr || operations.removeStaging == nullptr || rowsPerBatch == 0 ||
-            rowsPerBatch > kMaximumRowsPerBatch || !ValidSequence(orderedPretrigger) || !ValidSequence(captured))
+            operations.publish == nullptr || operations.removeStaging == nullptr || batchBuffer == nullptr ||
+            batchBufferSize == 0 || batchBufferSize > kMaximumBatchBytes || !ValidSequence(orderedPretrigger) ||
+            !ValidSequence(captured))
             return Failed(operations, failure_invalid_input, 0);
         if (!operations.open(operations.context))
             return Failed(operations, failure_open, 0);
@@ -57,9 +58,8 @@ namespace RECORDER_FINALIZER
         if (operations.feedWatchdog != nullptr)
             operations.feedWatchdog(operations.context);
 
-        std::vector<char> batch;
-        batch.reserve(rowsPerBatch * kFormattedRowBytes);
         std::size_t rowsWritten = 0;
+        std::size_t batchSize = 0;
         std::size_t rowsInBatch = 0;
         const SampleSequence sequences[] = {orderedPretrigger, captured};
         for (std::size_t sequenceIndex = 0; sequenceIndex < 2; ++sequenceIndex)
@@ -71,18 +71,21 @@ namespace RECORDER_FINALIZER
                 if (!RECORD_CSV::FormatSample(
                         formatted, sizeof(formatted), formattedSize, mode, sample.voltage, sample.current, sample.elapsedMs))
                     return Failed(operations, failure_row_format, rowsWritten, true);
-                batch.insert(batch.end(), formatted, formatted + formattedSize);
-                ++rowsInBatch;
-                if (rowsInBatch == rowsPerBatch)
+                if (formattedSize > batchBufferSize)
+                    return Failed(operations, failure_row_format, rowsWritten, true);
+                if (formattedSize > batchBufferSize - batchSize)
                 {
-                    if (!Flush(operations, batch))
+                    if (!Flush(operations, batchBuffer, batchSize))
                         return Failed(operations, failure_row_write, rowsWritten, true);
                     rowsWritten += rowsInBatch;
                     rowsInBatch = 0;
                 }
+                std::memcpy(batchBuffer + batchSize, formatted, formattedSize);
+                batchSize += formattedSize;
+                ++rowsInBatch;
             }
         }
-        if (!Flush(operations, batch))
+        if (!Flush(operations, batchBuffer, batchSize))
             return Failed(operations, failure_row_write, rowsWritten, true);
         rowsWritten += rowsInBatch;
 

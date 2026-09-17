@@ -10,7 +10,7 @@
 
 namespace RECORDER_FINALIZER
 {
-    constexpr std::size_t kMaximumRowsPerBatch = 256;
+    constexpr std::size_t kMaximumBatchBytes = 512;
 
     enum SaveState
     {
@@ -62,5 +62,6 @@ namespace RECORDER_FINALIZER
                     RECORD_CSV::OutputMode mode,
                     const SampleSequence& orderedPretrigger,
                     const SampleSequence& captured,
-                    std::size_t rowsPerBatch);
+                    char* batchBuffer,
+                    std::size_t batchBufferSize);
 } // namespace RECORDER_FINALIZER
