@@ -1,13 +1,25 @@
 /*
-* SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
-*
-* SPDX-License-Identifier: MIT
-*/
+ * SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
+ *
+ * SPDX-License-Identifier: MIT
+ */
 #include "../hal_vameter.h"
 #include "../hal_config.h"
 #include <mooncake.h>
+#include "reverse_current_safety_device.h"
+#include <freertos/FreeRTOS.h>
 
 static bool _base_relay_state = false;
+static bool _relay_policy_initialized = false;
+static bool _reverse_current_fault_latched = false;
+static volatile bool _reverse_current_fault_echo = false;
+static portMUX_TYPE _relay_policy_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static void _set_base_relay_raw(bool state)
+{
+    _base_relay_state = state;
+    gpio_set_level((gpio_num_t)HAL_PIN_BASE_RELAY_CTRL, _base_relay_state);
+}
 
 void HAL_VAMeter::_vabase_init()
 {
@@ -17,17 +29,53 @@ void HAL_VAMeter::_vabase_init()
     gpio_set_direction((gpio_num_t)HAL_PIN_BASE_RELAY_CTRL, GPIO_MODE_OUTPUT);
     gpio_set_pull_mode((gpio_num_t)HAL_PIN_BASE_RELAY_CTRL, GPIO_PULLUP_PULLDOWN);
 
-    setBaseRelay(false);
+    portENTER_CRITICAL(&_relay_policy_mux);
+    _set_base_relay_raw(false);
+    _relay_policy_initialized = true;
+    portEXIT_CRITICAL(&_relay_policy_mux);
 }
 
 void HAL_VAMeter::setBaseRelay(bool state)
 {
-    // High close
-    _base_relay_state = state;
-    gpio_set_level((gpio_num_t)HAL_PIN_BASE_RELAY_CTRL, _base_relay_state);
+    portENTER_CRITICAL(&_relay_policy_mux);
+    if (!state || (_relay_policy_initialized && !_reverse_current_fault_latched))
+        _set_base_relay_raw(state);
+    portEXIT_CRITICAL(&_relay_policy_mux);
 }
 
-bool HAL_VAMeter::getBaseRelayState() { return _base_relay_state; }
+bool HAL_VAMeter::getBaseRelayState()
+{
+    portENTER_CRITICAL(&_relay_policy_mux);
+    const bool state = _base_relay_state;
+    portEXIT_CRITICAL(&_relay_policy_mux);
+    return state;
+}
+
+namespace REVERSE_CURRENT_SAFETY_DEVICE
+{
+    bool IsRelayPolicyInitialized()
+    {
+        portENTER_CRITICAL(&_relay_policy_mux);
+        const bool initialized = _relay_policy_initialized;
+        portEXIT_CRITICAL(&_relay_policy_mux);
+        return initialized;
+    }
+
+    void CommitFaultAndOpenRelay()
+    {
+        bool committed = false;
+        portENTER_CRITICAL(&_relay_policy_mux);
+        if (_relay_policy_initialized && !_reverse_current_fault_latched)
+        {
+            _reverse_current_fault_latched = true;
+            _set_base_relay_raw(false);
+            committed = true;
+        }
+        portEXIT_CRITICAL(&_relay_policy_mux);
+        if (committed)
+            _reverse_current_fault_echo = true;
+    }
+} // namespace REVERSE_CURRENT_SAFETY_DEVICE
 
 void HAL_VAMeter::baseGroveStartTest()
 {

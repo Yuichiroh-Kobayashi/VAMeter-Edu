@@ -22,6 +22,14 @@ namespace
         return static_cast<std::uint32_t>(input[0]) | (static_cast<std::uint32_t>(input[1]) << 8) |
                (static_cast<std::uint32_t>(input[2]) << 16) | (static_cast<std::uint32_t>(input[3]) << 24);
     }
+
+    float LoadFloatLe(const std::uint8_t* input)
+    {
+        const std::uint32_t bits = LoadLe32(input);
+        float value = 0.0F;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
 } // namespace
 
 int main()
@@ -38,6 +46,9 @@ int main()
     D2B::FrameWriteResult result = D2B::WriteSingleViFrame(output, sizeof(output), 11, D2B::StreamStart, first);
     Expect(result.ok() && result.size == sizeof(output), "first frame is written");
     Expect(std::memcmp(output, expectedFirst, sizeof(output)) == 0, "first frame matches oracle golden bytes");
+    Expect(LoadLe32(output + 36) == 3 && std::signbit(LoadFloatLe(output + 44)) &&
+               LoadFloatLe(output + 44) == -0.125F,
+           "valid negative current keeps validity, IEEE-754 sign, and value");
 
     std::uint8_t unchanged[D2B::kSingleViFrameSize];
     std::memset(unchanged, 0xa5, sizeof(unchanged));
@@ -57,7 +68,9 @@ int main()
                                       2.0F,
                                       std::numeric_limits<float>::quiet_NaN()};
     result = D2B::WriteSingleViFrame(output, sizeof(output), 11, 0, invalidNan);
-    Expect(result.ok() && LoadLe32(output + 44) == 0, "invalid channel is canonical positive zero");
+    Expect(result.ok() && LoadLe32(output + 36) == 1 && LoadLe32(output + 44) == 0 &&
+               !std::signbit(LoadFloatLe(output + 44)),
+           "invalid current has validity unset and canonical positive zero");
 
     result = D2B::WriteSingleViFrame(output, sizeof(output), 11, D2B::ProducerOverflow, first);
     Expect(result.error == D2B::FrameWriteError::InvalidFlags, "cause flag requires discontinuity");

@@ -119,6 +119,10 @@ namespace
         CHECK(std::string(line) == "5.1250,,0\n");
         CHECK(std::fgets(line, sizeof(line), file) != nullptr);
         CHECK(std::string(line) == ",-0.0004275,41\n");
+        RECORD_CSV::ParsedLine negativeParsed;
+        CHECK(RECORD_CSV::ParseLine(line, negativeParsed) == RECORD_CSV::line_sample);
+        CHECK(negativeParsed.hasCurrent);
+        CHECK(negativeParsed.current == -0.0004275f);
         CHECK(std::fgets(line, sizeof(line), file) != nullptr);
         CHECK(std::string(line) == "1.2500,0.0005000,82\n");
         CHECK(std::fgets(line, sizeof(line), file) == nullptr); // No summary row.
