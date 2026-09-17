@@ -45,10 +45,14 @@ namespace RECORD_CSV
     LineKind ParseLine(const char* line, ParsedLine& parsed);
     bool ReadLine(FILE* file, char* buffer, std::size_t bufferSize, bool& tooLong);
     const char* Header();
+    bool FormatHeader(char* buffer, std::size_t bufferSize, std::size_t& bytesWritten);
+    bool FormatSample(char* buffer,
+                      std::size_t bufferSize,
+                      std::size_t& bytesWritten,
+                      OutputMode mode,
+                      float voltage,
+                      float current,
+                      std::uint32_t elapsedMs);
     bool WriteHeader(FILE* file);
-    bool WriteSample(FILE* file,
-                     OutputMode mode,
-                     float voltage,
-                     float current,
-                     std::uint32_t elapsedMs);
+    bool WriteSample(FILE* file, OutputMode mode, float voltage, float current, std::uint32_t elapsedMs);
 } // namespace RECORD_CSV

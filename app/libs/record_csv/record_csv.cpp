@@ -14,6 +14,9 @@ namespace RECORD_CSV
     namespace
     {
         constexpr std::size_t kMaxColumns = 16;
+        constexpr const char* kVoltageSampleFormat = "%.4f,,%lu\n";
+        constexpr const char* kCurrentSampleFormat = ",%.7f,%lu\n";
+        constexpr const char* kBothSampleFormat = "%.4f,%.7f,%lu\n";
 
         char* Trim(char* token)
         {
@@ -143,7 +146,8 @@ namespace RECORD_CSV
     bool ReadLine(FILE* file, char* buffer, std::size_t bufferSize, bool& tooLong)
     {
         tooLong = false;
-        if (file == nullptr || buffer == nullptr || bufferSize < 2 || std::fgets(buffer, static_cast<int>(bufferSize), file) == nullptr)
+        if (file == nullptr || buffer == nullptr || bufferSize < 2 ||
+            std::fgets(buffer, static_cast<int>(bufferSize), file) == nullptr)
             return false;
 
         const std::size_t length = std::strlen(buffer);
@@ -162,6 +166,44 @@ namespace RECORD_CSV
 
     const char* Header() { return "voltage,current,elapsed_ms\n"; }
 
+    bool FormatHeader(char* buffer, std::size_t bufferSize, std::size_t& bytesWritten)
+    {
+        bytesWritten = 0;
+        if (buffer == nullptr)
+            return false;
+        const std::size_t length = std::strlen(Header());
+        if (bufferSize <= length)
+            return false;
+        std::memcpy(buffer, Header(), length + 1);
+        bytesWritten = length;
+        return true;
+    }
+
+    bool FormatSample(char* buffer,
+                      std::size_t bufferSize,
+                      std::size_t& bytesWritten,
+                      OutputMode mode,
+                      float voltage,
+                      float current,
+                      std::uint32_t elapsedMs)
+    {
+        bytesWritten = 0;
+        if (buffer == nullptr || bufferSize == 0)
+            return false;
+        int result = -1;
+        if (mode == output_voltage)
+            result = std::snprintf(buffer, bufferSize, kVoltageSampleFormat, voltage, static_cast<unsigned long>(elapsedMs));
+        else if (mode == output_current)
+            result = std::snprintf(buffer, bufferSize, kCurrentSampleFormat, current, static_cast<unsigned long>(elapsedMs));
+        else
+            result =
+                std::snprintf(buffer, bufferSize, kBothSampleFormat, voltage, current, static_cast<unsigned long>(elapsedMs));
+        if (result < 0 || static_cast<std::size_t>(result) >= bufferSize)
+            return false;
+        bytesWritten = static_cast<std::size_t>(result);
+        return true;
+    }
+
     bool WriteHeader(FILE* file) { return file != nullptr && std::fputs(Header(), file) >= 0; }
 
     bool WriteSample(FILE* file, OutputMode mode, float voltage, float current, std::uint32_t elapsedMs)
@@ -170,12 +212,11 @@ namespace RECORD_CSV
             return false;
         int result = -1;
         if (mode == output_voltage)
-            result = std::fprintf(file, "%.4f,,%lu\n", voltage, static_cast<unsigned long>(elapsedMs));
+            result = std::fprintf(file, kVoltageSampleFormat, voltage, static_cast<unsigned long>(elapsedMs));
         else if (mode == output_current)
-            result = std::fprintf(file, ",%.7f,%lu\n", current, static_cast<unsigned long>(elapsedMs));
+            result = std::fprintf(file, kCurrentSampleFormat, current, static_cast<unsigned long>(elapsedMs));
         else
-            result = std::fprintf(
-                file, "%.4f,%.7f,%lu\n", voltage, current, static_cast<unsigned long>(elapsedMs));
+            result = std::fprintf(file, kBothSampleFormat, voltage, current, static_cast<unsigned long>(elapsedMs));
         return result >= 0;
     }
 } // namespace RECORD_CSV
